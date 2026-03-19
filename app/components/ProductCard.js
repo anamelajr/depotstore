@@ -13,7 +13,9 @@ function addUtmSource(url, utmSource) {
 }
 
 export default function ProductCard({ product }) {
-  const { name, price, imageUrl, storeName, productUrl } = product ?? {};
+  const { name, price, imageUrl, storeName, productUrl, available } =
+    product ?? {};
+  const isSold = available === false;
   const productHref = productUrl
     ? addUtmSource(productUrl, "depot")
     : null;
@@ -34,6 +36,14 @@ export default function ProductCard({ product }) {
             No image
           </div>
         )}
+
+        {isSold ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+            <div className="text-[11px] font-mono uppercase tracking-widest text-white">
+              SOLD
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-5">

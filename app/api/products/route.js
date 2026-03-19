@@ -33,6 +33,7 @@ function normalizeProduct(product, store) {
 
   // Price: pick the minimum variant price and format as EUR.
   const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const available = variants.some((v) => v?.available === true);
   let minPrice = null;
 
   for (const variant of variants) {
@@ -56,6 +57,7 @@ function normalizeProduct(product, store) {
     imageUrl,
     storeName: store.storeName,
     productUrl,
+    available,
   };
 }
 
