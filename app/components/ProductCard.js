@@ -1,7 +1,22 @@
 "use client";
 
+function addUtmSource(url, utmSource) {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("utm_source", utmSource);
+    return u.toString();
+  } catch {
+    // Fallback for unexpected URL shapes.
+    const joiner = url.includes("?") ? "&" : "?";
+    return `${url}${joiner}utm_source=${encodeURIComponent(utmSource)}`;
+  }
+}
+
 export default function ProductCard({ product }) {
   const { name, price, imageUrl, storeName, productUrl } = product ?? {};
+  const productHref = productUrl
+    ? addUtmSource(productUrl, "depot")
+    : null;
 
   const card = (
     <div className="group rounded-2xl focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
@@ -45,7 +60,7 @@ export default function ProductCard({ product }) {
 
   return (
     <a
-      href={productUrl}
+      href={productHref ?? productUrl}
       target="_blank"
       rel="noopener noreferrer"
       className="block focus:outline-none"
