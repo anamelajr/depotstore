@@ -25,6 +25,16 @@ function toAbsoluteUrl(inputUrl, domain) {
 
 function normalizeProduct(product, store) {
   const name = typeof product?.title === "string" ? product.title : null;
+  const productType =
+    typeof product?.product_type === "string" ? product.product_type : "";
+  const tags = Array.isArray(product?.tags)
+    ? product.tags.filter((t) => typeof t === "string")
+    : typeof product?.tags === "string"
+      ? product.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
 
   const imageUrl =
     Array.isArray(product?.images) && product.images.length > 0
@@ -58,6 +68,8 @@ function normalizeProduct(product, store) {
     storeName: store.storeName,
     productUrl,
     available,
+    productType,
+    tags,
   };
 }
 

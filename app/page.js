@@ -7,6 +7,104 @@ import BRANDS from "./brands";
 
 const ALL_STORES_VALUE = "ALL";
 const PAGE_SIZE = 40;
+const CONTACT_EMAIL = "hello@depot.paris";
+
+const BAG_KEYWORDS = [
+  "bag",
+  "crossbody",
+  "backpack",
+  "handbag",
+  "tote",
+  "document holder",
+  "wallet",
+  "pouchette",
+  "furkin",
+  "purse",
+];
+
+const ACCESSORY_KEYWORDS = [
+  "sunglasses",
+  "bracelet",
+  "necklace",
+  "gloves",
+  "hat",
+  "scarf",
+  "belt",
+  "cap",
+  "beanie",
+  "headband",
+];
+
+const TOPS_KEYWORDS = [
+  "shirt",
+  "sweater",
+  "cardigan",
+  "hoodie",
+  "t-shirt",
+  "tee",
+  "t shirt",
+  "knitwear",
+  "polo",
+  "striped polo",
+  "longsleeve",
+  "longsleeves",
+  "sweat-shirt",
+  "sweat",
+  "crewneck",
+  "knit",
+  "blouse",
+  "tunic",
+  "jackey",
+  "corset",
+  "vest",
+  "shawl",
+  "waistcoat",
+  "bolero",
+  "cape",
+  "legging",
+];
+
+const BOTTOMS_KEYWORDS = [
+  "denim",
+  "jeans",
+  "pants",
+  "pant",
+  "shorts",
+  "trousers",
+  "joggers",
+  "hysteric glamour",
+];
+
+const JACKETS_COATS_KEYWORDS = [
+  "jacket",
+  "blazer",
+  "coat",
+  "bomber",
+  "puffer",
+  "trench",
+  "fur",
+];
+
+const DRESSES_SKIRTS_KEYWORDS = ["dress", "mini dress", "gown", "skirt", "jumpsuit"];
+
+const TOPS_HOODIES_SWEATERS_KEYWORDS = ["hoodie", "sweat", "sweat-shirt", "crewneck"];
+const TOPS_SHIRTS_BLOUSES_KEYWORDS = ["shirt", "blouse", "polo", "tunic"];
+const TOPS_TEES_KEYWORDS = ["tee", "t-shirt", "t shirt"];
+const TOPS_KNITWEAR_KEYWORDS = ["sweater", "cardigan", "knit", "knitwear"];
+
+const JACKETS_KEYWORDS = ["jacket", "bomber", "blazer", "puffer"];
+const COATS_KEYWORDS = ["coat", "trench", "cape"];
+const FOOTWEAR_KEYWORDS = [
+  "boots",
+  "boot",
+  "sneakers",
+  "shoes",
+  "loafers",
+  "heels",
+  "sandals",
+  "mules",
+  "pumps",
+];
 
 function normalizeText(value) {
   return String(value ?? "")
@@ -29,6 +127,114 @@ function extractBrandTags(title) {
   return Array.from(new Set(matches));
 }
 
+function containsAnyKeyword(text, keywords) {
+  return keywords.some((kw) => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
+    return re.test(text);
+  });
+}
+
+function hasSetsKeyword(text) {
+  return containsAnyKeyword(text, [
+    "set",
+    "two piece",
+    "three piece",
+    "2 piece",
+    "3 piece",
+    "2p",
+  ]);
+}
+
+function classifyProduct(product) {
+  const t = normalizeText(product?.name ?? "");
+  const categories = new Set();
+  const hasBags = containsAnyKeyword(t, BAG_KEYWORDS);
+  const hasAccessories = containsAnyKeyword(t, ACCESSORY_KEYWORDS);
+  const hasFootwear = containsAnyKeyword(t, FOOTWEAR_KEYWORDS);
+  const hasSets = hasSetsKeyword(t);
+  const hasDressesSkirts = containsAnyKeyword(t, DRESSES_SKIRTS_KEYWORDS);
+  const hasJackets = containsAnyKeyword(t, JACKETS_KEYWORDS);
+  const hasCoats = containsAnyKeyword(t, COATS_KEYWORDS);
+  const hasJacketsCoats = containsAnyKeyword(t, JACKETS_COATS_KEYWORDS);
+  const hasTops = containsAnyKeyword(t, TOPS_KEYWORDS);
+  const hasBottomsCore = containsAnyKeyword(t, BOTTOMS_KEYWORDS);
+  const hasDenim = containsAnyKeyword(t, ["denim"]);
+
+  // Priority 1: Bags & Accessories
+  // Bags are always primary. Accessories (e.g. belt) may be descriptors — if the product
+  // also has a primary clothing keyword (jacket, dress, shorts, etc.), the higher-priority
+  // category wins and we skip Bags & Accessories.
+  if (hasBags) {
+    categories.add("bags_accessories");
+    categories.add("bags");
+    if (hasAccessories) categories.add("accessories");
+    return { categories };
+  }
+  if (hasAccessories) {
+    const hasPrimaryClothing =
+      hasDressesSkirts ||
+      hasJacketsCoats ||
+      hasTops ||
+      hasBottomsCore ||
+      (hasDenim && !hasJacketsCoats);
+    if (!hasPrimaryClothing) {
+      categories.add("bags_accessories");
+      categories.add("accessories");
+      return { categories };
+    }
+    // Fall through — let Jackets & Coats, Dresses & Skirts, Tops, or Bottoms win
+  }
+
+  // Priority 2: Footwear
+  if (hasFootwear) {
+    categories.add("footwear");
+    return { categories };
+  }
+
+  // Priority 3: Sets
+  if (hasSets) {
+    categories.add("sets");
+    return { categories };
+  }
+
+  // Priority 4: Dresses & Skirts
+  if (hasDressesSkirts) {
+    categories.add("dresses_skirts");
+    return { categories };
+  }
+
+  // Priority 5: Jackets & Coats
+  if (hasJacketsCoats) {
+    categories.add("jackets_coats");
+    if (hasJackets) categories.add("jackets");
+    if (hasCoats) categories.add("coats");
+    return { categories };
+  }
+
+  // Priority 6: Tops
+  if (hasTops) {
+    categories.add("tops");
+    if (containsAnyKeyword(t, TOPS_HOODIES_SWEATERS_KEYWORDS)) {
+      categories.add("tops_hoodies_sweaters");
+    }
+    if (containsAnyKeyword(t, TOPS_SHIRTS_BLOUSES_KEYWORDS)) {
+      categories.add("tops_shirts_blouses");
+    }
+    if (containsAnyKeyword(t, TOPS_TEES_KEYWORDS)) categories.add("tops_tees");
+    if (containsAnyKeyword(t, TOPS_KNITWEAR_KEYWORDS)) categories.add("tops_knitwear");
+    return { categories };
+  }
+
+  // Priority 7: Bottoms (denim only if no jacket/coat keyword)
+  if (hasBottomsCore || (hasDenim && !hasJacketsCoats)) {
+    categories.add("bottoms");
+    return { categories };
+  }
+
+  return { categories };
+}
+
 export default function Home() {
   const [products, setProducts] = useState([]);
   const [selectedStore, setSelectedStore] = useState(ALL_STORES_VALUE);
@@ -38,6 +244,8 @@ export default function Home() {
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const unlockAndScroll = () => {
     setIsUnlocked(true);
@@ -114,6 +322,8 @@ export default function Home() {
     const selectedBrandNorm = hasBrand ? normalizeText(selectedBrand) : null;
 
     return products.filter((p) => {
+      const classification = classifyProduct(p);
+
       if (selectedStore !== ALL_STORES_VALUE) {
         if (p?.storeName !== selectedStore) return false;
       }
@@ -128,14 +338,18 @@ export default function Home() {
         if (!titleNorm.includes(selectedBrandNorm)) return false;
       }
 
+      if (selectedCategory && !classification.categories.has(selectedCategory)) {
+        return false;
+      }
+
       return true;
     });
-  }, [products, selectedStore, searchQuery, selectedBrand]);
+  }, [products, selectedStore, searchQuery, selectedBrand, selectedCategory]);
 
   // Reset pagination any time the backing dataset or store changes.
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedStore, products, searchQuery, selectedBrand]);
+  }, [selectedStore, products, searchQuery, selectedBrand, selectedCategory]);
 
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
@@ -168,6 +382,10 @@ export default function Home() {
     return items;
   }, [currentPage, totalPages]);
 
+  const sortedDesignerBrands = useMemo(() => {
+    return [...BRANDS].sort((a, b) => a.localeCompare(b));
+  }, []);
+
   return (
     <div
       className={[
@@ -175,8 +393,197 @@ export default function Home() {
         !isUnlocked ? "h-screen overflow-hidden" : "",
       ].join(" ")}
     >
+      <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto whitespace-nowrap px-4 py-3 text-[11px] uppercase tracking-widest">
+          <div className="group relative">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("tops")}
+              className={[
+                "transition-colors",
+                selectedCategory?.startsWith("tops")
+                  ? "text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-200",
+              ].join(" ")}
+            >
+              Tops
+            </button>
+            <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+              {[
+                ["tops", "All Tops"],
+                ["tops_hoodies_sweaters", "Hoodies & Sweaters"],
+                ["tops_shirts_blouses", "Shirts & Blouses"],
+                ["tops_tees", "Tees"],
+                ["tops_knitwear", "Knitwear"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSelectedCategory(value)}
+                  className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("bottoms")}
+            className={[
+              "transition-colors",
+              selectedCategory === "bottoms" ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+            ].join(" ")}
+          >
+            Bottoms
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("dresses_skirts")}
+            className={[
+              "transition-colors",
+              selectedCategory === "dresses_skirts"
+                ? "text-zinc-50"
+                : "text-zinc-500 hover:text-zinc-200",
+            ].join(" ")}
+          >
+            Dresses & Skirts
+          </button>
+
+          <div className="group relative">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("jackets_coats")}
+              className={[
+                "transition-colors",
+                selectedCategory === "jackets_coats" ||
+                selectedCategory === "jackets" ||
+                selectedCategory === "coats"
+                  ? "text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-200",
+              ].join(" ")}
+            >
+              Jackets & Coats
+            </button>
+            <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+              {[
+                ["jackets_coats", "All Jackets & Coats"],
+                ["jackets", "Jackets"],
+                ["coats", "Coats"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSelectedCategory(value)}
+                  className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("footwear")}
+            className={[
+              "transition-colors",
+              selectedCategory === "footwear" ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+            ].join(" ")}
+          >
+            Footwear
+          </button>
+
+          <div className="group relative">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("bags_accessories")}
+              className={[
+                "transition-colors",
+                selectedCategory === "bags_accessories" ||
+                selectedCategory === "bags" ||
+                selectedCategory === "accessories"
+                  ? "text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-200",
+              ].join(" ")}
+            >
+              Bags & Accessories
+            </button>
+            <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+              {[
+                ["bags_accessories", "All Bags & Accessories"],
+                ["bags", "Bags"],
+                ["accessories", "Accessories"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSelectedCategory(value)}
+                  className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("sets")}
+            className={[
+              "transition-colors",
+              selectedCategory === "sets" ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+            ].join(" ")}
+          >
+            Sets
+          </button>
+
+          <div className="group relative">
+            <button
+              type="button"
+              className={[
+                "transition-colors",
+                selectedBrand ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+              ].join(" ")}
+            >
+              Designers
+            </button>
+            <div className="invisible absolute left-0 top-full z-50 mt-2 max-h-72 w-[560px] overflow-y-auto border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {sortedDesignerBrands.map((brand) => (
+                  <button
+                    key={brand}
+                    type="button"
+                    onClick={() => setSelectedBrand(brand)}
+                    className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
+                  >
+                    {brand}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsAboutOpen(true)}
+            className="text-zinc-500 transition-colors hover:text-zinc-200"
+          >
+            About
+          </button>
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="text-zinc-500 transition-colors hover:text-zinc-200"
+          >
+            Contact
+          </a>
+        </div>
+      </nav>
+
       <section className="relative flex min-h-screen flex-col bg-[#f5f2ed] text-zinc-950">
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 pt-12">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 pt-8">
           <div className="max-w-4xl">
             <div className="text-[clamp(60px,10vw,132px)] font-bold uppercase leading-[0.9] tracking-tight">
               DÉPÔT
@@ -403,6 +810,27 @@ export default function Home() {
           )}
         </main>
       </div>
+
+      {isAboutOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md border border-zinc-800 bg-[#0a0a0a] p-6 text-zinc-200">
+            <div className="flex items-start justify-between gap-4">
+              <h3 className="text-sm uppercase tracking-widest text-zinc-50">About Dépôt</h3>
+              <button
+                type="button"
+                onClick={() => setIsAboutOpen(false)}
+                className="text-xs uppercase tracking-widest text-zinc-500 hover:text-zinc-200"
+              >
+                Close
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-zinc-400">
+              Dépôt aggregates inventory from the best Paris archive and vintage
+              stores into one editorial feed.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
