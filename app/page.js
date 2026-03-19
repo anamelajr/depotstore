@@ -310,14 +310,7 @@ export default function Home() {
                     onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
                     className="rounded-full px-3 py-2 text-sm text-zinc-50/90 underline decoration-zinc-800 underline-offset-4 transition hover:text-zinc-50 hover:decoration-zinc-500"
                   >
-                    Load more{" "}
-                    <span className="text-zinc-400">
-                      ({Math.min(
-                        PAGE_SIZE,
-                        filteredProducts.length - visibleCount
-                      )}{" "}
-                      more)
-                    </span>
+                    Load More
                   </button>
                 </div>
               ) : null}
