@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useSearchParams } from "next/navigation";
 import ProductCard from "./components/ProductCard";
 import StoreFilterBar from "./components/StoreFilterBar";
+import DesignersDropdown from "./components/DesignersDropdown";
 import BRANDS from "./brands";
 
 const ALL_STORES_VALUE = "ALL";
@@ -236,6 +239,7 @@ function classifyProduct(product) {
 }
 
 export default function Home() {
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState([]);
   const [selectedStore, setSelectedStore] = useState(ALL_STORES_VALUE);
   const [loading, setLoading] = useState(true);
@@ -245,9 +249,51 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isDesignersOpen, setIsDesignersOpen] = useState(false);
+  const [designersDropdownTop, setDesignersDropdownTop] = useState(0);
+  const designersRef = useRef(null);
+  const designersDropdownRef = useRef(null);
+  const navRef = useRef(null);
+  const designersCloseTimeoutRef = useRef(null);
+  const [categoryDropdown, setCategoryDropdown] = useState(null);
+  const [categoryDropdownRect, setCategoryDropdownRect] = useState(null);
+  const categoryCloseTimeoutRef = useRef(null);
+  const topsRef = useRef(null);
+  const jacketsRef = useRef(null);
+  const bagsRef = useRef(null);
 
   const scrollToFeed = () => {
     document.getElementById("feed")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    const brand = searchParams.get("brand");
+    setSelectedBrand(brand || null);
+  }, [searchParams]);
+
+
+  const openDesignersDropdown = () => {
+    if (designersCloseTimeoutRef.current) {
+      clearTimeout(designersCloseTimeoutRef.current);
+      designersCloseTimeoutRef.current = null;
+    }
+    if (navRef.current) {
+      const rect = navRef.current.getBoundingClientRect();
+      setDesignersDropdownTop(rect.bottom);
+    }
+    setIsDesignersOpen(true);
+  };
+
+  const scheduleCloseDesignersDropdown = () => {
+    designersCloseTimeoutRef.current = setTimeout(() => setIsDesignersOpen(false), 100);
+  };
+
+  const closeDesignersDropdown = () => {
+    if (designersCloseTimeoutRef.current) {
+      clearTimeout(designersCloseTimeoutRef.current);
+      designersCloseTimeoutRef.current = null;
+    }
+    setIsDesignersOpen(false);
   };
 
   useEffect(() => {
@@ -381,195 +427,255 @@ export default function Home() {
     return [...BRANDS].sort((a, b) => a.localeCompare(b));
   }, []);
 
+  const brandsByLetter = useMemo(() => {
+    const grouped = new Map();
+    for (const brand of sortedDesignerBrands) {
+      const letter = (brand[0] || "").toUpperCase();
+      if (!letter.match(/[A-Z]/)) continue;
+      if (!grouped.has(letter)) grouped.set(letter, []);
+      grouped.get(letter).push(brand);
+    }
+    return Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [sortedDesignerBrands]);
+
+  const openCategoryDropdown = (key, ref) => {
+    if (categoryCloseTimeoutRef.current) {
+      clearTimeout(categoryCloseTimeoutRef.current);
+      categoryCloseTimeoutRef.current = null;
+    }
+    setCategoryDropdown(key);
+    if (ref?.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setCategoryDropdownRect({ top: rect.bottom + 8, left: rect.left });
+    }
+  };
+
+  const closeCategoryDropdown = () => {
+    if (categoryCloseTimeoutRef.current) clearTimeout(categoryCloseTimeoutRef.current);
+    setCategoryDropdown(null);
+    setCategoryDropdownRect(null);
+  };
+
+  const scheduleCloseCategoryDropdown = () => {
+    categoryCloseTimeoutRef.current = setTimeout(closeCategoryDropdown, 100);
+  };
+
   return (
     <div className="min-h-screen font-mono antialiased">
-      <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto whitespace-nowrap px-4 py-3 text-[11px] uppercase tracking-widest">
-          <div className="group relative">
+      <nav ref={navRef} className="sticky top-0 z-50 border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto whitespace-nowrap px-4 py-3 font-mono text-[11px] uppercase tracking-widest">
+          <div
+            className="relative"
+            onMouseEnter={() => openCategoryDropdown("tops", topsRef)}
+            onMouseLeave={scheduleCloseCategoryDropdown}
+          >
             <button
+              ref={topsRef}
               type="button"
               onClick={() => setSelectedCategory("tops")}
               className={[
-                "transition-colors",
+                "font-mono text-[11px] uppercase tracking-widest transition-colors",
                 selectedCategory?.startsWith("tops")
                   ? "text-zinc-50"
-                  : "text-zinc-500 hover:text-zinc-200",
+                  : "text-zinc-300 hover:text-zinc-50",
               ].join(" ")}
             >
-              Tops
+              TOPS
             </button>
-            <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-              {[
-                ["tops", "All Tops"],
-                ["tops_hoodies_sweaters", "Hoodies & Sweaters"],
-                ["tops_shirts_blouses", "Shirts & Blouses"],
-                ["tops_tees", "Tees"],
-                ["tops_knitwear", "Knitwear"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setSelectedCategory(value)}
-                  className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <button
             type="button"
             onClick={() => setSelectedCategory("bottoms")}
             className={[
-              "transition-colors",
-              selectedCategory === "bottoms" ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+              "font-mono text-[11px] uppercase tracking-widest transition-colors",
+              selectedCategory === "bottoms" ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50",
             ].join(" ")}
           >
-            Bottoms
+            BOTTOMS
           </button>
 
           <button
             type="button"
             onClick={() => setSelectedCategory("dresses_skirts")}
             className={[
-              "transition-colors",
-              selectedCategory === "dresses_skirts"
+              "font-mono text-[11px] uppercase tracking-widest transition-colors",
+                selectedCategory === "dresses_skirts"
                 ? "text-zinc-50"
-                : "text-zinc-500 hover:text-zinc-200",
+                : "text-zinc-300 hover:text-zinc-50",
             ].join(" ")}
           >
-            Dresses & Skirts
+            DRESSES & SKIRTS
           </button>
 
-          <div className="group relative">
+          <div
+            className="relative"
+            onMouseEnter={() => openCategoryDropdown("jackets", jacketsRef)}
+            onMouseLeave={scheduleCloseCategoryDropdown}
+          >
             <button
+              ref={jacketsRef}
               type="button"
               onClick={() => setSelectedCategory("jackets_coats")}
               className={[
-                "transition-colors",
+                "font-mono text-[11px] uppercase tracking-widest transition-colors",
                 selectedCategory === "jackets_coats" ||
                 selectedCategory === "jackets" ||
                 selectedCategory === "coats"
                   ? "text-zinc-50"
-                  : "text-zinc-500 hover:text-zinc-200",
+                  : "text-zinc-300 hover:text-zinc-50",
               ].join(" ")}
             >
-              Jackets & Coats
+              JACKETS & COATS
             </button>
-            <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-              {[
-                ["jackets_coats", "All Jackets & Coats"],
-                ["jackets", "Jackets"],
-                ["coats", "Coats"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setSelectedCategory(value)}
-                  className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <button
             type="button"
             onClick={() => setSelectedCategory("footwear")}
             className={[
-              "transition-colors",
-              selectedCategory === "footwear" ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+              "font-mono text-[11px] uppercase tracking-widest transition-colors",
+              selectedCategory === "footwear" ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50",
             ].join(" ")}
           >
-            Footwear
+            FOOTWEAR
           </button>
 
-          <div className="group relative">
+          <div
+            className="relative"
+            onMouseEnter={() => openCategoryDropdown("bags", bagsRef)}
+            onMouseLeave={scheduleCloseCategoryDropdown}
+          >
             <button
+              ref={bagsRef}
               type="button"
               onClick={() => setSelectedCategory("bags_accessories")}
               className={[
-                "transition-colors",
+                "font-mono text-[11px] uppercase tracking-widest transition-colors",
                 selectedCategory === "bags_accessories" ||
                 selectedCategory === "bags" ||
                 selectedCategory === "accessories"
                   ? "text-zinc-50"
-                  : "text-zinc-500 hover:text-zinc-200",
+                  : "text-zinc-300 hover:text-zinc-50",
               ].join(" ")}
             >
-              Bags & Accessories
+              BAGS & ACCESSORIES
             </button>
-            <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-              {[
-                ["bags_accessories", "All Bags & Accessories"],
-                ["bags", "Bags"],
-                ["accessories", "Accessories"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setSelectedCategory(value)}
-                  className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <button
             type="button"
             onClick={() => setSelectedCategory("sets")}
             className={[
-              "transition-colors",
-              selectedCategory === "sets" ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+              "font-mono text-[11px] uppercase tracking-widest transition-colors",
+              selectedCategory === "sets" ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50",
             ].join(" ")}
           >
-            Sets
+            SETS
           </button>
 
-          <div className="group relative">
-            <button
-              type="button"
+          <div
+            ref={designersRef}
+            className="relative"
+            onMouseEnter={openDesignersDropdown}
+            onMouseLeave={scheduleCloseDesignersDropdown}
+          >
+            <a
+              href="/designers"
               className={[
-                "transition-colors",
-                selectedBrand ? "text-zinc-50" : "text-zinc-500 hover:text-zinc-200",
+                "font-mono text-[11px] uppercase tracking-widest transition-colors",
+                selectedBrand ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50",
               ].join(" ")}
             >
-              Designers
-            </button>
-            <div className="invisible absolute left-0 top-full z-50 mt-2 max-h-72 w-[560px] overflow-y-auto border border-zinc-800 bg-[#0a0a0a] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {sortedDesignerBrands.map((brand) => (
-                  <button
-                    key={brand}
-                    type="button"
-                    onClick={() => setSelectedBrand(brand)}
-                    className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-200"
-                  >
-                    {brand}
-                  </button>
-                ))}
-              </div>
-            </div>
+              DESIGNERS
+            </a>
           </div>
 
           <button
             type="button"
             onClick={() => setIsAboutOpen(true)}
-            className="text-zinc-500 transition-colors hover:text-zinc-200"
+            className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50"
           >
-            About
+            ABOUT
           </button>
           <a
             href={`mailto:${CONTACT_EMAIL}`}
-            className="normal-case text-zinc-500 transition-colors hover:text-zinc-200"
+            className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50"
           >
-            Contact
+            CONTACT
           </a>
         </div>
+
+        {isDesignersOpen &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              ref={designersDropdownRef}
+              onMouseEnter={openDesignersDropdown}
+              onMouseLeave={closeDesignersDropdown}
+            >
+              <DesignersDropdown
+                isOpen={isDesignersOpen}
+                brandsByLetter={brandsByLetter}
+                top={designersDropdownTop}
+              />
+            </div>,
+            document.body
+          )}
+
+        {categoryDropdown &&
+          categoryDropdownRect &&
+          typeof document !== "undefined" &&
+          (() => {
+            const items =
+              categoryDropdown === "tops"
+                ? [
+                    ["tops", "All Tops"],
+                    ["tops_hoodies_sweaters", "Hoodies & Sweaters"],
+                    ["tops_shirts_blouses", "Shirts & Blouses"],
+                    ["tops_tees", "Tees"],
+                    ["tops_knitwear", "Knitwear"],
+                  ]
+                : categoryDropdown === "jackets"
+                  ? [
+                      ["jackets_coats", "All Jackets & Coats"],
+                      ["jackets", "Jackets"],
+                      ["coats", "Coats"],
+                    ]
+                  : [
+                      ["bags_accessories", "All Bags & Accessories"],
+                      ["bags", "Bags"],
+                      ["accessories", "Accessories"],
+                    ];
+            return createPortal(
+              <div
+                className="fixed z-[9999] min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 font-mono text-[11px] uppercase tracking-widest shadow-xl"
+                style={{
+                  top: categoryDropdownRect.top,
+                  left: categoryDropdownRect.left,
+                }}
+                onMouseEnter={() => {
+                  if (categoryCloseTimeoutRef.current) {
+                    clearTimeout(categoryCloseTimeoutRef.current);
+                    categoryCloseTimeoutRef.current = null;
+                  }
+                }}
+                onMouseLeave={closeCategoryDropdown}
+              >
+                {items.map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSelectedCategory(value)}
+                    className="block w-full px-2 py-1 text-left text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>,
+              document.body
+            );
+          })()}
       </nav>
 
       <section className="relative flex min-h-screen flex-col bg-[#f5f2ed] text-zinc-950">
@@ -594,7 +700,7 @@ export default function Home() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search name, brand, keyword…"
-                className="w-full rounded-none border-b border-zinc-300 bg-transparent py-4 text-lg text-zinc-950 placeholder:text-zinc-400 outline-none focus:border-zinc-800"
+                className="w-full rounded-none border-b border-zinc-300 bg-transparent py-4 font-mono text-lg text-zinc-950 placeholder:text-zinc-400 outline-none focus:border-zinc-800"
               />
             </div>
 
@@ -641,7 +747,7 @@ export default function Home() {
           <button
             type="button"
             onClick={scrollToFeed}
-            className="flex w-fit items-center gap-2 text-sm text-zinc-900/80 transition-colors hover:text-zinc-900"
+            className="flex w-fit items-center gap-2 font-mono text-sm text-zinc-900/80 transition-colors hover:text-zinc-900"
           >
             <span className="underline decoration-zinc-800 underline-offset-4">
               Browse
@@ -658,7 +764,7 @@ export default function Home() {
           <div className="mx-auto max-w-7xl px-4 py-8">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-sans text-[20px] font-medium tracking-tight">
+                <h2 className="font-mono text-[20px] font-medium tracking-tight">
                   Dépôt
                 </h2>
               </div>
@@ -669,7 +775,7 @@ export default function Home() {
                   onClick={() => {
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
-                  className="text-xs uppercase tracking-widest text-zinc-500 hover:text-zinc-200"
+                  className="font-mono text-xs uppercase tracking-widest text-zinc-500 hover:text-zinc-200"
                 >
                   Back to top ↑
                 </button>
@@ -683,7 +789,7 @@ export default function Home() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Filter grid..."
-                  className="w-full border-none bg-transparent p-0 text-sm text-zinc-50 placeholder:text-zinc-600 outline-none"
+                  className="w-full border-none bg-transparent p-0 font-mono text-sm text-zinc-50 placeholder:text-zinc-600 outline-none"
                 />
               </div>
 
@@ -694,7 +800,7 @@ export default function Home() {
               />
             </div>
 
-            <div className="mt-3 text-[11px] uppercase tracking-widest text-zinc-600">
+            <div className="mt-3 font-mono text-[11px] uppercase tracking-widest text-zinc-600">
               Showing {paginatedProducts.length} of {filteredProducts.length} products
             </div>
           </div>
@@ -731,7 +837,7 @@ export default function Home() {
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage <= 1}
                     className={[
-                      "text-xs uppercase tracking-widest transition-colors",
+                      "font-mono text-xs uppercase tracking-widest transition-colors",
                       currentPage <= 1
                         ? "cursor-not-allowed text-zinc-600"
                         : "text-zinc-500 hover:text-zinc-200",
@@ -745,7 +851,7 @@ export default function Home() {
                       return (
                         <span
                           key={`ellipsis-${idx}`}
-                          className="text-xs uppercase tracking-widest text-zinc-600"
+                          className="font-mono text-xs uppercase tracking-widest text-zinc-600"
                         >
                           …
                         </span>
@@ -761,7 +867,7 @@ export default function Home() {
                         onClick={() => setCurrentPage(page)}
                         aria-current={active ? "page" : undefined}
                         className={[
-                          "text-xs uppercase tracking-widest transition-colors",
+                          "font-mono text-xs uppercase tracking-widest transition-colors",
                           active
                             ? "text-zinc-50 underline decoration-zinc-700 underline-offset-4"
                             : "text-zinc-500 hover:text-zinc-200",
@@ -802,7 +908,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setIsAboutOpen(false)}
-                className="text-xs uppercase tracking-widest text-zinc-500 hover:text-zinc-200"
+                className="font-mono text-xs uppercase tracking-widest text-zinc-500 hover:text-zinc-200"
               >
                 Close
               </button>

@@ -16,7 +16,7 @@ export default function StoreFilterBar({
   return (
     <div
       className={[
-        "flex items-center gap-6 overflow-x-auto whitespace-nowrap pb-1",
+        "flex items-center gap-6 overflow-x-auto whitespace-nowrap pb-1 font-mono",
         isLight ? "" : "text-[11px] uppercase tracking-widest",
       ].join(" ")}
     >
