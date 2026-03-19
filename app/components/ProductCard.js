@@ -1,5 +1,7 @@
 "use client";
 
+import { track } from "@vercel/analytics";
+
 function addUtmSource(url, utmSource) {
   try {
     const u = new URL(url);
@@ -19,6 +21,15 @@ export default function ProductCard({ product }) {
   const productHref = productUrl
     ? addUtmSource(productUrl, "depot")
     : null;
+
+  const handleClick = () => {
+    if (!productUrl) return;
+    track("product_click", {
+      storeName: storeName ?? null,
+      productName: name ?? null,
+      productUrl: productUrl ?? null,
+    });
+  };
 
   const card = (
     <div className="group rounded-2xl focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
@@ -74,6 +85,7 @@ export default function ProductCard({ product }) {
       target="_blank"
       rel="noopener noreferrer"
       className="block focus:outline-none"
+      onClick={handleClick}
     >
       {card}
     </a>
