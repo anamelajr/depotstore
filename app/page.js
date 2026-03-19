@@ -268,9 +268,10 @@ export default function Home() {
 
   useEffect(() => {
     const brand = searchParams.get("brand");
+    const store = searchParams.get("store");
     setSelectedBrand(brand || null);
+    setSelectedStore(store || ALL_STORES_VALUE);
   }, [searchParams]);
-
 
   const openDesignersDropdown = () => {
     if (designersCloseTimeoutRef.current) {
@@ -573,6 +574,13 @@ export default function Home() {
           >
             SETS
           </button>
+
+          <a
+            href="/stores"
+            className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50"
+          >
+            STORES
+          </a>
 
           <div
             ref={designersRef}
