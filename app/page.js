@@ -242,17 +242,12 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBrand, setSelectedBrand] = useState(null);
-  const [isUnlocked, setIsUnlocked] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
-  const unlockAndScroll = () => {
-    setIsUnlocked(true);
-    // Use a small timeout to ensure the overflow:hidden is removed before scrolling
-    setTimeout(() => {
-      document.getElementById("feed")?.scrollIntoView({ behavior: "smooth" });
-    }, 10);
+  const scrollToFeed = () => {
+    document.getElementById("feed")?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -387,12 +382,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div
-      className={[
-        "min-h-screen font-mono antialiased",
-        !isUnlocked ? "h-screen overflow-hidden" : "",
-      ].join(" ")}
-    >
+    <div className="min-h-screen font-mono antialiased">
       <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto whitespace-nowrap px-4 py-3 text-[11px] uppercase tracking-widest">
           <div className="group relative">
@@ -575,7 +565,7 @@ export default function Home() {
           </button>
           <a
             href={`mailto:${CONTACT_EMAIL}`}
-            className="text-zinc-500 transition-colors hover:text-zinc-200"
+            className="normal-case text-zinc-500 transition-colors hover:text-zinc-200"
           >
             Contact
           </a>
@@ -602,10 +592,7 @@ export default function Home() {
                 id="hero-search"
                 type="search"
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (!isUnlocked) unlockAndScroll();
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search name, brand, keyword…"
                 className="w-full rounded-none border-b border-zinc-300 bg-transparent py-4 text-lg text-zinc-950 placeholder:text-zinc-400 outline-none focus:border-zinc-800"
               />
@@ -619,12 +606,11 @@ export default function Home() {
                     <button
                       key={brand}
                       type="button"
-                      onClick={() => {
+                      onClick={() =>
                         setSelectedBrand((current) =>
                           current === brand ? null : brand
-                        );
-                        if (!isUnlocked) unlockAndScroll();
-                      }}
+                        )
+                      }
                       aria-pressed={active}
                       className={[
                         "text-[11px] font-mono uppercase tracking-widest transition-colors",
@@ -646,9 +632,6 @@ export default function Home() {
                 options={storeOptions}
                 selectedValue={selectedStore}
                 onChange={setSelectedStore}
-                onInteraction={() => {
-                  if (!isUnlocked) unlockAndScroll();
-                }}
               />
             </div>
           </div>
@@ -657,7 +640,7 @@ export default function Home() {
         <div className="mx-auto w-full max-w-7xl px-4 pb-12">
           <button
             type="button"
-            onClick={unlockAndScroll}
+            onClick={scrollToFeed}
             className="flex w-fit items-center gap-2 text-sm text-zinc-900/80 transition-colors hover:text-zinc-900"
           >
             <span className="underline decoration-zinc-800 underline-offset-4">
