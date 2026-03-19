@@ -34,10 +34,10 @@ export default function Home() {
   const [selectedStore, setSelectedStore] = useState(ALL_STORES_VALUE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const unlockAndScroll = () => {
     setIsUnlocked(true);
@@ -134,12 +134,39 @@ export default function Home() {
 
   // Reset pagination any time the backing dataset or store changes.
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setCurrentPage(1);
   }, [selectedStore, products, searchQuery, selectedBrand]);
 
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  }, [filteredProducts.length]);
+
   const paginatedProducts = useMemo(() => {
-    return filteredProducts.slice(0, visibleCount);
-  }, [filteredProducts, visibleCount]);
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredProducts.slice(start, start + PAGE_SIZE);
+  }, [filteredProducts, currentPage]);
+
+  const paginationItems = useMemo(() => {
+    if (totalPages <= 1) return [];
+    const side = 2;
+
+    const pages = new Set([1, totalPages]);
+    for (let p = currentPage - side; p <= currentPage + side; p++) {
+      if (p >= 1 && p <= totalPages) pages.add(p);
+    }
+
+    const sorted = Array.from(pages).sort((a, b) => a - b);
+    const items = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const p = sorted[i];
+      const prev = sorted[i - 1];
+      if (i > 0 && p - prev > 1) items.push("…");
+      items.push(p);
+    }
+
+    return items;
+  }, [currentPage, totalPages]);
 
   return (
     <div
@@ -276,6 +303,10 @@ export default function Home() {
                 onChange={setSelectedStore}
               />
             </div>
+
+            <div className="mt-3 text-[11px] uppercase tracking-widest text-zinc-600">
+              Showing {paginatedProducts.length} of {filteredProducts.length} products
+            </div>
           </div>
         </header>
 
@@ -294,7 +325,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-10 lg:grid-cols-3">
                 {paginatedProducts.map((p) => (
                   <ProductCard
                     key={`${p.productUrl ?? "unknown"}-${p.name}`}
@@ -303,14 +334,68 @@ export default function Home() {
                 ))}
               </div>
 
-              {visibleCount < filteredProducts.length ? (
-                <div className="flex justify-center pt-2">
+              {totalPages > 1 ? (
+                <div className="flex items-center justify-center gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
-                    className="rounded-full px-3 py-2 text-sm text-zinc-50/90 underline decoration-zinc-800 underline-offset-4 transition hover:text-zinc-50 hover:decoration-zinc-500"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className={[
+                      "text-xs uppercase tracking-widest transition-colors",
+                      currentPage <= 1
+                        ? "cursor-not-allowed text-zinc-600"
+                        : "text-zinc-500 hover:text-zinc-200",
+                    ].join(" ")}
                   >
-                    Load More
+                    ←
+                  </button>
+
+                  {paginationItems.map((item, idx) => {
+                    if (item === "…") {
+                      return (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="text-xs uppercase tracking-widest text-zinc-600"
+                        >
+                          …
+                        </span>
+                      );
+                    }
+
+                    const page = item;
+                    const active = page === currentPage;
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        aria-current={active ? "page" : undefined}
+                        className={[
+                          "text-xs uppercase tracking-widest transition-colors",
+                          active
+                            ? "text-zinc-50 underline decoration-zinc-700 underline-offset-4"
+                            : "text-zinc-500 hover:text-zinc-200",
+                        ].join(" ")}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
+                    disabled={currentPage >= totalPages}
+                    className={[
+                      "text-xs uppercase tracking-widest transition-colors",
+                      currentPage >= totalPages
+                        ? "cursor-not-allowed text-zinc-600"
+                        : "text-zinc-500 hover:text-zinc-200",
+                    ].join(" ")}
+                  >
+                    →
                   </button>
                 </div>
               ) : null}
