@@ -21,8 +21,8 @@ function stripHtml(html) {
 }
 
 export default async function ProductPage({ params, searchParams }) {
-  const handle = params.handle;
-  const storeDomain = searchParams.store;
+    const { handle } = await params;
+    const { store: storeDomain } = await searchParams;
 
   if (!handle || !storeDomain) {
     return <div className="min-h-screen bg-[#0a0a0a] text-zinc-50 flex items-center justify-center">Product not found.</div>;
