@@ -22,7 +22,8 @@ function stripHtml(html) {
 
 export default async function ProductPage({ params, searchParams }) {
     const { handle } = await params;
-    const { store: storeDomain } = await searchParams;
+const { store: storeDomain, available: availableParam } = await searchParams;
+const available = availableParam !== "false";
 
   if (!handle || !storeDomain) {
     return <div className="min-h-screen bg-[#0a0a0a] text-zinc-50 flex items-center justify-center">Product not found.</div>;
@@ -39,7 +40,7 @@ export default async function ProductPage({ params, searchParams }) {
     : [];
 
   const variants = Array.isArray(product.variants) ? product.variants : [];
-  const available = variants.some((v) => v?.available === true || v?.available === "true" || v?.available === 1);
+  
   const minPrice = variants.reduce((min, v) => {
     const n = parseFloat(v?.price ?? "");
     if (!isFinite(n)) return min;
