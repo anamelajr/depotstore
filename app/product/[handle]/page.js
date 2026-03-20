@@ -131,16 +131,14 @@ export default async function ProductPage({ params, searchParams }) {
 )}
 
             {/* Shop button */}
-            {available && (
-              <a
-                href={`${productUrl}?utm_source=depot`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block border border-zinc-700 px-6 py-3 text-[13px] tracking-wide text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50"
-              >
-                Shop at {storeDomain} →
-              </a>
-            )}
+           <a 
+            href={`${productUrl}?utm_source=depot`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block border border-zinc-700 px-6 py-3 text-[13px] tracking-wide text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 mb-8"
+            >
+              Shop at {storeDomain} →
+            </a>
 
             {/* Store tag */}
             <p className="mt-8 text-[11px] uppercase tracking-widest text-zinc-600">
