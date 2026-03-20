@@ -12,6 +12,7 @@ const STORES = [
   { storeName: "at dawn paris", displayName: "AT Dawn Paris", location: "Le Marais" },
   { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
   { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
+  { storeName: "dot COMME", displayName: "dot COMME", location: "Paris"},
 ];
 
 export default function StoresPage() {

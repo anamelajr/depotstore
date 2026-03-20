@@ -9,6 +9,7 @@ const STORES = [
   { domain: "atdawnparis.com", storeName: "at dawn paris" },
   { domain: "nuovo-paris.com", storeName: "Nuovo Paris" },
   { domain: "yourgarmentz.com", storeName: "yourgarmentz" },
+  { domain: "www.dotcomme.net", storeName: "dot COMME" },
 ];
 
 function toAbsoluteUrl(inputUrl, domain) {
@@ -75,11 +76,14 @@ function normalizeProduct(product, store) {
 }
 
 async function fetchStoreProducts(store) {
-  const url = `https://${store.domain}/products.json?limit=250`;
+  const url = store.domain === "www.dotcomme.net"
+    ? "https://www.dotcomme.net/collections/paris/products.json?limit=250"
+    : `https://${store.domain}/products.json?limit=250`;
+  
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(
-      `Failed fetching ${store.domain} products.json: ${res.status} ${res.statusText}`
+      `Failed fetching ${store.domain}: ${res.status} ${res.statusText}`
     );
   }
   const data = await res.json();

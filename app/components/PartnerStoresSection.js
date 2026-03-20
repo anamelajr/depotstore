@@ -12,6 +12,7 @@ const STORES = [
   { storeName: "at dawn paris", displayName: "AT Dawn Paris", location: "Le Marais" },
   { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
   { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
+  {storeName: "dot COMME", displayName: "dot COMME", location: "Paris"},
 ];
 
 export default function PartnerStoresSection() {
@@ -41,7 +42,7 @@ export default function PartnerStoresSection() {
 
   return (
     <div className="divide-y divide-zinc-800">
-      {STORES.map((store, index) => {
+      {STORES.slice(0, 5).map((store, index) => {
         const count = pieceCounts[store.storeName] ?? 0;
         const num = String(index + 1).padStart(2, "0");
         return (
