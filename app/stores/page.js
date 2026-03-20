@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
 const STORES = [
   { storeName: "L'OBSCUR", displayName: "L'Obscur", location: "Le Marais" },
@@ -12,33 +9,27 @@ const STORES = [
   { storeName: "at dawn paris", displayName: "AT Dawn Paris", location: "Le Marais" },
   { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
   { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
-  { storeName: "dot COMME", displayName: "dot COMME", location: "Paris"},
+  { storeName: "dot COMME", displayName: "dot COMME", location: "Le Marais" },
 ];
 
-export default function StoresPage() {
-  const [pieceCounts, setPieceCounts] = useState({});
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchCounts() {
-      try {
-        const res = await fetch("/api/products");
-        if (!res.ok) return;
-        const products = await res.json();
-        if (cancelled || !Array.isArray(products)) return;
-        const counts = {};
-        for (const p of products) {
-          const name = p?.storeName;
-          if (name) counts[name] = (counts[name] ?? 0) + 1;
-        }
-        setPieceCounts(counts);
-      } catch {
-        // ignore
-      }
+async function getPieceCounts() {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/api/products`, { cache: "no-store" });
+    if (!res.ok) return {};
+    const products = await res.json();
+    const counts = {};
+    for (const p of products) {
+      const name = p?.storeName;
+      if (name) counts[name] = (counts[name] ?? 0) + 1;
     }
-    fetchCounts();
-    return () => { cancelled = true; };
-  }, []);
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
+export default async function StoresPage() {
+  const pieceCounts = await getPieceCounts();
 
   return (
     <div
