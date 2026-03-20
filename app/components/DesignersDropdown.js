@@ -81,7 +81,7 @@ export default function DesignersDropdown({
             {TOP_DESIGNERS.map((brand) => (
               <Link
                 key={brand}
-                href={`/?brand=${encodeURIComponent(brand)}`}
+                href={`/feed?brand=${encodeURIComponent(brand)}`}
                 style={linkStyle}
               >
                 {brand}

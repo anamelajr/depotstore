@@ -45,7 +45,7 @@ export default function StoresPage() {
     >
       <div className="mx-auto max-w-4xl px-6 py-16">
         <Link
-          href="/"
+          href="/feed"
           className="mb-12 block text-[13px] tracking-wide text-zinc-400 transition-colors hover:text-zinc-50"
         >
           ← Back to feed
@@ -68,7 +68,7 @@ export default function StoresPage() {
             return (
               <Link
                 key={store.storeName}
-                href={`/?store=${encodeURIComponent(store.storeName)}`}
+                href={`/feed?store=${encodeURIComponent(store.storeName)}`}
                 className="group flex items-center justify-between gap-8 py-10 transition-colors"
               >
                 <div className="flex items-baseline gap-8">

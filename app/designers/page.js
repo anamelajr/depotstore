@@ -33,7 +33,7 @@ export default function DesignersPage() {
     >
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
         <Link
-          href="/"
+          href="/feed"
           style={{
             display: "inline-block",
             marginBottom: 48,
@@ -132,7 +132,7 @@ export default function DesignersPage() {
               {brands.map((brand) => (
                 <Link
                   key={brand}
-                  href={`/?brand=${encodeURIComponent(brand)}`}
+                  href={`/feed?brand=${encodeURIComponent(brand)}`}
                   style={{
                     fontSize: 15,
                     letterSpacing: "0.025em",

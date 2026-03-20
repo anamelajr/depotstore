@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import LayoutClient from "./components/LayoutClient";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,7 +30,11 @@ export default function RootLayout({ children }) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Suspense fallback={null}>
+          <LayoutClient>{children}</LayoutClient>
+        </Suspense>
+      </body>
       <Analytics />
     </html>
   );

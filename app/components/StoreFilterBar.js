@@ -16,11 +16,11 @@ export default function StoreFilterBar({
   return (
     <div
       className={[
-        "flex items-center gap-6 overflow-x-auto whitespace-nowrap pb-1 font-mono",
-        isLight ? "" : "text-[11px] uppercase tracking-widest",
+        "flex overflow-x-auto whitespace-nowrap font-mono",
+        isLight ? "items-center gap-6 pb-1" : "items-center gap-8 text-[11px] uppercase tracking-widest leading-none",
       ].join(" ")}
     >
-      {!isLight && <span className="text-zinc-600">Store:</span>}
+      {!isLight && <span className="shrink-0 text-zinc-500">STORE:</span>}
       {options.map((opt) => {
         const active = opt.value === selectedValue;
         return (
