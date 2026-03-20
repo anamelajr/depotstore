@@ -11,6 +11,7 @@ const STORES = [
   { storeName: "Les Archives Paris", displayName: "Les Archives Paris", location: "Saint-Germain-des-Prés" },
   { storeName: "at dawn paris", displayName: "AT Dawn Paris", location: "Le Marais" },
   { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
+  { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
 ];
 
 export default function PartnerStoresSection() {

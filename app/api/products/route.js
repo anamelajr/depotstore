@@ -8,6 +8,7 @@ const STORES = [
   { domain: "lesarchivesparis.com", storeName: "Les Archives Paris" },
   { domain: "atdawnparis.com", storeName: "at dawn paris" },
   { domain: "nuovo-paris.com", storeName: "Nuovo Paris" },
+  { domain: "yourgarmentz.com", storeName: "yourgarmentz" },
 ];
 
 function toAbsoluteUrl(inputUrl, domain) {
