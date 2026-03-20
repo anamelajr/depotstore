@@ -44,6 +44,8 @@ Rules:
 - Remove redundant brand mentions in the description if already in the BRAND position
 - If no brand is identifiable, just write the description in sentence case with no dash
 - Return only the formatted title, nothing else, no explanation
+- If the title is very short or vague (like "Top", "Dress", "Jacket"), just return it in sentence case with no brand prefix — never ask for more information
+- Always return a formatted title, never ask questions or request clarification
 
 Title: ${rawTitle}`,
           },
