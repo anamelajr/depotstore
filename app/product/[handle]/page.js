@@ -39,7 +39,7 @@ export default async function ProductPage({ params, searchParams }) {
     : [];
 
   const variants = Array.isArray(product.variants) ? product.variants : [];
-  const available = variants.some((v) => v?.available === true || v?.available === "true");
+  const available = variants.length === 0 ? false : variants.some((v) => v?.available !== false);
   const minPrice = variants.reduce((min, v) => {
     const n = parseFloat(v?.price ?? "");
     if (!isFinite(n)) return min;
