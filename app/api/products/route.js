@@ -1,5 +1,5 @@
 export const dynamic = "force-dynamic";
-
+import { cleanTitle } from "../../lib/cleanTitle.js";
 const STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
   { domain: "dolcevitahub.com", storeName: "Dolce Vita Hub" },
@@ -87,7 +87,14 @@ async function fetchStoreProducts(store) {
   }
   const data = await res.json();
   const products = Array.isArray(data?.products) ? data.products : [];
-  return products.map((p) => normalizeProduct(p, store)).filter(Boolean);
+  const normalized = products.map((p) => normalizeProduct(p, store)).filter(Boolean);
+const cleaned = await Promise.all(
+  normalized.map(async (p) => ({
+    ...p,
+    name: await cleanTitle(p.name),
+  }))
+);
+return cleaned;
 }
 
 export async function GET() {
