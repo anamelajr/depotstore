@@ -82,9 +82,8 @@ async function fetchStoreProducts(store) {
   
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(
-      `Failed fetching ${store.domain}: ${res.status} ${res.statusText}`
-    );
+    console.error(`Failed fetching ${store.domain}: ${res.status} ${res.statusText}`);
+    return [];
   }
   const data = await res.json();
   const products = Array.isArray(data?.products) ? data.products : [];
