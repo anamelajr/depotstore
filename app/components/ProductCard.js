@@ -6,11 +6,11 @@ import Link from "next/link";
 export default function ProductCard({ product }) {
   const { name, price, imageUrl, storeName, productUrl, available, handle, storeDomain } =
     product ?? {};
-  const isSold = available === false;
+  const isSold = !available;
 
   const internalUrl = handle && storeDomain
-    ? `/product/${handle}?store=${storeDomain}`
-    : null;
+  ? `/product/${handle}?store=${storeDomain}&available=${!isSold}`
+  : null;
 
   const handleClick = () => {
     track("product_click", {
