@@ -29,6 +29,9 @@ function normalizeProduct(product, store) {
   const name = typeof product?.title === "string" ? product.title : null;
   const productType =
     typeof product?.product_type === "string" ? product.product_type : "";
+  const vendor = typeof product?.vendor === "string" ? product.vendor : null;
+  const handle = typeof product?.handle === "string" ? product.handle : null;
+  
   const tags = Array.isArray(product?.tags)
     ? product.tags.filter((t) => typeof t === "string")
     : typeof product?.tags === "string"
@@ -38,12 +41,17 @@ function normalizeProduct(product, store) {
           .filter(Boolean)
       : [];
 
-  const imageUrl =
-    Array.isArray(product?.images) && product.images.length > 0
-      ? product.images[0]?.src ?? null
-      : null;
+  // All images, not just the first
+  const images = Array.isArray(product?.images)
+    ? product.images.map((img) => img?.src).filter(Boolean)
+    : [];
+  const imageUrl = images[0] ?? null;
 
-  // Price: pick the minimum variant price and format as EUR.
+  // Raw description from Shopify (HTML stripped)
+  const rawDescription = typeof product?.body_html === "string"
+    ? product.body_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+    : null;
+
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const available = variants.some((v) => v?.available === true);
   let minPrice = null;
@@ -59,19 +67,24 @@ function normalizeProduct(product, store) {
 
   const productUrl =
     toAbsoluteUrl(product?.url, store.domain) ??
-    (typeof product?.handle === "string" && product.handle.length > 0
-      ? `https://${store.domain}/products/${product.handle}`
+    (handle
+      ? `https://${store.domain}/products/${handle}`
       : null);
 
   return {
     name,
     price,
     imageUrl,
+    images,
     storeName: store.storeName,
+    storeDomain: store.domain,
     productUrl,
     available,
     productType,
     tags,
+    vendor,
+    handle,
+    rawDescription,
   };
 }
 
@@ -91,7 +104,7 @@ async function fetchStoreProducts(store) {
 const cleaned = await Promise.all(
   normalized.map(async (p) => ({
     ...p,
-    name: await cleanTitle(p.name),
+    name: await cleanTitle(p),
   }))
 );
 return cleaned;

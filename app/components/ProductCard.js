@@ -1,29 +1,18 @@
 "use client";
 
 import { track } from "@vercel/analytics";
-
-function addUtmSource(url, utmSource) {
-  try {
-    const u = new URL(url);
-    u.searchParams.set("utm_source", utmSource);
-    return u.toString();
-  } catch {
-    // Fallback for unexpected URL shapes.
-    const joiner = url.includes("?") ? "&" : "?";
-    return `${url}${joiner}utm_source=${encodeURIComponent(utmSource)}`;
-  }
-}
+import Link from "next/link";
 
 export default function ProductCard({ product }) {
-  const { name, price, imageUrl, storeName, productUrl, available } =
+  const { name, price, imageUrl, storeName, productUrl, available, handle, storeDomain } =
     product ?? {};
   const isSold = available === false;
-  const productHref = productUrl
-    ? addUtmSource(productUrl, "depot")
+
+  const internalUrl = handle && storeDomain
+    ? `/product/${handle}?store=${storeDomain}`
     : null;
 
   const handleClick = () => {
-    if (!productUrl) return;
     track("product_click", {
       storeName: storeName ?? null,
       productName: name ?? null,
@@ -35,7 +24,6 @@ export default function ProductCard({ product }) {
     <div className="group rounded-2xl focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
       <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-zinc-950">
         {imageUrl ? (
-          // Use a plain <img> to avoid needing remote domain config for Next Image.
           <img
             src={imageUrl}
             alt={name ?? "Product image"}
@@ -77,18 +65,15 @@ export default function ProductCard({ product }) {
     </div>
   );
 
-  if (!productUrl) return card;
+  if (!internalUrl) return card;
 
   return (
-    <a
-      href={productHref ?? productUrl}
-      target="_blank"
-      rel="noopener noreferrer"
+    <Link
+      href={internalUrl}
       className="block focus:outline-none"
       onClick={handleClick}
     >
       {card}
-    </a>
+    </Link>
   );
 }
-

@@ -5,7 +5,8 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-export async function cleanTitle(rawTitle) {
+export async function cleanTitle(product) {
+  const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
   const cacheKey = `title:${rawTitle}`;
@@ -16,6 +17,10 @@ export async function cleanTitle(rawTitle) {
   } catch {
     // Redis unavailable, continue without cache
   }
+
+  const vendor = product?.vendor ?? null;
+  const tags = Array.isArray(product?.tags) ? product.tags.join(", ") : "";
+  const description = product?.rawDescription ?? "";
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -42,12 +47,16 @@ Rules:
 - Remove parenthetical tags like (new arrival) (runway) (sale)
 - Remove "by [designer name]" credits
 - Remove redundant brand mentions in the description if already in the BRAND position
-- If no brand is identifiable, just write the description in sentence case with no dash
+- If no brand is identifiable from title, vendor, tags or description, just write the description in sentence case with no dash
+- Use vendor field or description to identify the brand if not in the title
 - Return only the formatted title, nothing else, no explanation
-- If the title is very short or vague (like "Top", "Dress", "Jacket"), just return it in sentence case with no brand prefix — never ask for more information
+- If the title is very short or vague (like "Top", "Dress", "Jacket"), just return it in sentence case with no brand prefix
 - Always return a formatted title, never ask questions or request clarification
 
-Title: ${rawTitle}`,
+Title: ${rawTitle}
+Vendor: ${vendor ?? "unknown"}
+Tags: ${tags || "none"}
+Description: ${description ? description.slice(0, 300) : "none"}`,
           },
         ],
       }),
