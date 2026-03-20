@@ -39,7 +39,7 @@ export default async function ProductPage({ params, searchParams }) {
     : [];
 
   const variants = Array.isArray(product.variants) ? product.variants : [];
-  const available = variants.some((v) => v?.available === true);
+  const available = variants.some((v) => v?.available === true || v?.available === "true");
   const minPrice = variants.reduce((min, v) => {
     const n = parseFloat(v?.price ?? "");
     if (!isFinite(n)) return min;
@@ -124,11 +124,11 @@ export default async function ProductPage({ params, searchParams }) {
             )}
 
             {/* Sold indicator */}
-            {!available && (
-              <p className="text-[11px] uppercase tracking-widest text-zinc-500 mb-6">
-                Sold
-              </p>
-            )}
+            {available === false && (
+  <p className="text-[11px] uppercase tracking-widest text-zinc-500 mb-6">
+    Sold
+  </p>
+)}
 
             {/* Shop button */}
             {available && (
