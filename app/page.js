@@ -58,7 +58,7 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* This Week's Edit */}
+      {/* Today's Edit */}
       <section className="bg-[#0a0a0a] py-24 text-zinc-50">
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-6 flex items-end justify-between">
@@ -70,7 +70,7 @@ export default async function Home() {
                 className="text-[clamp(28px,4vw,40px)] font-medium leading-tight tracking-tight"
                 style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
               >
-                This Week&apos;s Edit
+                Today&apos;s Edit
               </h2>
             </div>
             <Link
