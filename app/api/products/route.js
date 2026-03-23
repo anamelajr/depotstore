@@ -1,4 +1,3 @@
-export const dynamic = "force-dynamic";
 import { cleanTitle } from "../../lib/cleanTitle.js";
 const STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
@@ -93,7 +92,7 @@ async function fetchStoreProducts(store) {
     ? "https://www.dotcomme.net/collections/paris/products.json?limit=250"
     : `https://${store.domain}/products.json?limit=250`;
   
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { next: { revalidate: 300 } });
   if (!res.ok) {
     console.error(`Failed fetching ${store.domain}: ${res.status} ${res.statusText}`);
     return [];

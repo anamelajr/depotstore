@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
 const STORES = [
   { storeName: "L'OBSCUR", displayName: "L'Obscur", location: "Le Marais" },
@@ -15,30 +12,13 @@ const STORES = [
   {storeName: "dot COMME", displayName: "dot COMME", location: "Paris"},
 ];
 
-export default function PartnerStoresSection() {
-  const [pieceCounts, setPieceCounts] = useState({});
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchCounts() {
-      try {
-        const res = await fetch("/api/products");
-        if (!res.ok) return;
-        const products = await res.json();
-        if (cancelled || !Array.isArray(products)) return;
-        const counts = {};
-        for (const p of products) {
-          const name = p?.storeName;
-          if (name) counts[name] = (counts[name] ?? 0) + 1;
-        }
-        setPieceCounts(counts);
-      } catch {
-        // ignore
-      }
-    }
-    fetchCounts();
-    return () => { cancelled = true; };
-  }, []);
+export default function PartnerStoresSection({ products = [] }) {
+  const counts = {};
+  for (const p of products) {
+    const name = p?.storeName;
+    if (name) counts[name] = (counts[name] ?? 0) + 1;
+  }
+  const pieceCounts = counts;
 
   return (
     <div className="divide-y divide-zinc-800">

@@ -1,30 +1,17 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import ProductCard from "./components/ProductCard";
 import PartnerStoresSection from "./components/PartnerStoresSection";
 import NewsletterForm from "./components/NewsletterForm";
 
-export default function Home() {
-  const [products, setProducts] = useState([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/products");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && Array.isArray(data)) setProducts(data);
-      } catch {
-        // ignore
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
+export default async function Home() {
+  let products = [];
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/products`, { next: { revalidate: 300 } });
+    if (res.ok) products = await res.json();
+  } catch {
+    // ignore
+  }
   const recentProducts = products.slice(0, 8);
 
   return (
@@ -123,7 +110,7 @@ export default function Home() {
               View all →
             </Link>
           </div>
-          <PartnerStoresSection />
+          <PartnerStoresSection products={products} />
         </div>
       </section>
       {/* Footer / Newsletter */}
