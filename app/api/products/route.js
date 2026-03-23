@@ -84,6 +84,7 @@ function normalizeProduct(product, store) {
     vendor,
     handle,
     rawDescription,
+    createdAt: product?.created_at ?? null,
   };
 }
 

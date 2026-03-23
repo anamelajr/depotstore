@@ -12,7 +12,10 @@ export default async function Home() {
   } catch {
     // ignore
   }
-  const recentProducts = products.slice(0, 8);
+  const recentProducts = [...products]
+    .filter(p => p.createdAt)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 8);
 
   return (
     <div className="min-h-screen font-mono antialiased">
