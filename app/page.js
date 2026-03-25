@@ -1,7 +1,7 @@
 import Link from "next/link";
 import ProductCard from "./components/ProductCard";
-import PartnerStoresSection from "./components/PartnerStoresSection";
 import NewsletterForm from "./components/NewsletterForm";
+import ParisMap from "./components/ParisMap";
 
 export default async function Home() {
   let products = [];
@@ -100,29 +100,21 @@ const recentProducts = allStores
         </div>
       </section>
 
-      {/* Partner Stores */}
+      {/* Across Paris */}
       <section className="border-t border-zinc-800 bg-[#0a0a0a] py-24 text-zinc-50">
-        <div className="mx-auto max-w-4xl px-6">
-          <div className="mb-12 flex items-end justify-between">
-            <div>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-                Directory
-              </p>
-              <h2
-                className="text-[clamp(28px,4vw,40px)] font-medium leading-tight tracking-tight"
-                style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
-              >
-                Partner Stores
-              </h2>
-            </div>
-            <Link
-              href="/stores"
-              className="font-mono text-sm text-zinc-400 transition-colors hover:text-zinc-50"
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="mb-12">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
+              Geography
+            </p>
+            <h2
+              className="text-[clamp(28px,4vw,40px)] font-medium leading-tight tracking-tight"
+              style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
             >
-              View all →
-            </Link>
+              Across Paris
+            </h2>
           </div>
-          <PartnerStoresSection products={products} />
+          <ParisMap products={products} />
         </div>
       </section>
       {/* Footer / Newsletter */}

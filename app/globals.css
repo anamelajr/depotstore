@@ -26,3 +26,9 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.depot-tooltip .leaflet-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
