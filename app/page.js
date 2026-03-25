@@ -12,10 +12,19 @@ export default async function Home() {
   } catch {
     // ignore
   }
-  const recentProducts = [...products]
-    .filter(p => p.createdAt)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 8);
+  const allStores = [...new Set(products.map(p => p.storeName).filter(Boolean))];
+const dayIndex = new Date().getDay(); // 0-6
+const excludedStore = allStores[dayIndex % allStores.length];
+
+const recentProducts = allStores
+  .filter(store => store !== excludedStore)
+  .map(store => {
+    return [...products]
+      .filter(p => p.storeName === store && p.createdAt)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  })
+  .filter(Boolean)
+  .slice(0, 8);
 
   return (
     <div className="min-h-screen font-mono antialiased">
