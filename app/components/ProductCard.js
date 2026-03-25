@@ -59,8 +59,8 @@ export default function ProductCard({ product }) {
         ) : null}
       </div>
 
-      <div className="mt-5">
-        <div className="text-sm font-sans font-medium tracking-tight text-zinc-50">
+      <div className="mt-5 flex flex-col">
+        <div className="text-sm font-sans font-medium tracking-tight text-zinc-50 line-clamp-2 min-h-[40px]">
           {name ?? "Untitled"}
         </div>
 

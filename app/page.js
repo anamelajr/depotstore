@@ -13,7 +13,7 @@ export default async function Home() {
     // ignore
   }
   const allStores = [...new Set(products.map(p => p.storeName).filter(Boolean))];
-const dayIndex = new Date().getDay(); // 0-6
+const dayIndex = Math.floor(Date.now() / 86400000) % allStores.length;
 const excludedStore = allStores[dayIndex % allStores.length];
 
 const recentProducts = allStores
