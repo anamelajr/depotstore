@@ -9,7 +9,8 @@ export async function generateDescription(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return null;
 
-  const cacheKey = `desc:${rawTitle}`;
+  const CACHE_VERSION = "v2";
+const cacheKey = `desc:${CACHE_VERSION}:${rawTitle}`;
 
   try {
     const cached = await redis.get(cacheKey);

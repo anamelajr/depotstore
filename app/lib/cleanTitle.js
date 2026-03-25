@@ -9,7 +9,8 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const cacheKey = `title:${rawTitle}`;
+  const CACHE_VERSION = "v2";
+const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
     const cached = await redis.get(cacheKey);
