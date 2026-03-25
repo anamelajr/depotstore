@@ -98,6 +98,57 @@ export default function ParisMap({ products = [] }) {
         );
       });
 
+      // Custom zoom control
+      const ZoomControl = L.Control.extend({
+        onAdd: function () {
+          const container = L.DomUtil.create("div");
+          container.style.cssText = "display:flex;flex-direction:column;gap:1px;";
+
+          const btnStyle = `
+      width:32px;height:32px;background:#0a0a0a;color:#a1a1aa;
+      border:1px solid #3f3f46;display:flex;align-items:center;
+      justify-content:center;cursor:pointer;font-family:monospace;
+      font-size:16px;line-height:1;transition:color 0.2s,border-color 0.2s;
+    `;
+
+          const zoomIn = L.DomUtil.create("button", "", container);
+          zoomIn.innerHTML = "+";
+          zoomIn.style.cssText = btnStyle;
+          zoomIn.onmouseover = () => {
+            zoomIn.style.color = "#fff";
+            zoomIn.style.borderColor = "#71717a";
+          };
+          zoomIn.onmouseout = () => {
+            zoomIn.style.color = "#a1a1aa";
+            zoomIn.style.borderColor = "#3f3f46";
+          };
+          L.DomEvent.on(zoomIn, "click", (e) => {
+            L.DomEvent.stopPropagation(e);
+            map.zoomIn();
+          });
+
+          const zoomOut = L.DomUtil.create("button", "", container);
+          zoomOut.innerHTML = "−";
+          zoomOut.style.cssText = btnStyle;
+          zoomOut.onmouseover = () => {
+            zoomOut.style.color = "#fff";
+            zoomOut.style.borderColor = "#71717a";
+          };
+          zoomOut.onmouseout = () => {
+            zoomOut.style.color = "#a1a1aa";
+            zoomOut.style.borderColor = "#3f3f46";
+          };
+          L.DomEvent.on(zoomOut, "click", (e) => {
+            L.DomEvent.stopPropagation(e);
+            map.zoomOut();
+          });
+
+          return container;
+        },
+      });
+
+      new ZoomControl({ position: "bottomright" }).addTo(map);
+
       mapInstanceRef.current = map;
     });
 
