@@ -15,6 +15,11 @@ export default function ProductCard({ product }) {
     storeDomain,
   } = product ?? {};
   const price = rawPrice?.replace(/\.00$/, "") ?? null;
+  const SHORT_NAMES = {
+    "Les Archives Paris": "Les Archives",
+    "Numero 13 Vintage": "Numero 13",
+  };
+  const badgeName = SHORT_NAMES[storeName] ?? storeName;
   const isSold = !available;
 
   const internalUrl = handle && storeDomain
@@ -66,7 +71,7 @@ export default function ProductCard({ product }) {
 
           {storeName ? (
             <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 text-[11px] font-mono text-zinc-500 max-w-[120px] truncate">
-              {storeName}
+              {badgeName}
             </span>
           ) : null}
         </div>
