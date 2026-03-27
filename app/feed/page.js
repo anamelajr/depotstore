@@ -16,11 +16,23 @@ async function getProducts() {
   }
 }
 
-export default async function FeedPage() {
+export default async function FeedPage({ searchParams }) {
   const products = await getProducts();
+  const params = await searchParams;
+  
+  // Build a key from category and store params
+  // When these change, FeedClient fully remounts with fresh local state
+  const categories = Array.isArray(params?.category)
+    ? params.category
+    : params?.category
+    ? [params.category]
+    : [];
+  const store = params?.store || "";
+  const feedKey = [...categories].sort().join(",") + "|" + store;
+
   return (
     <Suspense fallback={null}>
-      <FeedClient products={products} />
+      <FeedClient key={feedKey} products={products} />
     </Suspense>
   );
 }
