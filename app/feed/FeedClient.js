@@ -235,7 +235,7 @@ export default function FeedClient({ products }) {
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
 
         {/* ── DESKTOP HEADER (md and above) ── */}
-        <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "calc(var(--nav-height) - 1px)" }}>
+        <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "var(--nav-height)" }}>
           <div className="mx-auto max-w-7xl space-y-3 px-4 py-3">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1 space-y-1">
@@ -295,7 +295,7 @@ export default function FeedClient({ products }) {
         <header
           className="md:hidden sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300"
           style={{
-            top: "calc(var(--nav-height) - 1px)",
+            top: "var(--nav-height)",
             transform: barVisible ? "translateY(0)" : "translateY(-100%)",
           }}
         >
