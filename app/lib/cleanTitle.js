@@ -9,7 +9,7 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const CACHE_VERSION = "v3";
+  const CACHE_VERSION = "v4";
 const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
@@ -41,12 +41,16 @@ const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
 OUTPUT FORMAT: BRAND — Description in sentence case
 Example input: "Comme des Garçons HOMME 2000s Wool Tartan Scarf"
-Example output: COMME DES GARÇONS HOMME — Wool tartan scarf, 2000s
+Example output: COMME DES GARÇONS HOMME — Wool tartan scarf 2000s
+Bad example (too long): ALEXANDER McQUEEN — Sheer midi dress with hand embroidered beading and floral lace
+Good example: ALEXANDER McQUEEN — Embroidered midi dress
 
 Rules:
 - Identify the brand from: the title itself, vendor field, tags, or description
 - Brand goes first in ALL CAPS, then em dash, then description in sentence case
-- Season/era codes at end after comma (FW21, SS03, 2000s, 1990s etc)
+- Keep titles short — brand, item type, and ONE key detail maximum (e.g. color, fabric, or silhouette)
+- Season/era codes always go at the end with a space, no comma (e.g. FW21, SS03, 2000s, 1990s)
+- Never describe construction details, embellishments, or multiple features — that belongs in the description
 - Remove parenthetical tags like (new arrival) (runway) (sale)
 - Remove "by [designer name]" suffix credits
 - Do not repeat the brand name in the description
