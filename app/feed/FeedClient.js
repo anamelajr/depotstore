@@ -231,7 +231,7 @@ export default function FeedClient({ products }) {
   const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
 
   return (
-    <div className="min-h-screen font-mono antialiased">
+    <div className="min-h-screen font-mono antialiased overflow-x-hidden">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
 
         {/* ── DESKTOP HEADER (md and above) ── */}
