@@ -150,8 +150,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
           );
         })}
 
-        {/* Divider */}
-        <div className="border-t border-zinc-800 my-1" />
+        
 
         {/* Secondary nav */}
         {MOBILE_NAV_SECONDARY.map(({ label, href }) => (
