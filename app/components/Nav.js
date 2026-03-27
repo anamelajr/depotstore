@@ -169,15 +169,16 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
           </Link>
         ))}
 
-        <button
-          onClick={() => { onClose(); onAboutOpen?.(); }}
-          className="flex items-center justify-between w-full px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
-        >
-          <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">ABOUT</span>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-            <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-        </button>
+<Link
+  href="/about"
+  onClick={onClose}
+  className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
+>
+  <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">ABOUT</span>
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
+    <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
+  </svg>
+</Link>
 
         
         <a href={`mailto:${CONTACT_EMAIL}`}
@@ -352,13 +353,9 @@ export default function Nav({ onAboutOpen }) {
               </Link>
             </div>
 
-            <button
-              type="button"
-              onClick={onAboutOpen}
-              className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50"
-            >
-              ABOUT
-            </button>
+            <Link href="/about" className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
+  ABOUT
+</Link>
             <a href={`mailto:${CONTACT_EMAIL}`} className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
               CONTACT
             </a>
