@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProductCard from "../components/ProductCard";
@@ -37,12 +37,23 @@ export default function FeedClient({ products }) {
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const selectedBrand = searchParams.get("brand") || null;
-  // Multi-category: read all ?category= values as an array
-  const selectedCategories = searchParams.getAll("category");
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
 
-  const [inputValue, setInputValue] = useState(searchQuery);
+  // Local state for categories — updates immediately on tap, no waiting for router
+  const urlCategories = searchParams.getAll("category");
+  const [localCategories, setLocalCategories] = useState(urlCategories);
 
+  // Sync local state when URL changes externally (nav click, page load)
+  const prevUrlCatsRef = useRef(JSON.stringify(urlCategories));
+  useEffect(() => {
+    const next = JSON.stringify(urlCategories);
+    if (next !== prevUrlCatsRef.current) {
+      prevUrlCatsRef.current = next;
+      setLocalCategories(urlCategories);
+    }
+  }, [searchParams]);
+
+  const [inputValue, setInputValue] = useState(searchQuery);
   useEffect(() => {
     setInputValue(searchQuery);
   }, [searchQuery]);
@@ -58,23 +69,23 @@ export default function FeedClient({ products }) {
     ];
   }, [products]);
 
+  // Filter uses localCategories, not URL — so UI responds instantly
   const filteredProducts = useMemo(() => {
     const q = normalizeText(searchQuery).trim();
     const hasQuery = q.length > 0;
     const hasBrand = typeof selectedBrand === "string" && selectedBrand.length > 0;
     const selectedBrandNorm = hasBrand ? normalizeText(selectedBrand) : null;
-    const hasCategories = selectedCategories.length > 0;
+    const hasCategories = localCategories.length > 0;
 
     return products.filter((p) => {
       const classification = classifyProduct(p);
       if (selectedStore !== ALL_STORES_VALUE && p?.storeName !== selectedStore) return false;
       if (hasQuery && !normalizeText(p?.name ?? "").includes(q)) return false;
       if (hasBrand && !normalizeText(p?.name ?? "").includes(selectedBrandNorm)) return false;
-      // Product must match ANY of the selected categories
-      if (hasCategories && !selectedCategories.some((cat) => classification.categories.has(cat))) return false;
+      if (hasCategories && !localCategories.some((cat) => classification.categories.has(cat))) return false;
       return true;
     });
-  }, [products, selectedStore, searchQuery, selectedBrand, selectedCategories]);
+  }, [products, selectedStore, searchQuery, selectedBrand, localCategories]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const currentPage = Math.min(rawPage, totalPages);
@@ -100,14 +111,11 @@ export default function FeedClient({ products }) {
     return items;
   }, [currentPage, totalPages]);
 
-  // Builds a URL preserving all current params, with overrides
-  // Handles multi-category as array
   const buildFeedUrl = useCallback((updates, resetPage = false) => {
     const params = new URLSearchParams(searchParams.toString());
     if (resetPage) params.delete("page");
     Object.entries(updates || {}).forEach(([k, v]) => {
       if (k === "category") {
-        // v is an array for category
         params.delete("category");
         if (Array.isArray(v)) {
           v.forEach((cat) => params.append("category", cat));
@@ -125,14 +133,19 @@ export default function FeedClient({ products }) {
     router.push(buildFeedUrl({ store: v }, true));
   }, [router, buildFeedUrl]);
 
-  // Toggle a category in/out of the selected array
+  // Updates local state immediately, then syncs URL
   const handleToggleCategory = useCallback((cat) => {
-    const current = selectedCategories;
-    const next = current.includes(cat)
-      ? current.filter((c) => c !== cat)
-      : [...current, cat];
-    router.replace(buildFeedUrl({ category: next }, true));
-  }, [selectedCategories, router, buildFeedUrl]);
+    const next = localCategories.includes(cat)
+      ? localCategories.filter((c) => c !== cat)
+      : [...localCategories, cat];
+    setLocalCategories(next); // instant UI update
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
+    params.delete("category");
+    next.forEach((c) => params.append("category", c));
+    const q = params.toString();
+    router.replace(`/feed${q ? `?${q}` : ""}`);
+  }, [localCategories, searchParams, router]);
 
   const handleSearchSubmit = useCallback((e) => {
     e.preventDefault();
@@ -164,9 +177,8 @@ export default function FeedClient({ products }) {
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Search..."
-                    // Fix 1: 16px on mobile prevents iOS zoom, scales down on sm+
                     className="w-full border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
-style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left center', width: '145%' }}
+                    style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left center', width: '145%' }}
                   />
                 </form>
               </div>
@@ -186,19 +198,18 @@ style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left cen
               />
             </div>
 
-            {/* Active category pills — one per selected category, each dismissible */}
-            {selectedCategories.length > 0 && (
+            {localCategories.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
                   CATEGORY:
                 </span>
-                {selectedCategories.map((cat) => (
+                {localCategories.map((cat) => (
                   <button
-                  key={cat}
-                  type="button"
-                  onPointerDown={() => handleToggleCategory(cat)}
-                  className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap active:bg-zinc-800"
-                >
+                    key={cat}
+                    type="button"
+                    onPointerDown={() => handleToggleCategory(cat)}
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap active:bg-zinc-800"
+                  >
                     <span>{CATEGORY_LABELS[cat] ?? cat}</span>
                     <span className="text-zinc-400 leading-none text-[14px] pl-1">×</span>
                   </button>
@@ -218,8 +229,8 @@ style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left cen
               Loading products…
             </div>
           ) : error ? (
-            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-red-300">
-              {error}
+            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
+              Loading products…
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
