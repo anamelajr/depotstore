@@ -124,19 +124,16 @@ export default function FeedClient({ products }) {
     });
 
     // Sort
-    if (selectedSort === "price_asc") {
-      results = [...results].sort((a, b) => {
-        const pa = parseFloat(a.price) || 0;
-        const pb = parseFloat(b.price) || 0;
-        return pa - pb;
-      });
-    } else if (selectedSort === "price_desc") {
-      results = [...results].sort((a, b) => {
-        const pa = parseFloat(a.price) || 0;
-        const pb = parseFloat(b.price) || 0;
-        return pb - pa;
-      });
-    }
+    const parsePrice = (val) => {
+        if (!val) return 0;
+        return parseFloat(String(val).replace(/[^0-9.]/g, "")) || 0;
+      };
+  
+      if (selectedSort === "price_asc") {
+        results = [...results].sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+      } else if (selectedSort === "price_desc") {
+        results = [...results].sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+      }
     // "latest" = default order from API
 
     return results;

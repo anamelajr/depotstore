@@ -9,7 +9,6 @@ export const SORT_OPTIONS = [
 ];
 
 export default function MobileSortSheet({ isOpen, onClose, selectedSort, onSortChange }) {
-  // Lock body scroll when open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -28,11 +27,14 @@ export default function MobileSortSheet({ isOpen, onClose, selectedSort, onSortC
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-[9998] bg-black/60"
-        onPointerDown={onClose}
+        onClick={onClose}
       />
 
-      {/* Sheet — slides up from bottom */}
-      <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-[#0a0a0a] border-t border-zinc-800">
+      {/* Sheet */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[9999] bg-[#0a0a0a] border-t border-zinc-800"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="h-px w-8 bg-zinc-700" />
@@ -45,7 +47,7 @@ export default function MobileSortSheet({ isOpen, onClose, selectedSort, onSortC
           </span>
           <button
             type="button"
-            onPointerDown={onClose}
+            onClick={onClose}
             className="font-mono text-[11px] uppercase tracking-widest text-zinc-400"
           >
             Cancel
@@ -60,7 +62,7 @@ export default function MobileSortSheet({ isOpen, onClose, selectedSort, onSortC
               <button
                 key={opt.value}
                 type="button"
-                onPointerDown={() => {
+                onClick={() => {
                   onSortChange(opt.value);
                   onClose();
                 }}
