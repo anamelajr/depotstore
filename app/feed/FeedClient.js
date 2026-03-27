@@ -165,7 +165,8 @@ export default function FeedClient({ products }) {
                     onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Search..."
                     // Fix 1: 16px on mobile prevents iOS zoom, scales down on sm+
-                    className="w-full border-none bg-transparent p-0 font-mono text-[16px] sm:text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
+                    className="w-full border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
+style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left center', width: '145%' }}
                   />
                 </form>
               </div>
