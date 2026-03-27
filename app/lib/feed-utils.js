@@ -15,9 +15,9 @@ const TOPS_KEYWORDS = [
   "shirt", "sweater", "cardigan", "hoodie", "t-shirt", "tee", "t shirt",
   "knitwear", "polo", "striped polo", "longsleeve", "longsleeves",
   "sweat-shirt", "sweat", "crewneck", "knit", "blouse", "tunic",
-  "jackey", "corset", "vest", "shawl", "waistcoat", "bolero", "cape", "legging",
+  "jackey", "corset", "vest", "shawl", "waistcoat", "bolero", "cape", "legging", "apron",
 ];
-const BOTTOMS_KEYWORDS = ["denim", "jeans", "pants", "pant", "shorts", "trousers", "joggers", "hysteric glamour"];
+const BOTTOMS_KEYWORDS = ["jeans", "pants", "pant", "shorts", "trousers", "joggers", "overalls", "hysteric glamour"];
 const JACKETS_COATS_KEYWORDS = ["jacket", "blazer", "coat", "bomber", "puffer", "trench", "fur"];
 const DRESSES_SKIRTS_KEYWORDS = ["dress", "mini dress", "gown", "skirt", "jumpsuit"];
 const TOPS_HOODIES_SWEATERS_KEYWORDS = ["hoodie", "sweat", "sweat-shirt", "crewneck"];
@@ -71,7 +71,8 @@ export function classifyProduct(product) {
   const hasJacketsCoats = containsAnyKeyword(t, JACKETS_COATS_KEYWORDS);
   const hasTops = containsAnyKeyword(t, TOPS_KEYWORDS);
   const hasBottomsCore = containsAnyKeyword(t, BOTTOMS_KEYWORDS);
-  const hasDenim = containsAnyKeyword(t, ["denim"]);
+  // Denim now only triggers bottoms when paired with a garment word
+  const hasDenim = containsAnyKeyword(t, ["denim jeans", "denim pant", "denim short", "denim trouser"]);
 
   if (hasBags) {
     categories.add("bags_accessories");
@@ -115,7 +116,7 @@ export function classifyProduct(product) {
     if (containsAnyKeyword(t, TOPS_KNITWEAR_KEYWORDS)) categories.add("tops_knitwear");
     return { categories };
   }
-  if (hasBottomsCore || (hasDenim && !hasJacketsCoats)) {
+  if (hasBottomsCore || hasDenim) {
     categories.add("bottoms");
     return { categories };
   }

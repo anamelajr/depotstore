@@ -12,14 +12,21 @@ import {
   classifyProduct,
 } from "../lib/feed-utils";
 
-// Maps raw URL category keys to display labels
 const CATEGORY_LABELS = {
   tops: "Tops",
+  tops_hoodies_sweaters: "Hoodies & Sweaters",
+  tops_shirts_blouses: "Shirts & Blouses",
+  tops_tees: "Tees",
+  tops_knitwear: "Knitwear",
   bottoms: "Bottoms",
   dresses_skirts: "Dresses & Skirts",
   jackets_coats: "Jackets & Coats",
+  jackets: "Jackets",
+  coats: "Coats",
   footwear: "Footwear",
   bags_accessories: "Bags & Accessories",
+  bags: "Bags",
+  accessories: "Accessories",
   sets: "Sets",
 };
 
@@ -30,14 +37,12 @@ export default function FeedClient({ products }) {
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const selectedBrand = searchParams.get("brand") || null;
-  const selectedCategory = searchParams.get("category") || null;
+  // Multi-category: read all ?category= values as an array
+  const selectedCategories = searchParams.getAll("category");
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
 
-  // Controlled search input — local state stays in sync with URL
   const [inputValue, setInputValue] = useState(searchQuery);
 
-  // Keep local input in sync if URL search param changes externally
-  // (e.g. user clicks nav category which clears search)
   useEffect(() => {
     setInputValue(searchQuery);
   }, [searchQuery]);
@@ -58,16 +63,18 @@ export default function FeedClient({ products }) {
     const hasQuery = q.length > 0;
     const hasBrand = typeof selectedBrand === "string" && selectedBrand.length > 0;
     const selectedBrandNorm = hasBrand ? normalizeText(selectedBrand) : null;
+    const hasCategories = selectedCategories.length > 0;
 
     return products.filter((p) => {
       const classification = classifyProduct(p);
       if (selectedStore !== ALL_STORES_VALUE && p?.storeName !== selectedStore) return false;
       if (hasQuery && !normalizeText(p?.name ?? "").includes(q)) return false;
       if (hasBrand && !normalizeText(p?.name ?? "").includes(selectedBrandNorm)) return false;
-      if (selectedCategory && !classification.categories.has(selectedCategory)) return false;
+      // Product must match ANY of the selected categories
+      if (hasCategories && !selectedCategories.some((cat) => classification.categories.has(cat))) return false;
       return true;
     });
-  }, [products, selectedStore, searchQuery, selectedBrand, selectedCategory]);
+  }, [products, selectedStore, searchQuery, selectedBrand, selectedCategories]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const currentPage = Math.min(rawPage, totalPages);
@@ -93,12 +100,22 @@ export default function FeedClient({ products }) {
     return items;
   }, [currentPage, totalPages]);
 
+  // Builds a URL preserving all current params, with overrides
+  // Handles multi-category as array
   const buildFeedUrl = useCallback((updates, resetPage = false) => {
     const params = new URLSearchParams(searchParams.toString());
     if (resetPage) params.delete("page");
     Object.entries(updates || {}).forEach(([k, v]) => {
-      if (v == null || v === "" || v === ALL_STORES_VALUE) params.delete(k);
-      else params.set(k, String(v));
+      if (k === "category") {
+        // v is an array for category
+        params.delete("category");
+        if (Array.isArray(v)) {
+          v.forEach((cat) => params.append("category", cat));
+        }
+      } else {
+        if (v == null || v === "" || v === ALL_STORES_VALUE) params.delete(k);
+        else params.set(k, String(v));
+      }
     });
     const q = params.toString();
     return `/feed${q ? `?${q}` : ""}`;
@@ -108,11 +125,15 @@ export default function FeedClient({ products }) {
     router.push(buildFeedUrl({ store: v }, true));
   }, [router, buildFeedUrl]);
 
-  const handleClearCategory = useCallback(() => {
-    router.push(buildFeedUrl({ category: null }, true));
-  }, [router, buildFeedUrl]);
+  // Toggle a category in/out of the selected array
+  const handleToggleCategory = useCallback((cat) => {
+    const current = selectedCategories;
+    const next = current.includes(cat)
+      ? current.filter((c) => c !== cat)
+      : [...current, cat];
+    router.push(buildFeedUrl({ category: next }, true));
+  }, [selectedCategories, router, buildFeedUrl]);
 
-  // Controlled search submit
   const handleSearchSubmit = useCallback((e) => {
     e.preventDefault();
     const params = new URLSearchParams();
@@ -122,14 +143,9 @@ export default function FeedClient({ products }) {
     if (inputValue.trim()) {
       params.set("search", inputValue.trim());
     }
-    // Intentionally drops brand and category — new search = fresh context
     const q = params.toString();
     router.push(`/feed${q ? `?${q}` : ""}`);
   }, [inputValue, selectedStore, router]);
-
-  const categoryLabel = selectedCategory
-    ? (CATEGORY_LABELS[selectedCategory] ?? selectedCategory)
-    : null;
 
   return (
     <div className="min-h-screen font-mono antialiased">
@@ -148,7 +164,8 @@ export default function FeedClient({ products }) {
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Search..."
-                    className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
+                    // Fix 1: 16px on mobile prevents iOS zoom, scales down on sm+
+                    className="w-full border-none bg-transparent p-0 font-mono text-[16px] sm:text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
                   />
                 </form>
               </div>
@@ -168,18 +185,22 @@ export default function FeedClient({ products }) {
               />
             </div>
 
-            {selectedCategory && (
-              <div className="flex items-center gap-3">
+            {/* Active category pills — one per selected category, each dismissible */}
+            {selectedCategories.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
                   CATEGORY:
                 </span>
-                <button
-                  onClick={handleClearCategory}
-                  className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap"
-                >
-                  <span>{categoryLabel}</span>
-                  <span className="text-zinc-500 leading-none">×</span>
-                </button>
+                {selectedCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => handleToggleCategory(cat)}
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap"
+                  >
+                    <span>{CATEGORY_LABELS[cat] ?? cat}</span>
+                    <span className="text-zinc-500 leading-none">×</span>
+                  </button>
+                ))}
               </div>
             )}
 

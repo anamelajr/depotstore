@@ -57,16 +57,29 @@ function NavLink({ href, children, active }) {
   );
 }
 
+// Builds a /feed URL that toggles a category in/out of the current selection
+function buildToggleCategoryUrl(searchParams, categoryValue) {
+  const current = searchParams.getAll("category");
+  const next = current.includes(categoryValue)
+    ? current.filter((c) => c !== categoryValue)
+    : [...current, categoryValue];
+  const params = new URLSearchParams();
+  next.forEach((c) => params.append("category", c));
+  // Preserve store if set
+  const store = searchParams.get("store");
+  if (store) params.set("store", store);
+  const q = params.toString();
+  return `/feed${q ? `?${q}` : ""}`;
+}
+
 function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
   const [expandedKey, setExpandedKey] = useState(null);
-  const selectedCategory = searchParams.get("category");
+  const selectedCategories = searchParams.getAll("category");
 
-  // Close on route change
   useEffect(() => {
     onClose();
   }, [searchParams]);
 
-  // Lock body scroll when open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -78,8 +91,6 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
 
   if (!isOpen) return null;
 
-  const hasSubcategories = (key) => CATEGORY_ITEMS[key.split("_")[0]];
-
   return (
     <div className="fixed inset-0 z-[9998] bg-[#0a0a0a] flex flex-col">
       {/* Header */}
@@ -89,19 +100,19 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
         </Link>
         <button onClick={onClose} className="text-zinc-400 hover:text-zinc-50 transition-colors p-1">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" strokeWidth="1.5"/>
           </svg>
         </button>
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Categories */}
         {MOBILE_NAV_ITEMS.map(({ label, href, key }) => {
           const subKey = key.split("_")[0];
           const hasSubs = !!CATEGORY_ITEMS[subKey];
           const isExpanded = expandedKey === subKey;
-          const isActive = selectedCategory === key || selectedCategory?.startsWith(subKey);
+          const isActive = selectedCategories.includes(key) || selectedCategories.some((c) => c.startsWith(subKey));
+          const toggleUrl = buildToggleCategoryUrl(searchParams, key);
 
           return (
             <div key={key}>
@@ -112,7 +123,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
                     setExpandedKey(isExpanded ? null : subKey);
                   } else {
                     onClose();
-                    window.location.href = href;
+                    window.location.href = toggleUrl;
                   }
                 }}
               >
@@ -124,7 +135,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
                     width="12" height="12" viewBox="0 0 12 12" fill="none"
                     className={`text-zinc-600 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
                   >
-                    <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
                   </svg>
                 )}
               </div>
@@ -132,25 +143,27 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
               {/* Sub-categories */}
               {hasSubs && isExpanded && (
                 <div className="bg-zinc-950 border-b border-zinc-800">
-                  {CATEGORY_ITEMS[subKey].map(([value, sublabel]) => (
-                    <Link
-                      key={value}
-                      href={`/feed?category=${value}`}
-                      onClick={onClose}
-                      className="flex items-center px-8 py-3 border-b border-zinc-900 last:border-0"
-                    >
-                      <span className={`font-mono text-[10px] tracking-widest uppercase ${selectedCategory === value ? "text-zinc-300" : "text-zinc-600"}`}>
-                        {sublabel}
-                      </span>
-                    </Link>
-                  ))}
+                  {CATEGORY_ITEMS[subKey].map(([value, sublabel]) => {
+                    const subToggleUrl = buildToggleCategoryUrl(searchParams, value);
+                    const subIsActive = selectedCategories.includes(value);
+                    return (
+                      <Link
+                        key={value}
+                        href={subToggleUrl}
+                        onClick={onClose}
+                        className="flex items-center px-8 py-3 border-b border-zinc-900 last:border-0"
+                      >
+                        <span className={`font-mono text-[10px] tracking-widest uppercase ${subIsActive ? "text-zinc-300" : "text-zinc-600"}`}>
+                          {sublabel}
+                        </span>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
           );
         })}
-
-        
 
         {/* Secondary nav */}
         {MOBILE_NAV_SECONDARY.map(({ label, href }) => (
@@ -164,30 +177,30 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
               {label}
             </span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-              <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
             </svg>
           </Link>
         ))}
 
-<Link
-  href="/about"
-  onClick={onClose}
-  className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
->
-  <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">ABOUT</span>
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-    <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
-  </svg>
-</Link>
+        <Link
+          href="/about"
+          onClick={onClose}
+          className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
+        >
+          <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">ABOUT</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
+            <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
+          </svg>
+        </Link>
 
-        
-        <a href={`mailto:${CONTACT_EMAIL}`}
-  onClick={onClose}
-  className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
->
+        <a
+          href={`mailto:${CONTACT_EMAIL}`}
+          onClick={onClose}
+          className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
+        >
           <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">CONTACT</span>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-            <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
           </svg>
         </a>
       </div>
@@ -197,7 +210,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
 
 export default function Nav({ onAboutOpen }) {
   const searchParams = useSearchParams();
-  const selectedCategory = searchParams.get("category");
+  const selectedCategories = searchParams.getAll("category");
   const selectedBrand = searchParams.get("brand");
 
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -226,10 +239,8 @@ export default function Nav({ onAboutOpen }) {
     return Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, []);
 
-  const isCategoryActive = (key, value) => {
-    if (!selectedCategory) return false;
-    if (value) return selectedCategory === value;
-    return selectedCategory?.startsWith(key);
+  const isCategoryActive = (key) => {
+    return selectedCategories.some((c) => c === key || c.startsWith(key + "_") || key.startsWith(c + "_"));
   };
 
   const openDesignersDropdown = () => {
@@ -299,44 +310,77 @@ export default function Nav({ onAboutOpen }) {
             </button>
           </div>
 
-          {/* Desktop: existing nav */}
+          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-5 overflow-x-auto whitespace-nowrap font-mono text-[11px] uppercase tracking-widest w-full">
             <div
               className="relative"
               onMouseEnter={() => openCategoryDropdown("tops", topsRef)}
               onMouseLeave={scheduleCloseCategoryDropdown}
             >
-              <Link ref={topsRef} href="/feed?category=tops" className={isCategoryActive("tops") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50" + " font-mono text-[11px] uppercase tracking-widest transition-colors"}>
+              <Link
+                ref={topsRef}
+                href={buildToggleCategoryUrl(searchParams, "tops")}
+                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("tops") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+              >
                 TOPS
               </Link>
             </div>
 
-            <NavLink href="/feed?category=bottoms" active={selectedCategory === "bottoms"}>BOTTOMS</NavLink>
-            <NavLink href="/feed?category=dresses_skirts" active={selectedCategory === "dresses_skirts"}>DRESSES & SKIRTS</NavLink>
+            <Link
+              href={buildToggleCategoryUrl(searchParams, "bottoms")}
+              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("bottoms") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+            >
+              BOTTOMS
+            </Link>
+
+            <Link
+              href={buildToggleCategoryUrl(searchParams, "dresses_skirts")}
+              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("dresses_skirts") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+            >
+              DRESSES & SKIRTS
+            </Link>
 
             <div
               className="relative"
               onMouseEnter={() => openCategoryDropdown("jackets", jacketsRef)}
               onMouseLeave={scheduleCloseCategoryDropdown}
             >
-              <Link ref={jacketsRef} href="/feed?category=jackets_coats" className={(isCategoryActive("jackets_coats") || isCategoryActive("jackets") || isCategoryActive("coats")) ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50" + " font-mono text-[11px] uppercase tracking-widest transition-colors"}>
+              <Link
+                ref={jacketsRef}
+                href={buildToggleCategoryUrl(searchParams, "jackets_coats")}
+                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("jackets_coats") || isCategoryActive("jackets") || isCategoryActive("coats") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+              >
                 JACKETS & COATS
               </Link>
             </div>
 
-            <NavLink href="/feed?category=footwear" active={selectedCategory === "footwear"}>FOOTWEAR</NavLink>
+            <Link
+              href={buildToggleCategoryUrl(searchParams, "footwear")}
+              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("footwear") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+            >
+              FOOTWEAR
+            </Link>
 
             <div
               className="relative"
               onMouseEnter={() => openCategoryDropdown("bags", bagsRef)}
               onMouseLeave={scheduleCloseCategoryDropdown}
             >
-              <Link ref={bagsRef} href="/feed?category=bags_accessories" className={(isCategoryActive("bags_accessories") || isCategoryActive("bags") || isCategoryActive("accessories")) ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50" + " font-mono text-[11px] uppercase tracking-widest transition-colors"}>
+              <Link
+                ref={bagsRef}
+                href={buildToggleCategoryUrl(searchParams, "bags_accessories")}
+                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("bags_accessories") || isCategoryActive("bags") || isCategoryActive("accessories") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+              >
                 BAGS & ACCESSORIES
               </Link>
             </div>
 
-            <NavLink href="/feed?category=sets" active={selectedCategory === "sets"}>SETS</NavLink>
+            <Link
+              href={buildToggleCategoryUrl(searchParams, "sets")}
+              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("sets") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+            >
+              SETS
+            </Link>
 
             <Link href="/stores" className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
               STORES
@@ -348,21 +392,25 @@ export default function Nav({ onAboutOpen }) {
               onMouseEnter={openDesignersDropdown}
               onMouseLeave={scheduleCloseDesignersDropdown}
             >
-              <Link href="/designers" className={(selectedBrand ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50") + " font-mono text-[11px] uppercase tracking-widest transition-colors"}>
+              <Link
+                href="/designers"
+                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${selectedBrand ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
+              >
                 DESIGNERS
               </Link>
             </div>
 
             <Link href="/about" className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
-  ABOUT
-</Link>
+              ABOUT
+            </Link>
+
             <a href={`mailto:${CONTACT_EMAIL}`} className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
               CONTACT
             </a>
           </div>
         </div>
 
-        {/* Desktop dropdowns */}
+        {/* Designers dropdown */}
         {isDesignersOpen && typeof document !== "undefined" && createPortal(
           <div ref={designersDropdownRef} onMouseEnter={openDesignersDropdown} onMouseLeave={closeDesignersDropdown}>
             <DesignersDropdown isOpen={isDesignersOpen} brandsByLetter={brandsByLetter} top={designersDropdownTop} />
@@ -370,20 +418,26 @@ export default function Nav({ onAboutOpen }) {
           document.body
         )}
 
+        {/* Category dropdown */}
         {categoryDropdown && categoryDropdownRect && typeof document !== "undefined" && (() => {
           const items = CATEGORY_ITEMS[categoryDropdown] || [];
           return createPortal(
             <div
               className="fixed z-[9999] min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 font-mono text-[11px] uppercase tracking-widest shadow-xl"
               style={{ top: categoryDropdownRect.top, left: categoryDropdownRect.left }}
-              onMouseEnter={() => { if (categoryCloseTimeoutRef.current) { clearTimeout(categoryCloseTimeoutRef.current); categoryCloseTimeoutRef.current = null; } }}
+              onMouseEnter={() => {
+                if (categoryCloseTimeoutRef.current) {
+                  clearTimeout(categoryCloseTimeoutRef.current);
+                  categoryCloseTimeoutRef.current = null;
+                }
+              }}
               onMouseLeave={closeCategoryDropdown}
             >
               {items.map(([value, label]) => (
                 <Link
                   key={value}
-                  href={`/feed?category=${value}`}
-                  className="block w-full px-2 py-1 text-left text-zinc-300 transition-colors hover:text-zinc-50"
+                  href={buildToggleCategoryUrl(searchParams, value)}
+                  className={`block w-full px-2 py-1 text-left transition-colors ${selectedCategories.includes(value) ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
                 >
                   {label}
                 </Link>
