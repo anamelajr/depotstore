@@ -9,7 +9,7 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const CACHE_VERSION = "v2";
+  const CACHE_VERSION = "v3";
 const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
@@ -37,22 +37,21 @@ const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
         messages: [
           {
             role: "user",
-            content: `You are formatting vintage fashion product titles for an editorial platform called Dépôt.
+            content: `You are formatting vintage fashion product titles for an editorial platform.
 
-Format: BRAND — Item description in sentence case, Season code if available
+OUTPUT FORMAT: BRAND — Description in sentence case
+Example input: "Comme des Garçons HOMME 2000s Wool Tartan Scarf"
+Example output: COMME DES GARÇONS HOMME — Wool tartan scarf, 2000s
 
 Rules:
-- Brand name in ALL CAPS
-- Description in sentence case (not title case)
-- Keep season codes if present (FW21, SS03, AW99 etc) at the end after a comma
+- Identify the brand from: the title itself, vendor field, tags, or description
+- Brand goes first in ALL CAPS, then em dash, then description in sentence case
+- Season/era codes at end after comma (FW21, SS03, 2000s, 1990s etc)
 - Remove parenthetical tags like (new arrival) (runway) (sale)
-- Remove "by [designer name]" credits
-- Remove redundant brand mentions in the description if already in the BRAND position
-- If no brand is identifiable from title, vendor, tags or description, just write the description in sentence case with no dash
-- Use vendor field or description to identify the brand if not in the title
-- Return only the formatted title, nothing else, no explanation
-- If the title is very short or vague (like "Top", "Dress", "Jacket"), just return it in sentence case with no brand prefix
-- Always return a formatted title, never ask questions or request clarification
+- Remove "by [designer name]" suffix credits
+- Do not repeat the brand name in the description
+- If truly no brand identifiable from any source, return description in sentence case only
+- Return ONLY the formatted title, nothing else
 
 Title: ${rawTitle}
 Vendor: ${vendor ?? "unknown"}
