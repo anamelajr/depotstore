@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProductCard from "../components/ProductCard";
@@ -12,6 +12,17 @@ import {
   classifyProduct,
 } from "../lib/feed-utils";
 
+// Maps raw URL category keys to display labels
+const CATEGORY_LABELS = {
+  tops: "Tops",
+  bottoms: "Bottoms",
+  dresses_skirts: "Dresses & Skirts",
+  jackets_coats: "Jackets & Coats",
+  footwear: "Footwear",
+  bags_accessories: "Bags & Accessories",
+  sets: "Sets",
+};
+
 export default function FeedClient({ products }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -21,6 +32,15 @@ export default function FeedClient({ products }) {
   const selectedBrand = searchParams.get("brand") || null;
   const selectedCategory = searchParams.get("category") || null;
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+
+  // Controlled search input — local state stays in sync with URL
+  const [inputValue, setInputValue] = useState(searchQuery);
+
+  // Keep local input in sync if URL search param changes externally
+  // (e.g. user clicks nav category which clears search)
+  useEffect(() => {
+    setInputValue(searchQuery);
+  }, [searchQuery]);
 
   const [loading] = useState(false);
   const [error] = useState(null);
@@ -88,14 +108,27 @@ export default function FeedClient({ products }) {
     router.push(buildFeedUrl({ store: v }, true));
   }, [router, buildFeedUrl]);
 
-  // Clear category pill
   const handleClearCategory = useCallback(() => {
     router.push(buildFeedUrl({ category: null }, true));
   }, [router, buildFeedUrl]);
 
-  // Format category label for display
+  // Controlled search submit
+  const handleSearchSubmit = useCallback((e) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    if (selectedStore && selectedStore !== ALL_STORES_VALUE) {
+      params.set("store", selectedStore);
+    }
+    if (inputValue.trim()) {
+      params.set("search", inputValue.trim());
+    }
+    // Intentionally drops brand and category — new search = fresh context
+    const q = params.toString();
+    router.push(`/feed${q ? `?${q}` : ""}`);
+  }, [inputValue, selectedStore, router]);
+
   const categoryLabel = selectedCategory
-    ? selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1).toLowerCase()
+    ? (CATEGORY_LABELS[selectedCategory] ?? selectedCategory)
     : null;
 
   return (
@@ -108,21 +141,12 @@ export default function FeedClient({ products }) {
                 <h1 className="font-serif text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl" style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}>
                   Dépôt
                 </h1>
-                {/* 
-                  FIXED: form no longer includes hidden brand/category inputs.
-                  Typing a new search clears brand and category — fresh context.
-                  key={searchQuery} forces input to re-mount when URL changes,
-                  so the field always reflects actual current state.
-                */}
-                <form action="/feed" method="GET" className="block">
-                  {selectedStore && selectedStore !== ALL_STORES_VALUE && (
-                    <input type="hidden" name="store" value={selectedStore} />
-                  )}
+                <form onSubmit={handleSearchSubmit} className="block">
                   <input
-                    key={searchQuery}
                     name="search"
                     type="search"
-                    defaultValue={searchQuery}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Search..."
                     className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
                   />
@@ -144,7 +168,6 @@ export default function FeedClient({ products }) {
               />
             </div>
 
-            {/* Active category pill — shows when a category is selected from nav */}
             {selectedCategory && (
               <div className="flex items-center gap-3">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -152,9 +175,10 @@ export default function FeedClient({ products }) {
                 </span>
                 <button
                   onClick={handleClearCategory}
-                  className="flex items-center gap-1.5 rounded-full border border-zinc-600 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50"
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap"
                 >
-                  {categoryLabel} <span className="text-zinc-500">×</span>
+                  <span>{categoryLabel}</span>
+                  <span className="text-zinc-500 leading-none">×</span>
                 </button>
               </div>
             )}

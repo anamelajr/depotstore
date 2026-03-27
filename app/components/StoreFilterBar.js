@@ -1,9 +1,5 @@
 "use client";
 
-/**
- * StoreFilterBar component for high-end editorial archive platform.
- * Supports "light" (hero) and "dark" (feed) variants.
- */
 export default function StoreFilterBar({
   options,
   selectedValue,
@@ -15,11 +11,15 @@ export default function StoreFilterBar({
 
   return (
     <div
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       className={[
-        "flex overflow-x-auto whitespace-nowrap font-mono",
-        isLight ? "items-center gap-6 pb-1" : "items-center gap-8 text-[11px] uppercase tracking-widest leading-none",
+        "store-filter-bar flex overflow-x-auto whitespace-nowrap font-mono",
+        isLight
+          ? "items-center gap-6 pb-1"
+          : "items-center gap-8 text-[11px] uppercase tracking-widest leading-none",
       ].join(" ")}
     >
+      
       {!isLight && <span className="shrink-0 text-zinc-500">STORE:</span>}
       {options.map((opt) => {
         const active = opt.value === selectedValue;
@@ -28,7 +28,9 @@ export default function StoreFilterBar({
             key={opt.value}
             type="button"
             onClick={() => {
-              onChange(opt.value);
+              // If already selected, clicking again deselects (back to All Stores)
+              const next = active ? "ALL" : opt.value;
+              onChange(next);
               if (onInteraction) onInteraction();
             }}
             aria-current={active ? "page" : undefined}
