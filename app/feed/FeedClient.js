@@ -128,11 +128,19 @@ export default function FeedClient({ products }) {
         if (!val) return 0;
         return parseFloat(String(val).replace(/[^0-9.]/g, "")) || 0;
       };
-  
+      
       if (selectedSort === "price_asc") {
-        results = [...results].sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+        results = [...results].sort((a, b) => {
+          if (!a.available && b.available) return 1;
+          if (a.available && !b.available) return -1;
+          return parsePrice(a.price) - parsePrice(b.price);
+        });
       } else if (selectedSort === "price_desc") {
-        results = [...results].sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+        results = [...results].sort((a, b) => {
+          if (!a.available && b.available) return 1;
+          if (a.available && !b.available) return -1;
+          return parsePrice(b.price) - parsePrice(a.price);
+        });
       }
     // "latest" = default order from API
 
@@ -202,6 +210,7 @@ export default function FeedClient({ products }) {
   const handleClearAll = useCallback(() => {
     setLocalCategories([]);
     setLocalStore(ALL_STORES_VALUE);
+    setFilterOpen(false);
     router.replace("/feed");
   }, [router]);
 
