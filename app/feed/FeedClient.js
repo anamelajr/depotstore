@@ -14,9 +14,8 @@ import {
 
 export default function FeedClient({ products }) {
   const searchParams = useSearchParams();
-  
-
   const router = useRouter();
+
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const selectedBrand = searchParams.get("brand") || null;
@@ -24,7 +23,7 @@ export default function FeedClient({ products }) {
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
 
   const [loading] = useState(false);
-const [error] = useState(null);
+  const [error] = useState(null);
 
   const storeOptions = useMemo(() => {
     const stores = Array.from(new Set(products.map((p) => p?.storeName).filter(Boolean)));
@@ -89,6 +88,16 @@ const [error] = useState(null);
     router.push(buildFeedUrl({ store: v }, true));
   }, [router, buildFeedUrl]);
 
+  // Clear category pill
+  const handleClearCategory = useCallback(() => {
+    router.push(buildFeedUrl({ category: null }, true));
+  }, [router, buildFeedUrl]);
+
+  // Format category label for display
+  const categoryLabel = selectedCategory
+    ? selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1).toLowerCase()
+    : null;
+
   return (
     <div className="min-h-screen font-mono antialiased">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
@@ -99,17 +108,22 @@ const [error] = useState(null);
                 <h1 className="font-serif text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl" style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}>
                   Dépôt
                 </h1>
+                {/* 
+                  FIXED: form no longer includes hidden brand/category inputs.
+                  Typing a new search clears brand and category — fresh context.
+                  key={searchQuery} forces input to re-mount when URL changes,
+                  so the field always reflects actual current state.
+                */}
                 <form action="/feed" method="GET" className="block">
                   {selectedStore && selectedStore !== ALL_STORES_VALUE && (
                     <input type="hidden" name="store" value={selectedStore} />
                   )}
-                  {selectedBrand && <input type="hidden" name="brand" value={selectedBrand} />}
-                  {selectedCategory && <input type="hidden" name="category" value={selectedCategory} />}
                   <input
+                    key={searchQuery}
                     name="search"
                     type="search"
                     defaultValue={searchQuery}
-                    placeholder="Filter grid..."
+                    placeholder="Search..."
                     className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
                   />
                 </form>
@@ -121,6 +135,7 @@ const [error] = useState(null);
                 ← BACK TO HOME
               </Link>
             </div>
+
             <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
               <StoreFilterBar
                 options={storeOptions}
@@ -128,6 +143,22 @@ const [error] = useState(null);
                 onChange={handleStoreChange}
               />
             </div>
+
+            {/* Active category pill — shows when a category is selected from nav */}
+            {selectedCategory && (
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                  CATEGORY:
+                </span>
+                <button
+                  onClick={handleClearCategory}
+                  className="flex items-center gap-1.5 rounded-full border border-zinc-600 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50"
+                >
+                  {categoryLabel} <span className="text-zinc-500">×</span>
+                </button>
+              </div>
+            )}
+
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
               SHOWING {paginatedProducts.length} OF {filteredProducts.length} PRODUCTS
             </p>
