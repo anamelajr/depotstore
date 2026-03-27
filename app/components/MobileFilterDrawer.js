@@ -81,12 +81,12 @@ export default function MobileFilterDrawer({
   const activeCount = selectedCategories.length + (selectedStore !== ALL_STORES_VALUE ? 1 : 0);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0a0a0a]">
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0a0a0a]" onClick={(e) => e.stopPropagation()}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4 shrink-0">
         <button
           type="button"
-          onPointerDown={onClose}
+          onClick={onClose}
           className="font-mono text-[11px] uppercase tracking-widest text-zinc-400"
         >
           Cancel
@@ -96,7 +96,7 @@ export default function MobileFilterDrawer({
         </span>
         <button
           type="button"
-          onPointerDown={onClearAll}
+          onClick={onClearAll}
           className="font-mono text-[11px] uppercase tracking-widest text-zinc-400"
         >
           Clear
@@ -117,7 +117,7 @@ export default function MobileFilterDrawer({
                 <button
                   key={opt.value}
                   type="button"
-                  onPointerDown={() => onStoreChange(active ? ALL_STORES_VALUE : opt.value)}
+                  onClick={() => onStoreChange(active ? ALL_STORES_VALUE : opt.value)}
                   className={`rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                     active
                       ? "border-zinc-50 text-zinc-50"
@@ -146,7 +146,7 @@ export default function MobileFilterDrawer({
                       <button
                         key={value}
                         type="button"
-                        onPointerDown={() => onToggleCategory(value)}
+                        onClick={() => onToggleCategory(value)}
                         className={`rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                           active
                             ? "border-zinc-50 text-zinc-50"
@@ -168,7 +168,7 @@ export default function MobileFilterDrawer({
       <div className="absolute bottom-0 left-0 right-0 border-t border-zinc-800 bg-[#0a0a0a] px-5 py-5">
         <button
           type="button"
-          onPointerDown={onClose}
+          onClick={onClose}
           className="w-full rounded-none bg-zinc-50 py-4 font-mono text-[11px] uppercase tracking-widest text-zinc-950"
         >
           {activeCount > 0 ? `Apply (${activeCount})` : "Apply"}
