@@ -236,9 +236,9 @@ export default function FeedClient({ products }) {
 
         {/* ── DESKTOP HEADER (md and above) ── */}
         <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "calc(var(--nav-height) - 1px)" }}>
-          <div className="mx-auto max-w-7xl space-y-4 px-4 py-4">
+          <div className="mx-auto max-w-7xl space-y-3 px-4 py-3">
             <div className="flex items-start justify-between gap-6">
-              <div className="min-w-0 flex-1 space-y-3">
+              <div className="min-w-0 flex-1 space-y-1">
                 <h1 className="font-serif text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl" style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}>
                   Dépôt
                 </h1>
@@ -300,7 +300,7 @@ export default function FeedClient({ products }) {
           }}
         >
           {/* Search row */}
-          <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+          <div className="flex items-center gap-3 px-4 pt-2 pb-1">
             <form onSubmit={handleSearchSubmit} className="flex-1">
               <input
                 name="search"
@@ -363,7 +363,7 @@ export default function FeedClient({ products }) {
           onSortChange={setSelectedSort}
         />
 
-<main className="mx-auto max-w-7xl px-4 pb-24 pt-12">
+<main className="mx-auto max-w-7xl px-4 pb-24 pt-20 md:pt-12">
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
