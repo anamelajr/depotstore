@@ -5,6 +5,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProductCard from "../components/ProductCard";
 import StoreFilterBar from "../components/StoreFilterBar";
+import MobileFilterDrawer from "../components/MobileFilterDrawer";
+import MobileSortSheet from "../components/MobileSortSheet";
+import { SORT_OPTIONS } from "../components/MobileSortSheet";
 import {
   ALL_STORES_VALUE,
   PAGE_SIZE,
@@ -37,13 +40,39 @@ export default function FeedClient({ products }) {
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const selectedBrand = searchParams.get("brand") || null;
+  const urlCategories = searchParams.getAll("category");
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
 
-  // Local state for categories — updates immediately on tap, no waiting for router
-  const urlCategories = searchParams.getAll("category");
+  // Local state — updates instantly without waiting for router
   const [localCategories, setLocalCategories] = useState(urlCategories);
+  const [localStore, setLocalStore] = useState(selectedStore);
+  const [selectedSort, setSelectedSort] = useState("latest");
+  const [inputValue, setInputValue] = useState(searchQuery);
 
-  // Sync local state when URL changes externally (nav click, page load)
+  // Mobile UI state
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+
+  // Scroll hide/show for mobile bar
+  const [barVisible, setBarVisible] = useState(true);
+  const lastScrollY = useRef(0);
+  useEffect(() => {
+    const handleScroll = () => {
+      const current = window.scrollY;
+      if (current < 60) {
+        setBarVisible(true);
+      } else if (current < lastScrollY.current) {
+        setBarVisible(true); // scrolling up
+      } else if (current > lastScrollY.current + 8) {
+        setBarVisible(false); // scrolling down
+      }
+      lastScrollY.current = current;
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Sync local state when URL changes externally
   const prevUrlCatsRef = useRef(JSON.stringify(urlCategories));
   useEffect(() => {
     const next = JSON.stringify(urlCategories);
@@ -53,7 +82,16 @@ export default function FeedClient({ products }) {
     }
   }, [searchParams]);
 
-  const [inputValue, setInputValue] = useState(searchQuery);
+  useEffect(() => {
+    if (urlCategories.length === 0 && localCategories.length > 0) {
+      setLocalCategories([]);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    setLocalStore(selectedStore);
+  }, [selectedStore]);
+
   useEffect(() => {
     setInputValue(searchQuery);
   }, [searchQuery]);
@@ -69,7 +107,6 @@ export default function FeedClient({ products }) {
     ];
   }, [products]);
 
-  // Filter uses localCategories, not URL — so UI responds instantly
   const filteredProducts = useMemo(() => {
     const q = normalizeText(searchQuery).trim();
     const hasQuery = q.length > 0;
@@ -77,15 +114,33 @@ export default function FeedClient({ products }) {
     const selectedBrandNorm = hasBrand ? normalizeText(selectedBrand) : null;
     const hasCategories = localCategories.length > 0;
 
-    return products.filter((p) => {
+    let results = products.filter((p) => {
       const classification = classifyProduct(p);
-      if (selectedStore !== ALL_STORES_VALUE && p?.storeName !== selectedStore) return false;
+      if (localStore !== ALL_STORES_VALUE && p?.storeName !== localStore) return false;
       if (hasQuery && !normalizeText(p?.name ?? "").includes(q)) return false;
       if (hasBrand && !normalizeText(p?.name ?? "").includes(selectedBrandNorm)) return false;
       if (hasCategories && !localCategories.some((cat) => classification.categories.has(cat))) return false;
       return true;
     });
-  }, [products, selectedStore, searchQuery, selectedBrand, localCategories]);
+
+    // Sort
+    if (selectedSort === "price_asc") {
+      results = [...results].sort((a, b) => {
+        const pa = parseFloat(a.price) || 0;
+        const pb = parseFloat(b.price) || 0;
+        return pa - pb;
+      });
+    } else if (selectedSort === "price_desc") {
+      results = [...results].sort((a, b) => {
+        const pa = parseFloat(a.price) || 0;
+        const pb = parseFloat(b.price) || 0;
+        return pb - pa;
+      });
+    }
+    // "latest" = default order from API
+
+    return results;
+  }, [products, localStore, searchQuery, selectedBrand, localCategories, selectedSort]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const currentPage = Math.min(rawPage, totalPages);
@@ -130,15 +185,15 @@ export default function FeedClient({ products }) {
   }, [searchParams]);
 
   const handleStoreChange = useCallback((v) => {
+    setLocalStore(v);
     router.push(buildFeedUrl({ store: v }, true));
   }, [router, buildFeedUrl]);
 
-  // Updates local state immediately, then syncs URL
   const handleToggleCategory = useCallback((cat) => {
     const next = localCategories.includes(cat)
       ? localCategories.filter((c) => c !== cat)
       : [...localCategories, cat];
-    setLocalCategories(next); // instant UI update
+    setLocalCategories(next);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("page");
     params.delete("category");
@@ -147,23 +202,34 @@ export default function FeedClient({ products }) {
     router.replace(`/feed${q ? `?${q}` : ""}`);
   }, [localCategories, searchParams, router]);
 
+  const handleClearAll = useCallback(() => {
+    setLocalCategories([]);
+    setLocalStore(ALL_STORES_VALUE);
+    router.replace("/feed");
+  }, [router]);
+
   const handleSearchSubmit = useCallback((e) => {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (selectedStore && selectedStore !== ALL_STORES_VALUE) {
-      params.set("store", selectedStore);
+    if (localStore && localStore !== ALL_STORES_VALUE) {
+      params.set("store", localStore);
     }
     if (inputValue.trim()) {
       params.set("search", inputValue.trim());
     }
     const q = params.toString();
     router.push(`/feed${q ? `?${q}` : ""}`);
-  }, [inputValue, selectedStore, router]);
+  }, [inputValue, localStore, router]);
+
+  const activeFilterCount = localCategories.length + (localStore !== ALL_STORES_VALUE ? 1 : 0);
+  const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
 
   return (
     <div className="min-h-screen font-mono antialiased">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
-        <header className="sticky z-10 -mt-[2px] border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur" style={{ top: "calc(var(--nav-height) - 1px)" }}>
+
+        {/* ── DESKTOP HEADER (md and above) ── */}
+        <header className="sticky z-10 -mt-[2px] border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "calc(var(--nav-height) - 1px)" }}>
           <div className="mx-auto max-w-7xl space-y-4 px-4 py-4">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1 space-y-3">
@@ -177,8 +243,7 @@ export default function FeedClient({ products }) {
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Search..."
-                    className="w-full border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
-                    style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left center', width: '145%' }}
+                    className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
                   />
                 </form>
               </div>
@@ -189,15 +254,13 @@ export default function FeedClient({ products }) {
                 ← BACK TO HOME
               </Link>
             </div>
-
             <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
               <StoreFilterBar
                 options={storeOptions}
-                selectedValue={selectedStore}
+                selectedValue={localStore}
                 onChange={handleStoreChange}
               />
             </div>
-
             {localCategories.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -216,21 +279,92 @@ export default function FeedClient({ products }) {
                 ))}
               </div>
             )}
-
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
               SHOWING {paginatedProducts.length} OF {filteredProducts.length} PRODUCTS
             </p>
           </div>
         </header>
 
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-12">
+        {/* ── MOBILE HEADER (below md) ── */}
+        <header
+          className="md:hidden sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300"
+          style={{
+            top: "calc(var(--nav-height) - 1px)",
+            transform: barVisible ? "translateY(0)" : "translateY(-100%)",
+          }}
+        >
+          {/* Search row */}
+          <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+            <form onSubmit={handleSearchSubmit} className="flex-1">
+              <input
+                name="search"
+                type="search"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Search..."
+                className="w-full border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
+                style={{ fontSize: "16px", transform: "scale(0.688)", transformOrigin: "left center", width: "145%" }}
+              />
+            </form>
+          </div>
+
+          {/* Refine / Sort bar */}
+          <div className="flex border-t border-zinc-800/50">
+            <button
+              type="button"
+              onPointerDown={() => setFilterOpen(true)}
+              className="flex flex-1 items-center justify-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
+            >
+              Refine
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] text-zinc-950">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onPointerDown={() => setSortOpen(true)}
+              className="flex flex-1 items-center justify-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
+            >
+              {selectedSort !== "latest" ? activeSortLabel : "Sort"}
+            </button>
+          </div>
+
+          {/* Product count */}
+          <div className="px-4 pb-2">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+              {filteredProducts.length} products
+            </p>
+          </div>
+        </header>
+
+        {/* Mobile drawers */}
+        <MobileFilterDrawer
+          isOpen={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          selectedCategories={localCategories}
+          onToggleCategory={handleToggleCategory}
+          selectedStore={localStore}
+          storeOptions={storeOptions}
+          onStoreChange={handleStoreChange}
+          onClearAll={handleClearAll}
+        />
+        <MobileSortSheet
+          isOpen={sortOpen}
+          onClose={() => setSortOpen(false)}
+          selectedSort={selectedSort}
+          onSortChange={setSelectedSort}
+        />
+
+        <main className="mx-auto max-w-7xl px-4 pb-24 pt-6">
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
             </div>
           ) : error ? (
-            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
-              Loading products…
+            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-red-300">
+              {error}
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
