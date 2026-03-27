@@ -9,7 +9,7 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const CACHE_VERSION = "v4";
+  const CACHE_VERSION = "v5";
 const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
