@@ -89,7 +89,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
         </Link>
         <button onClick={onClose} className="text-zinc-400 hover:text-zinc-50 transition-colors p-1">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="1.5"/>
           </svg>
         </button>
       </div>
@@ -124,7 +124,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
                     width="12" height="12" viewBox="0 0 12 12" fill="none"
                     className={`text-zinc-600 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
                   >
-                    <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
                   </svg>
                 )}
               </div>
@@ -165,7 +165,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
               {label}
             </span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-              <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
             </svg>
           </Link>
         ))}
@@ -176,18 +176,18 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
         >
           <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">ABOUT</span>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-            <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
           </svg>
         </button>
 
         
-          href={`mailto:${CONTACT_EMAIL}`}
-          onClick={onClose}
-          className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
-        >
+        <a href={`mailto:${CONTACT_EMAIL}`}
+  onClick={onClose}
+  className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 active:bg-zinc-900 transition-colors"
+>
           <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">CONTACT</span>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-700">
-            <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5"/>
           </svg>
         </a>
       </div>
