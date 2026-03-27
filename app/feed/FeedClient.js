@@ -43,36 +43,27 @@ export default function FeedClient({ products }) {
   const urlCategories = searchParams.getAll("category");
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
 
-  // Local state — updates instantly without waiting for router
   const [localCategories, setLocalCategories] = useState(urlCategories);
   const [localStore, setLocalStore] = useState(selectedStore);
   const [selectedSort, setSelectedSort] = useState("latest");
   const [inputValue, setInputValue] = useState(searchQuery);
-
-  // Mobile UI state
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
-
-  // Scroll hide/show for mobile bar
   const [barVisible, setBarVisible] = useState(true);
   const lastScrollY = useRef(0);
+
   useEffect(() => {
     const handleScroll = () => {
       const current = window.scrollY;
-      if (current < 60) {
-        setBarVisible(true);
-      } else if (current < lastScrollY.current) {
-        setBarVisible(true); // scrolling up
-      } else if (current > lastScrollY.current + 8) {
-        setBarVisible(false); // scrolling down
-      }
+      if (current < 60) setBarVisible(true);
+      else if (current < lastScrollY.current) setBarVisible(true);
+      else if (current > lastScrollY.current + 8) setBarVisible(false);
       lastScrollY.current = current;
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Sync local state when URL changes externally
   const prevUrlCatsRef = useRef(JSON.stringify(urlCategories));
   useEffect(() => {
     const next = JSON.stringify(urlCategories);
@@ -88,13 +79,8 @@ export default function FeedClient({ products }) {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    setLocalStore(selectedStore);
-  }, [selectedStore]);
-
-  useEffect(() => {
-    setInputValue(searchQuery);
-  }, [searchQuery]);
+  useEffect(() => { setLocalStore(selectedStore); }, [selectedStore]);
+  useEffect(() => { setInputValue(searchQuery); }, [searchQuery]);
 
   const [loading] = useState(false);
   const [error] = useState(null);
@@ -123,27 +109,23 @@ export default function FeedClient({ products }) {
       return true;
     });
 
-    // Sort
     const parsePrice = (val) => {
-        if (!val) return 0;
-        return parseFloat(String(val).replace(/[^0-9.]/g, "")) || 0;
-      };
-      
-      if (selectedSort === "price_asc") {
-        results = [...results].sort((a, b) => {
-          if (!a.available && b.available) return 1;
-          if (a.available && !b.available) return -1;
-          return parsePrice(a.price) - parsePrice(b.price);
-        });
-      } else if (selectedSort === "price_desc") {
-        results = [...results].sort((a, b) => {
-          if (!a.available && b.available) return 1;
-          if (a.available && !b.available) return -1;
-          return parsePrice(b.price) - parsePrice(a.price);
-        });
-      }
-    // "latest" = default order from API
-
+      if (!val) return 0;
+      return parseFloat(String(val).replace(/[^0-9.]/g, "")) || 0;
+    };
+    if (selectedSort === "price_asc") {
+      results = [...results].sort((a, b) => {
+        if (!a.available && b.available) return 1;
+        if (a.available && !b.available) return -1;
+        return parsePrice(a.price) - parsePrice(b.price);
+      });
+    } else if (selectedSort === "price_desc") {
+      results = [...results].sort((a, b) => {
+        if (!a.available && b.available) return 1;
+        if (a.available && !b.available) return -1;
+        return parsePrice(b.price) - parsePrice(a.price);
+      });
+    }
     return results;
   }, [products, localStore, searchQuery, selectedBrand, localCategories, selectedSort]);
 
@@ -177,9 +159,7 @@ export default function FeedClient({ products }) {
     Object.entries(updates || {}).forEach(([k, v]) => {
       if (k === "category") {
         params.delete("category");
-        if (Array.isArray(v)) {
-          v.forEach((cat) => params.append("category", cat));
-        }
+        if (Array.isArray(v)) v.forEach((cat) => params.append("category", cat));
       } else {
         if (v == null || v === "" || v === ALL_STORES_VALUE) params.delete(k);
         else params.set(k, String(v));
@@ -217,12 +197,8 @@ export default function FeedClient({ products }) {
   const handleSearchSubmit = useCallback((e) => {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (localStore && localStore !== ALL_STORES_VALUE) {
-      params.set("store", localStore);
-    }
-    if (inputValue.trim()) {
-      params.set("search", inputValue.trim());
-    }
+    if (localStore && localStore !== ALL_STORES_VALUE) params.set("store", localStore);
+    if (inputValue.trim()) params.set("search", inputValue.trim());
     const q = params.toString();
     router.push(`/feed${q ? `?${q}` : ""}`);
   }, [inputValue, localStore, router]);
@@ -234,25 +210,24 @@ export default function FeedClient({ products }) {
     <div className="min-h-screen font-mono antialiased overflow-x-hidden">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
 
-        {/* ── DESKTOP HEADER (md and above) ── */}
-        <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "calc(var(--nav-height) - 1px)" }}>
-          <div className="mx-auto max-w-7xl space-y-3 px-4 py-3">
-            <div className="flex items-start justify-between gap-6">
-              <div className="min-w-0 flex-1 space-y-1">
-                <h1 className="font-serif text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl" style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}>
-                  Dépôt
-                </h1>
-                <form onSubmit={handleSearchSubmit} className="block">
-                  <input
-                    name="search"
-                    type="search"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Search..."
-                    className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
-                  />
-                </form>
-              </div>
+        {/* ── DESKTOP HEADER ── */}
+        <header
+          className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block"
+          style={{ top: "var(--nav-height)" }}
+        >
+          <div className="mx-auto max-w-7xl px-4 py-3 space-y-2">
+            {/* Search + back */}
+            <div className="flex items-center justify-between gap-6">
+              <form onSubmit={handleSearchSubmit} className="flex-1">
+                <input
+                  name="search"
+                  type="search"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Search..."
+                  className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
+                />
+              </form>
               <Link
                 href="/"
                 className="shrink-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 transition-colors hover:text-zinc-300"
@@ -260,6 +235,7 @@ export default function FeedClient({ products }) {
                 ← BACK TO HOME
               </Link>
             </div>
+            {/* Store filter */}
             <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
               <StoreFilterBar
                 options={storeOptions}
@@ -267,6 +243,7 @@ export default function FeedClient({ products }) {
                 onChange={handleStoreChange}
               />
             </div>
+            {/* Active category pills */}
             {localCategories.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -291,35 +268,42 @@ export default function FeedClient({ products }) {
           </div>
         </header>
 
-        {/* ── MOBILE HEADER (below md) ── */}
+        {/* ── MOBILE HEADER ── */}
         <header
           className="md:hidden sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300"
           style={{
-            top: "calc(var(--nav-height) - 1px)",
+            top: "var(--nav-height)",
             transform: barVisible ? "translateY(0)" : "translateY(-100%)",
           }}
         >
-          {/* Search row */}
-          <div className="flex items-center gap-3 px-4 pt-2 pb-1">
-            <form onSubmit={handleSearchSubmit} className="flex-1">
+          {/* Search */}
+          <div className="px-4 py-2 overflow-hidden" style={{ height: "32px" }}>
+            <form onSubmit={handleSearchSubmit}>
               <input
                 name="search"
                 type="search"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Search..."
-                className="w-full border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
-                style={{ fontSize: "16px", transform: "scale(0.688)", transformOrigin: "left center", width: "145%" }}
+                className="border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
+                style={{
+                  fontSize: "16px",
+                  lineHeight: "1",
+                  transform: "scale(0.688)",
+                  transformOrigin: "left center",
+                  width: "145%",
+                  display: "block",
+                }}
               />
             </form>
           </div>
 
-          {/* Refine / Sort bar */}
+          {/* Refine / Sort */}
           <div className="flex border-t border-zinc-800/50">
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
+              className="flex flex-1 items-center justify-center gap-2 py-2.5 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
             >
               Refine
               {activeFilterCount > 0 && (
@@ -331,21 +315,20 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setSortOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
+              className="flex flex-1 items-center justify-center gap-2 py-2.5 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
             </button>
           </div>
 
-          {/* Product count */}
-          <div className="px-4 pb-2">
+          {/* Count */}
+          <div className="px-4 py-1.5">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
               {filteredProducts.length} products
             </p>
           </div>
         </header>
 
-        {/* Mobile drawers */}
         <MobileFilterDrawer
           isOpen={filterOpen}
           onClose={() => setFilterOpen(false)}
@@ -363,7 +346,7 @@ export default function FeedClient({ products }) {
           onSortChange={setSelectedSort}
         />
 
-<main className="mx-auto max-w-7xl px-4 pb-24 pt-20 md:pt-12">
+        <main className="mx-auto max-w-7xl px-4 pb-24 pt-6">
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
