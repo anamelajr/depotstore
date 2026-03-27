@@ -235,7 +235,7 @@ export default function FeedClient({ products }) {
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
 
         {/* ── DESKTOP HEADER (md and above) ── */}
-        <header className="sticky z-10 -mt-[2px] border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "calc(var(--nav-height) - 1px)" }}>
+        <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "calc(var(--nav-height) - 1px)" }}>
           <div className="mx-auto max-w-7xl space-y-4 px-4 py-4">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1 space-y-3">
@@ -363,7 +363,7 @@ export default function FeedClient({ products }) {
           onSortChange={setSelectedSort}
         />
 
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-6">
+<main className="mx-auto max-w-7xl px-4 pb-24 pt-12">
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
