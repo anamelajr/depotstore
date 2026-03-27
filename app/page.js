@@ -13,18 +13,18 @@ export default async function Home() {
     // ignore
   }
   const allStores = [...new Set(products.map(p => p.storeName).filter(Boolean))];
-const dayIndex = Math.floor(Date.now() / 86400000) % allStores.length;
-const excludedStore = allStores[dayIndex % allStores.length];
+  const dayIndex = Math.floor(Date.now() / 86400000) % allStores.length;
+  const excludedStore = allStores[dayIndex % allStores.length];
 
-const recentProducts = allStores
-  .filter(store => store !== excludedStore)
-  .map(store => {
-    return [...products]
-      .filter(p => p.storeName === store && p.createdAt)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
-  })
-  .filter(Boolean)
-  .slice(0, 8);
+  const recentProducts = allStores
+    .filter(store => store !== excludedStore)
+    .map(store => {
+      return [...products]
+        .filter(p => p.storeName === store && p.createdAt)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+    })
+    .filter(Boolean)
+    .slice(0, 8);
 
   return (
     <div className="min-h-screen font-mono antialiased">
@@ -57,6 +57,7 @@ const recentProducts = allStores
         <div className="mx-auto w-full max-w-7xl px-4 pb-12">
           <Link
             href="/feed"
+            replace
             className="flex w-fit items-center gap-2 font-mono text-sm text-zinc-900/80 transition-colors hover:text-zinc-900"
           >
             <span className="underline decoration-zinc-800 underline-offset-4">
@@ -84,6 +85,7 @@ const recentProducts = allStores
             </div>
             <Link
               href="/feed"
+              replace
               className="font-mono text-sm text-zinc-400 transition-colors hover:text-zinc-50"
             >
               View All →
@@ -117,35 +119,29 @@ const recentProducts = allStores
           <ParisMap products={products} />
         </div>
       </section>
+
       {/* Footer / Newsletter */}
-<footer className="border-t border-zinc-800 bg-[#0a0a0a] py-24 text-zinc-50">
-  <div className="mx-auto max-w-4xl px-6">
-    <div className="flex flex-col items-start gap-12 md:flex-row md:items-end md:justify-between">
-      
-      {/* Left */}
-      <div>
-        <p className="text-[clamp(32px,5vw,56px)] font-bold uppercase leading-none tracking-tight">
-          DÉPÔT
-        </p>
-        <p className="mt-3 text-[13px] text-zinc-500">
-          Paris. Archive. One feed.
-        </p>
-      </div>
-
-      {/* Newsletter */}
-      <div className="w-full max-w-sm">
-        <NewsletterForm />
-      </div>
-
-    </div>
-
-    {/* Bottom line */}
-    <div className="mt-16 border-t border-zinc-800 pt-8 flex flex-col gap-2 md:flex-row md:justify-between text-[11px] text-zinc-600 uppercase tracking-widest">
-      <span>© 2026 Dépôt</span>
-      <span>Paris</span>
-    </div>
-  </div>
-</footer>
+      <footer className="border-t border-zinc-800 bg-[#0a0a0a] py-24 text-zinc-50">
+        <div className="mx-auto max-w-4xl px-6">
+          <div className="flex flex-col items-start gap-12 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-[clamp(32px,5vw,56px)] font-bold uppercase leading-none tracking-tight">
+                DÉPÔT
+              </p>
+              <p className="mt-3 text-[13px] text-zinc-500">
+                Paris. Archive. One feed.
+              </p>
+            </div>
+            <div className="w-full max-w-sm">
+              <NewsletterForm />
+            </div>
+          </div>
+          <div className="mt-16 border-t border-zinc-800 pt-8 flex flex-col gap-2 md:flex-row md:justify-between text-[11px] text-zinc-600 uppercase tracking-widest">
+            <span>© 2026 Dépôt</span>
+            <span>Paris</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

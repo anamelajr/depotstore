@@ -131,7 +131,7 @@ export default function FeedClient({ products }) {
     const next = current.includes(cat)
       ? current.filter((c) => c !== cat)
       : [...current, cat];
-    router.push(buildFeedUrl({ category: next }, true));
+    router.replace(buildFeedUrl({ category: next }, true));
   }, [selectedCategories, router, buildFeedUrl]);
 
   const handleSearchSubmit = useCallback((e) => {
@@ -194,10 +194,11 @@ style={{ fontSize: '16px', transform: 'scale(0.688)', transformOrigin: 'left cen
                 </span>
                 {selectedCategories.map((cat) => (
                   <button
-                    key={cat}
-                    onClick={() => handleToggleCategory(cat)}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap active:bg-zinc-800"
-                  >
+                  key={cat}
+                  type="button"
+                  onPointerDown={() => handleToggleCategory(cat)}
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap active:bg-zinc-800"
+                >
                     <span>{CATEGORY_LABELS[cat] ?? cat}</span>
                     <span className="text-zinc-400 leading-none text-[14px] pl-1">×</span>
                   </button>
