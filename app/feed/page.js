@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import FeedClient from "./FeedClient";
 
-export const revalidate = 300;
+export const revalidate = 3600;
 
 async function getProducts() {
   try {
