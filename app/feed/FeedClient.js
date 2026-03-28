@@ -295,7 +295,7 @@ export default function FeedClient({ products }) {
         <header
           className="md:hidden sticky z-20 border-b border-zinc-800/60 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300 ease-out"
           style={{
-            top: "var(--nav-height)",
+            top: 0,
             transform: barVisible ? "translateY(0)" : "translateY(-100%)",
           }}
         >
