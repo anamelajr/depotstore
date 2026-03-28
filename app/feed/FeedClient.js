@@ -293,18 +293,17 @@ export default function FeedClient({ products }) {
 
         {/* ── MOBILE: sticky Refine / Sort (below md) ── */}
         <header
-          className="md:hidden sticky z-10 border-b border-zinc-800/60 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300 ease-out"
+          className="md:hidden sticky z-20 border-b border-zinc-800/60 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300 ease-out"
           style={{
             top: "var(--nav-height)",
             transform: barVisible ? "translateY(0)" : "translateY(-100%)",
-            marginTop: "-1px",
           }}
         >
-          <div className="flex w-full">
+          <div className="flex w-full h-[44px]">
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
-              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 border-r border-zinc-800/40 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
+              className="flex h-full flex-1 items-center justify-center gap-2 border-r border-zinc-800/40 px-4 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300 active:bg-zinc-900/80"
             >
               Refine
               {activeFilterCount > 0 && (
@@ -316,16 +315,10 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setSortOpen(true)}
-              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
+              className="flex h-full flex-1 items-center justify-center gap-2 px-4 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300 active:bg-zinc-900/80"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
-              </button>
-          </div>
-          {/* Mobile product count */}
-          <div className="md:hidden px-4 py-1.5">
-            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-              {paginatedProducts.length} of {filteredProducts.length} products
-            </p>
+            </button>
           </div>
         </header>
 
@@ -349,7 +342,13 @@ export default function FeedClient({ products }) {
           onSortChange={setSelectedSort}
         />
 
-<main className="mx-auto max-w-7xl px-4 pb-24 pt-28 md:pt-32">
+<main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-32">
+          {/* Mobile product count — static, not part of the sticky bar */}
+          <div className="md:hidden px-0 pt-0 pb-3">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+              {filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}
+            </p>
+          </div>
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
