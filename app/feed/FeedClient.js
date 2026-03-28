@@ -297,6 +297,7 @@ export default function FeedClient({ products }) {
           style={{
             top: "var(--nav-height)",
             transform: barVisible ? "translateY(0)" : "translateY(-100%)",
+            marginTop: "-8px",
           }}
         >
           <div className="flex w-full">
