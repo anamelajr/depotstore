@@ -293,12 +293,13 @@ export default function FeedClient({ products }) {
 
         {/* ── MOBILE HEADER (below md) ── */}
         <header
-          className="md:hidden sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300"
-          style={{
-            top: "var(--nav-height)",
-            transform: barVisible ? "translateY(0)" : "translateY(-100%)",
-          }}
-        >
+  className="md:hidden sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300"
+  style={{
+    top: "var(--nav-height)",
+    transform: barVisible ? "translateY(0)" : "translateY(-100%)",
+    marginTop: "-8px",
+  }}
+>
           {/* Search row */}
           <div className="flex items-center gap-3 px-4 pt-0 pb-1">
             <form onSubmit={handleSearchSubmit} className="flex-1">
