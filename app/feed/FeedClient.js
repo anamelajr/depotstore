@@ -303,7 +303,7 @@ export default function FeedClient({ products }) {
           
 
           {/* Refine / Sort bar */}
-          <div className="flex">
+          <div className="flex border-b border-zinc-800/50">
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
@@ -326,7 +326,7 @@ export default function FeedClient({ products }) {
           </div>
 
           {/* Product count */}
-          <div className="px-4 py-1">
+          <div className="px-4 pt-2 pb-1">
             <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
               {filteredProducts.length} products
             </p>
