@@ -300,7 +300,7 @@ export default function FeedClient({ products }) {
           }}
         >
           {/* Search row */}
-          <div className="flex items-center gap-3 px-4 pt-2 pb-1">
+          <div className="flex items-center gap-3 px-4 pt-0 pb-1">
             <form onSubmit={handleSearchSubmit} className="flex-1">
               <input
                 name="search"
