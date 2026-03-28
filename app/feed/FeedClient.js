@@ -302,15 +302,8 @@ export default function FeedClient({ products }) {
 ></header>
           
 
-          {/* Product count */}
-          <div className="px-4 pt-1">
-            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-              {filteredProducts.length} products
-            </p>
-          </div>
-
           {/* Refine / Sort bar */}
-          <div className="flex border-t border-zinc-800/50">
+          <div className="flex">
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
@@ -330,6 +323,13 @@ export default function FeedClient({ products }) {
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
             </button>
+          </div>
+
+          {/* Product count */}
+          <div className="px-4 py-1">
+            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+              {filteredProducts.length} products
+            </p>
           </div>
 
           
