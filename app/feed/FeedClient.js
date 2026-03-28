@@ -299,20 +299,14 @@ export default function FeedClient({ products }) {
     transform: barVisible ? "translateY(0)" : "translateY(-100%)",
     marginTop: "-8px",
   }}
->
-          {/* Search row */}
-          <div className="flex items-center gap-3 px-4 pt-0 pb-1">
-            <form onSubmit={handleSearchSubmit} className="flex-1">
-              <input
-                name="search"
-                type="search"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Search..."
-                className="w-full border-none bg-transparent p-0 font-mono uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
-                style={{ fontSize: "16px", transform: "scale(0.688)", transformOrigin: "left center", width: "145%" }}
-              />
-            </form>
+></header>
+          
+
+          {/* Product count */}
+          <div className="px-4 pt-1">
+            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+              {filteredProducts.length} products
+            </p>
           </div>
 
           {/* Refine / Sort bar */}
@@ -320,7 +314,7 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
+              className="flex flex-1 items-center justify-center gap-2 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
             >
               Refine
               {activeFilterCount > 0 && (
@@ -332,19 +326,13 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setSortOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
+              className="flex flex-1 items-center justify-center gap-2 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
             </button>
           </div>
 
-          {/* Product count */}
-          <div className="px-4 pb-2">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
-              {filteredProducts.length} products
-            </p>
-          </div>
-        </header>
+          
 
         {/* Mobile drawers */}
         <MobileFilterDrawer
