@@ -307,7 +307,7 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
+              className="flex flex-1 items-center justify-center gap-2 py-4 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
             >
               Refine
               {activeFilterCount > 0 && (
@@ -319,14 +319,14 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setSortOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
+              className="flex flex-1 items-center justify-center gap-2 py-4 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
             </button>
           </div>
 
           {/* Product count */}
-          <div className="px-4 pt-2 pb-1">
+          <div className="px-4 pt-2 pb-2">
             <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
               {filteredProducts.length} products
             </p>
