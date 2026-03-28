@@ -319,16 +319,15 @@ export default function FeedClient({ products }) {
               className="flex min-h-[44px] flex-1 items-center justify-center gap-2 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
-            </button>
+              </button>
+          </div>
+          {/* Mobile product count */}
+          <div className="md:hidden px-4 py-1.5">
+            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+              {paginatedProducts.length} of {filteredProducts.length} products
+            </p>
           </div>
         </header>
-
-        {/* Product count */}
-        <div className="px-4 pb-2 pt-4 md:pt-2">
-          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-            {filteredProducts.length} products
-          </p>
-        </div>
 
           
 
@@ -350,7 +349,7 @@ export default function FeedClient({ products }) {
           onSortChange={setSelectedSort}
         />
 
-<main className="mx-auto max-w-7xl px-4 pb-24 pt-16 md:pt-32">
+<main className="mx-auto max-w-7xl px-4 pb-24 pt-6 md:pt-32">
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
