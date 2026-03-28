@@ -3,7 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --nav-height: 51px;
+  --nav-height: 50px;
 }
 
 @theme inline {
@@ -31,4 +31,7 @@ body {
   background: transparent;
   border: none;
   box-shadow: none;
+}
+.store-filter-bar::-webkit-scrollbar {
+  display: none;
 }
