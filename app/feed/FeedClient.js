@@ -291,27 +291,23 @@ export default function FeedClient({ products }) {
           </div>
         </header>
 
-        {/* ── MOBILE HEADER (below md) ── */}
+        {/* ── MOBILE: sticky Refine / Sort (below md) ── */}
         <header
-  className="md:hidden sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300"
-  style={{
-    top: "var(--nav-height)",
-    transform: barVisible ? "translateY(0)" : "translateY(-100%)",
-    marginTop: "-8px",
-  }}
-></header>
-          
-
-          {/* Refine / Sort bar */}
-          <div className="flex border-b border-zinc-800/50">
+          className="md:hidden sticky z-10 border-b border-zinc-800/60 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300 ease-out"
+          style={{
+            top: "var(--nav-height)",
+            transform: barVisible ? "translateY(0)" : "translateY(-100%)",
+          }}
+        >
+          <div className="flex w-full">
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-4 font-mono text-[11px] uppercase tracking-widest text-zinc-400 border-r border-zinc-800/50 active:bg-zinc-900"
+              className="flex min-h-[52px] flex-1 items-center justify-center gap-2 border-r border-zinc-800/40 px-4 py-5 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
             >
               Refine
               {activeFilterCount > 0 && (
-                <span className="rounded-full bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] text-zinc-950">
+                <span className="rounded-full bg-zinc-50 px-2 py-0.5 font-mono text-[10px] leading-none text-zinc-950">
                   {activeFilterCount}
                 </span>
               )}
@@ -319,18 +315,19 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setSortOpen(true)}
-              className="flex flex-1 items-center justify-center gap-2 py-4 font-mono text-[11px] uppercase tracking-widest text-zinc-400 active:bg-zinc-900"
+              className="flex min-h-[52px] flex-1 items-center justify-center gap-2 px-4 py-5 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
             </button>
           </div>
+        </header>
 
-          {/* Product count */}
-          <div className="px-4 pt-2 pb-2">
-            <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
-              {filteredProducts.length} products
-            </p>
-          </div>
+        {/* Product count */}
+        <div className="px-4 pb-2 pt-4 md:pt-2">
+          <p className="font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+            {filteredProducts.length} products
+          </p>
+        </div>
 
           
 
