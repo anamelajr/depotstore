@@ -297,14 +297,14 @@ export default function FeedClient({ products }) {
           style={{
             top: "var(--nav-height)",
             transform: barVisible ? "translateY(0)" : "translateY(-100%)",
-            marginTop: "-20px",
+            marginTop: "-40px",
           }}
         >
           <div className="flex w-full">
             <button
               type="button"
               onPointerDown={() => setFilterOpen(true)}
-              className="flex min-h-[52px] flex-1 items-center justify-center gap-2 border-r border-zinc-800/40 px-4 py-5 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 border-r border-zinc-800/40 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
             >
               Refine
               {activeFilterCount > 0 && (
@@ -316,7 +316,7 @@ export default function FeedClient({ products }) {
             <button
               type="button"
               onPointerDown={() => setSortOpen(true)}
-              className="flex min-h-[52px] flex-1 items-center justify-center gap-2 px-4 py-5 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.2em] text-zinc-300 transition-colors active:bg-zinc-900/80"
             >
               {selectedSort !== "latest" ? activeSortLabel : "Sort"}
             </button>
