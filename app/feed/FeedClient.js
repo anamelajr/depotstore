@@ -350,7 +350,7 @@ export default function FeedClient({ products }) {
           onSortChange={setSelectedSort}
         />
 
-<main className="mx-auto max-w-7xl px-4 pb-24 pt-20 md:pt-32">
+<main className="mx-auto max-w-7xl px-4 pb-24 pt-4 md:pt-32">
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…
