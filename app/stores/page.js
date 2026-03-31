@@ -16,7 +16,7 @@ const STORES = [
 
 async function getPieceCounts() {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/api/products`, { cache: "no-store" });
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/api/products`, { next: { revalidate: 3600 } });
     if (!res.ok) return {};
     const products = await res.json();
     const counts = {};
