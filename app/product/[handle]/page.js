@@ -89,11 +89,11 @@ const available = availableParam !== "false";
                   key={i}
                   src={src}
                   alt={product.title}
-                  className="w-full rounded-2xl object-cover"
+                  className="w-full object-cover"
                 />
               ))
             ) : (
-              <div className="aspect-[4/5] rounded-2xl bg-zinc-900 flex items-center justify-center text-zinc-600 text-sm">
+              <div className="aspect-[4/5] bg-zinc-900 flex items-center justify-center text-zinc-600 text-sm">
                 No image
               </div>
             )}
