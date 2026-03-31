@@ -10,6 +10,8 @@ const STORES = [
   { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
   { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
   { storeName: "dot COMME", displayName: "dot COMME", location: "Le Marais" },
+  { storeName: "ESCO", displayName: "ESCO", location: "Paris" },
+{ storeName: "Grain de sell", displayName: "Grain de sell", location: "Paris" },
 ];
 
 async function getPieceCounts() {
