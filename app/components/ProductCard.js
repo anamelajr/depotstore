@@ -35,8 +35,8 @@ export default function ProductCard({ product }) {
   };
 
   const card = (
-    <div className="group rounded-2xl focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
-      <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-zinc-950">
+    <div className="group focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
+      <div className="relative aspect-[4/5] overflow-hidden bg-zinc-950">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -71,7 +71,7 @@ export default function ProductCard({ product }) {
 
           {storeName ? (
             <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 text-[11px] font-mono text-zinc-500 max-w-[120px] truncate">
-              {badgeName}
+              {badgeName.toUpperCase()}
             </span>
           ) : null}
         </div>
