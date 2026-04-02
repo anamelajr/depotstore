@@ -91,18 +91,28 @@ function normalizeProduct(product, store) {
 }
 
 async function fetchStoreProducts(store) {
-  const url = store.domain === "www.dotcomme.net"
-    ? "https://www.dotcomme.net/collections/paris/products.json?limit=250"
-    : `https://${store.domain}/products.json?limit=250`;
-  
-  const res = await fetch(url, { next: { revalidate: 300 } });
-  if (!res.ok) {
-    console.error(`Failed fetching ${store.domain}: ${res.status} ${res.statusText}`);
-    return [];
+  const base = store.domain === "www.dotcomme.net"
+    ? "https://www.dotcomme.net/collections/paris/products.json"
+    : `https://${store.domain}/products.json`;
+
+  const allProducts = [];
+  let page = 1;
+  while (true) {
+    const url = `${base}?limit=250&page=${page}`;
+    const res = await fetch(url, { next: { revalidate: 300 } });
+    if (!res.ok) {
+      console.error(`Failed fetching ${store.domain} page ${page}: ${res.status} ${res.statusText}`);
+      break;
+    }
+    const data = await res.json();
+    const batch = Array.isArray(data?.products) ? data.products : [];
+    if (batch.length === 0) break;
+    allProducts.push(...batch);
+    if (batch.length < 250) break;
+    page++;
   }
-  const data = await res.json();
-  const products = Array.isArray(data?.products) ? data.products : [];
-  const normalized = products.map((p) => normalizeProduct(p, store)).filter(Boolean);
+
+  const normalized = allProducts.map((p) => normalizeProduct(p, store)).filter(Boolean);
   const cleaned = await Promise.all(
     normalized.map(async (p) => {
       const result = await cleanTitle(p);
