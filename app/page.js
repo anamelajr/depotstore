@@ -18,7 +18,7 @@ const shuffled = [...products].sort((a, b) => {
   const hashB = ((b.productUrl ?? "").split("").reduce((acc, c) => acc + c.charCodeAt(0), seed)) % 1000;
   return hashA - hashB;
 });
-const recentProducts = shuffled.slice(0, 8);
+const recentProducts = shuffled.filter(p => p.available).slice(0, 8);
 
   return (
     <div className="min-h-screen font-mono antialiased">
