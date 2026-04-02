@@ -106,15 +106,16 @@ async function fetchStoreProducts(store) {
   const cleaned = await Promise.all(
     normalized.map(async (p) => {
       const result = await cleanTitle(p);
-      let brand = null;
-      let title = p.name;
-      try {
-        const parsed = JSON.parse(result);
-        brand = parsed.brand ?? null;
-        title = parsed.title ?? p.name;
-      } catch {
-        title = result ?? p.name;
-      }
+let brand = null;
+let title = p.name;
+try {
+  const clean = result.replace(/```json|```/g, "").trim();
+  const parsed = JSON.parse(clean);
+  brand = parsed.brand ?? null;
+  title = parsed.title ?? p.name;
+} catch {
+  title = result ?? p.name;
+}
       return { ...p, brand, title };
     })
   );
