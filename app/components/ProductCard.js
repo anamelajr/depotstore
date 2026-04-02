@@ -6,6 +6,8 @@ import Link from "next/link";
 export default function ProductCard({ product }) {
   const {
     name,
+    title,
+    brand,
     price: rawPrice,
     imageUrl,
     storeName,
@@ -13,7 +15,6 @@ export default function ProductCard({ product }) {
     available,
     handle,
     storeDomain,
-    vendor,
   } = product ?? {};
   const price = rawPrice?.replace(/\.00$/, "") ?? null;
   const SHORT_NAMES = {
@@ -21,6 +22,7 @@ export default function ProductCard({ product }) {
     "Numero 13 Vintage": "Numero 13",
   };
   const badgeName = SHORT_NAMES[storeName] ?? storeName;
+  const displayTitle = title ?? name ?? "Untitled";
   const isSold = !available;
 
   const internalUrl = handle && storeDomain
@@ -30,7 +32,7 @@ export default function ProductCard({ product }) {
   const handleClick = () => {
     track("product_click", {
       storeName: storeName ?? null,
-      productName: name ?? null,
+      productName: displayTitle ?? null,
       productUrl: productUrl ?? null,
     });
   };
@@ -42,7 +44,7 @@ export default function ProductCard({ product }) {
         {imageUrl ? (
           <img
             src={imageUrl}
-            alt={name ?? "Product image"}
+            alt={displayTitle}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
             loading="lazy"
           />
@@ -62,15 +64,15 @@ export default function ProductCard({ product }) {
 
       {/* Info */}
       <div className="mt-4">
-        {/* Mobile (below md): stacked, price + store on one line */}
+        {/* Mobile */}
         <div className="md:hidden">
-          {vendor ? (
+          {brand ? (
             <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
-              {vendor}
+              {brand}
             </div>
           ) : null}
-          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${vendor ? " mt-0.5" : ""}`}>
-            {name ?? "Untitled"}
+          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
+            {displayTitle}
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2">
             <div className="font-mono text-[12px] text-zinc-200">
@@ -78,22 +80,22 @@ export default function ProductCard({ product }) {
             </div>
             {storeName ? (
               <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-500 whitespace-nowrap">
-              {badgeName}
-            </span>
+                {badgeName}
+              </span>
             ) : null}
           </div>
         </div>
 
-        {/* Desktop (md+): vendor+title left, price+store right */}
+        {/* Desktop */}
         <div className="hidden md:flex md:justify-between md:gap-4">
           <div className="flex flex-col min-w-0">
-            {vendor ? (
+            {brand ? (
               <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
-                {vendor}
+                {brand}
               </div>
             ) : null}
-            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${vendor ? " mt-0.5" : ""}`}>
-              {name ?? "Untitled"}
+            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
+              {displayTitle}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-between">
@@ -102,8 +104,8 @@ export default function ProductCard({ product }) {
             </div>
             {storeName ? (
               <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-500 whitespace-nowrap">
-              {badgeName}
-            </span>
+                {badgeName}
+              </span>
             ) : null}
           </div>
         </div>

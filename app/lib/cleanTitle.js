@@ -9,7 +9,7 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const CACHE_VERSION = "v5";
+  const CACHE_VERSION = "v6";
 const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
@@ -37,25 +37,24 @@ const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
         messages: [
           {
             role: "user",
-            content: `You are formatting vintage fashion product titles for an editorial platform.
+            content: `You are extracting and formatting vintage fashion product data for an editorial platform.
 
-OUTPUT FORMAT: BRAND — Description in sentence case
-Example input: "Comme des Garçons HOMME 2000s Wool Tartan Scarf"
-Example output: COMME DES GARÇONS HOMME — Wool tartan scarf 2000s
-Bad example (too long): ALEXANDER McQUEEN — Sheer midi dress with hand embroidered beading and floral lace
-Good example: ALEXANDER McQUEEN — Embroidered midi dress
+Return ONLY a JSON object in this exact format, nothing else:
+{"brand": "BRAND NAME IN ALL CAPS", "title": "Title Case Description"}
 
-Rules:
-- Identify the brand from: the title itself, vendor field, tags, or description
-- Brand goes first in ALL CAPS, then em dash, then description in sentence case
-- Keep titles short — brand, item type, and ONE key detail maximum (e.g. color, fabric, or silhouette)
-- Season/era codes always go at the end with a space, no comma (e.g. FW21, SS03, 2000s, 1990s)
-- Never describe construction details, embellishments, or multiple features — that belongs in the description
-- Remove parenthetical tags like (new arrival) (runway) (sale)
-- Remove "by [designer name]" suffix credits
-- Do not repeat the brand name in the description
-- If truly no brand identifiable from any source, return description in sentence case only
-- Return ONLY the formatted title, nothing else
+Rules for brand:
+- Extract the brand from the title itself first — it is almost always at the start
+- Brand must be in ALL CAPS (e.g. "RICK OWENS", "COMME DES GARÇONS", "JUNYA WATANABE")
+- Never use the store/vendor name as the brand (ignore if vendor is "L'Obscur", "Dolce Vita Hub", "yourgarmentz", "Numero 13 Vintage", "Les Archives Paris", "at dawn paris", "Nuovo Paris", "dot COMME", "ESCO", "Grain de Sell", "Seys Wardrobe")
+- If truly no brand identifiable, use empty string ""
+
+Rules for title:
+- Title case — first letter of every word capitalised (e.g. "Long Parka FW11", "Wool Tartan Scarf 2000s")
+- Remove the brand name from the title entirely
+- Keep item type and ONE key detail maximum (colour, fabric, or silhouette)
+- Season/era codes always at the end (e.g. FW11, SS03, 2000s)
+- Remove parenthetical tags like (New Arrival) (Runway) (Sale)
+- Keep it short — maximum 6 words
 
 Title: ${rawTitle}
 Vendor: ${vendor ?? "unknown"}

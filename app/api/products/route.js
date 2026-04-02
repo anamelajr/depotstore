@@ -103,13 +103,22 @@ async function fetchStoreProducts(store) {
   const data = await res.json();
   const products = Array.isArray(data?.products) ? data.products : [];
   const normalized = products.map((p) => normalizeProduct(p, store)).filter(Boolean);
-const cleaned = await Promise.all(
-  normalized.map(async (p) => ({
-    ...p,
-    name: await cleanTitle(p),
-  }))
-);
-return cleaned;
+  const cleaned = await Promise.all(
+    normalized.map(async (p) => {
+      const result = await cleanTitle(p);
+      let brand = null;
+      let title = p.name;
+      try {
+        const parsed = JSON.parse(result);
+        brand = parsed.brand ?? null;
+        title = parsed.title ?? p.name;
+      } catch {
+        title = result ?? p.name;
+      }
+      return { ...p, brand, title };
+    })
+  );
+  return cleaned;
 }
 
 export async function GET() {
