@@ -142,26 +142,37 @@ async function fetchStoreProducts(store) {
   return products.map((p) => normalizeProduct(p, store)).filter(Boolean);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function callClaude(content, maxTokens) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content }],
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 120)}`);
+  while (true) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content }],
+      }),
+    });
+    if (res.status === 429) {
+      process.stdout.write(" [429, retrying in 5s]");
+      await sleep(5000);
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 120)}`);
+    }
+    const data = await res.json();
+    return data?.content?.[0]?.text?.trim() ?? null;
   }
-  const data = await res.json();
-  return data?.content?.[0]?.text?.trim() ?? null;
 }
 
 async function prewarmProduct(product) {
@@ -238,19 +249,6 @@ Description from store: ${description ? description.slice(0, 500) : "none"}`,
   return { skipped: false };
 }
 
-async function runWithConcurrency(concurrency, tasks) {
-  let idx = 0;
-  async function worker() {
-    while (idx < tasks.length) {
-      const i = idx++;
-      await tasks[i]();
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, tasks.length) }, worker)
-  );
-}
-
 async function main() {
   console.log("Prewarming Redis cache...\n");
   const startTime = Date.now();
@@ -273,7 +271,7 @@ async function main() {
     let storeSkipped = 0;
     let storeFailed = 0;
 
-    const tasks = products.map((product) => async () => {
+    for (const product of products) {
       try {
         const { skipped } = await prewarmProduct(product);
         if (skipped) {
@@ -281,14 +279,14 @@ async function main() {
         } else {
           storeProcessed++;
           process.stdout.write(".");
+          // 1.5s between processed products → ~40 RPM (2 calls each)
+          await sleep(1500);
         }
       } catch (e) {
         storeFailed++;
         console.error(`\n  [error] "${product.name}": ${e.message}`);
       }
-    });
-
-    await runWithConcurrency(20, tasks);
+    }
 
     if (storeProcessed > 0) process.stdout.write("\n");
     console.log(
