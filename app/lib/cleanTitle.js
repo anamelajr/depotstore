@@ -9,7 +9,7 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const CACHE_VERSION = "v6";
+  const CACHE_VERSION = "v7";
 const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
@@ -45,8 +45,9 @@ Return ONLY a JSON object in this exact format, nothing else:
 Rules for brand:
 - Extract the brand from the title itself first — it is almost always at the start
 - Brand must be in ALL CAPS (e.g. "RICK OWENS", "COMME DES GARÇONS", "JUNYA WATANABE")
-- Never use the store/vendor name as the brand (ignore if vendor is "L'Obscur", "Dolce Vita Hub", "yourgarmentz", "Numero 13 Vintage", "Les Archives Paris", "at dawn paris", "Nuovo Paris", "dot COMME", "ESCO", "Grain de Sell", "Seys Wardrobe")
-- If truly no brand identifiable, use empty string ""
+- The vendor field sometimes contains the real brand name — use it if the title has no clear brand signal
+- Only ignore the vendor field if it exactly matches one of these store names: "L'Obscur", "Dolce Vita Hub", "yourgarmentz", "Numero 13 Vintage", "Les Archives Paris", "at dawn paris", "Nuovo Paris", "dot COMME", "ESCO", "Grain de Sell", "Seys Wardrobe", "VINTAGE"
+- Never hallucinate a brand — if truly no brand identifiable from title or vendor, return empty string ""
 
 Rules for title:
 - Title case — first letter of every word capitalised (e.g. "Long Parka FW11", "Wool Tartan Scarf 2000s")
