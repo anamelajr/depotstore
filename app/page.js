@@ -12,19 +12,13 @@ export default async function Home() {
   } catch {
     // ignore
   }
-  const allStores = [...new Set(products.map(p => p.storeName).filter(Boolean))];
-  const dayIndex = Math.floor(Date.now() / 86400000) % allStores.length;
-  const excludedStore = allStores[dayIndex % allStores.length];
-
-  const recentProducts = allStores
-    .filter(store => store !== excludedStore)
-    .map(store => {
-      return [...products]
-        .filter(p => p.storeName === store && p.createdAt)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
-    })
-    .filter(Boolean)
-    .slice(0, 8);
+  const seed = Math.floor(Date.now() / 86400000); // changes once per day
+const shuffled = [...products].sort((a, b) => {
+  const hashA = ((a.productUrl ?? "").split("").reduce((acc, c) => acc + c.charCodeAt(0), seed)) % 1000;
+  const hashB = ((b.productUrl ?? "").split("").reduce((acc, c) => acc + c.charCodeAt(0), seed)) % 1000;
+  return hashA - hashB;
+});
+const recentProducts = shuffled.slice(0, 8);
 
   return (
     <div className="min-h-screen font-mono antialiased">
