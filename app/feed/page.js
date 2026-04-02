@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import FeedClient from "./FeedClient";
 
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
 async function getProducts() {
   try {
