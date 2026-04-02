@@ -3,6 +3,8 @@ import ProductCard from "./components/ProductCard";
 import NewsletterForm from "./components/NewsletterForm";
 import ParisMap from "./components/ParisMap";
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   let products = [];
   try {
