@@ -90,6 +90,10 @@ function normalizeProduct(product, store) {
   };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchStoreProducts(store) {
   const base = store.domain === "www.dotcomme.net"
     ? "https://www.dotcomme.net/collections/paris/products.json"
@@ -110,6 +114,7 @@ async function fetchStoreProducts(store) {
     allProducts.push(...batch);
     if (batch.length < 250) break;
     page++;
+    await sleep(500);
   }
 
   const normalized = allProducts.map((p) => normalizeProduct(p, store)).filter(Boolean);
@@ -133,15 +138,15 @@ try {
 }
 
 export async function GET() {
-  const results = await Promise.allSettled(STORES.map((s) => fetchStoreProducts(s)));
-
   const normalized = [];
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      normalized.push(...r.value);
-    } else {
-      console.error(r.reason);
+  for (let i = 0; i < STORES.length; i++) {
+    try {
+      const products = await fetchStoreProducts(STORES[i]);
+      normalized.push(...products);
+    } catch (e) {
+      console.error(e);
     }
+    if (i < STORES.length - 1) await sleep(1000);
   }
 
   return Response.json(normalized);
