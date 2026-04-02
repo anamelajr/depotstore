@@ -13,6 +13,7 @@ export default function ProductCard({ product }) {
     available,
     handle,
     storeDomain,
+    vendor,
   } = product ?? {};
   const price = rawPrice?.replace(/\.00$/, "") ?? null;
   const SHORT_NAMES = {
@@ -23,8 +24,8 @@ export default function ProductCard({ product }) {
   const isSold = !available;
 
   const internalUrl = handle && storeDomain
-  ? `/product/${handle}?store=${storeDomain}&available=${!isSold}`
-  : null;
+    ? `/product/${handle}?store=${storeDomain}&available=${!isSold}`
+    : null;
 
   const handleClick = () => {
     track("product_click", {
@@ -36,6 +37,7 @@ export default function ProductCard({ product }) {
 
   const card = (
     <div className="group focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
+      {/* Image */}
       <div className="relative aspect-[4/5] overflow-hidden bg-zinc-950">
         {imageUrl ? (
           <img
@@ -49,7 +51,6 @@ export default function ProductCard({ product }) {
             No image
           </div>
         )}
-
         {isSold ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/45">
             <div className="text-[11px] font-mono uppercase tracking-widest text-white">
@@ -59,21 +60,52 @@ export default function ProductCard({ product }) {
         ) : null}
       </div>
 
-      <div className="mt-5 flex flex-col">
-        <div className="text-sm font-sans font-medium tracking-tight text-zinc-50 line-clamp-2 min-h-[40px]">
-          {name ?? "Untitled"}
+      {/* Info */}
+      <div className="mt-4">
+        {/* Mobile (below md): stacked, price + store on one line */}
+        <div className="md:hidden">
+          {vendor ? (
+            <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
+              {vendor}
+            </div>
+          ) : null}
+          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${vendor ? " mt-0.5" : ""}`}>
+            {name ?? "Untitled"}
+          </div>
+          <div className="mt-2 flex items-baseline justify-between gap-2">
+            <div className="font-mono text-[12px] text-zinc-200">
+              {price ?? "—"}
+            </div>
+            {storeName ? (
+              <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-600 text-right">
+                {badgeName}
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-4">
-          <div className="text-xs font-mono text-zinc-300">
-            {price ?? "—"}
+        {/* Desktop (md+): vendor+title left, price+store right */}
+        <div className="hidden md:flex md:justify-between md:gap-4">
+          <div className="flex flex-col min-w-0">
+            {vendor ? (
+              <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
+                {vendor}
+              </div>
+            ) : null}
+            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${vendor ? " mt-0.5" : ""}`}>
+              {name ?? "Untitled"}
+            </div>
           </div>
-
-          {storeName ? (
-            <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 text-[11px] font-mono text-zinc-500 max-w-[120px] truncate">
-              {badgeName.toUpperCase()}
-            </span>
-          ) : null}
+          <div className="flex shrink-0 flex-col items-end justify-between">
+            <div className="font-mono text-[12px] text-zinc-200 whitespace-nowrap">
+              {price ?? "—"}
+            </div>
+            {storeName ? (
+              <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-600 whitespace-nowrap">
+                {badgeName}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
