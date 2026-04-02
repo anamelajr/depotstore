@@ -1,4 +1,6 @@
 import { cleanTitle } from "../../lib/cleanTitle.js";
+
+export const dynamic = 'force-dynamic';
 const STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
   { domain: "dolcevitahub.com", storeName: "Dolce Vita Hub" },
