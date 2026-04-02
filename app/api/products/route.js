@@ -151,6 +151,10 @@ export async function GET() {
     }
   }
 
-  return Response.json(normalized);
+  const slim = normalized.map(({ name, title, brand, price, imageUrl, storeName, storeDomain, productUrl, available, handle }) => ({
+    name, title, brand, price, imageUrl, storeName, storeDomain, productUrl, available, handle,
+  }));
+
+  return Response.json(slim);
 }
 

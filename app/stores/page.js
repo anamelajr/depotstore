@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic';
+
 const STORES = [
   { storeName: "L'OBSCUR", displayName: "L'Obscur", location: "Le Marais" },
   { storeName: "Dolce Vita Hub", displayName: "Dolce Vita Hub", location: "Le Marais" },
