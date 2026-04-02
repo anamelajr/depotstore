@@ -3,10 +3,13 @@
   "configurations": [
     {
       "name": "Next.js dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["/Users/anamelanyambe/archiveapp/node_modules/.bin/next", "dev", "--webpack"],
       "port": 3000,
-      "autoPort": true
+      "autoPort": true,
+      "env": {
+        "PATH": "/usr/local/bin:/usr/bin:/bin"
+      }
     }
   ]
 }
