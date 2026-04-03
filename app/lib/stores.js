@@ -2,6 +2,7 @@ import { cleanTitle } from "./cleanTitle.js";
 import BRANDS from "../brands.js";
 
 const BRAND_SET = new Set(BRANDS.map((b) => b.toLowerCase()));
+const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
 export const STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
@@ -150,8 +151,8 @@ export async function fetchStoreProducts(store) {
         title = result ?? p.name;
       }
 
-      // Brand filter — skip products whose brand is not in the allowlist
-      if (brand && !BRAND_SET.has(brand.toLowerCase())) return null;
+     // Brand filter — only applied to specific stores
+if (FILTER_BY_BRAND.has(store.domain) && brand && !BRAND_SET.has(brand.toLowerCase())) return null;
 
       const category = assignCategory(p);
 
