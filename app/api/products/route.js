@@ -24,8 +24,8 @@ export async function GET(request) {
   if (search) query = query.ilike("title", `%${search}%`);
 
   query = sort === "oldest"
-    ? query.order("synced_at", { ascending: true })
-    : query.order("synced_at", { ascending: false });
+  ? query.order("synced_at", { ascending: true }).order("id", { ascending: true })
+  : query.order("synced_at", { ascending: false }).order("id", { ascending: false });
 
   const { data, count, error } = await query;
 
