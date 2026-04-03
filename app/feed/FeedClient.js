@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProductCard from "../components/ProductCard";
@@ -8,8 +8,10 @@ import StoreFilterBar from "../components/StoreFilterBar";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
 import { SORT_OPTIONS } from "../components/MobileSortSheet";
-import { ALL_STORES_VALUE, PAGE_SIZE } from "../lib/feed-utils";
+import { ALL_STORES_VALUE } from "../lib/feed-utils";
 import { STORES } from "../lib/stores";
+
+const LOAD_SIZE = 30;
 
 const CATEGORY_LABELS = {
   tops: "Tops",
@@ -40,11 +42,10 @@ export default function FeedClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // URL-derived state
+  // URL-derived filter state (no page in URL anymore)
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const urlCategories = searchParams.getAll("category");
-  const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const urlSort = searchParams.get("sort") || "latest";
 
   // Local state for instant UI feedback
@@ -61,43 +62,42 @@ export default function FeedClient() {
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
-  // Scroll restore refs (back-navigation)
+  // Load More: offset to fetch next batch from (null = idle)
+  const [loadMoreOffset, setLoadMoreOffset] = useState(null);
+
+  // Scroll restore refs
   const scrollRestoreY = useRef(null);
   const scrollRestorePending = useRef(false);
+  // How many products to load on first fetch when restoring (null = normal LOAD_SIZE)
+  const restoreCountRef = useRef(null);
 
-  // On mount: check sessionStorage for back-navigation scroll restore
+  // On mount: check sessionStorage for back-navigation scroll restore.
+  // Runs before the filter fetch effect so restoreCountRef is set in time.
   useEffect(() => {
     const savedScroll = sessionStorage.getItem("depot_feed_scroll");
-    const savedPage = sessionStorage.getItem("depot_feed_page");
-    if (savedScroll === null || savedPage === null) return;
+    const savedCount = sessionStorage.getItem("depot_feed_count");
+    if (savedScroll === null || savedCount === null) return;
 
-    scrollRestoreY.current = parseInt(savedScroll, 10);
-    scrollRestorePending.current = true;
-
-    const targetPage = parseInt(savedPage, 10);
-    const currentPageFromUrl = Math.max(
-      1,
-      parseInt(new URLSearchParams(window.location.search).get("page") || "1", 10)
-    );
-    if (targetPage !== currentPageFromUrl) {
-      const params = new URLSearchParams(window.location.search);
-      if (targetPage === 1) params.delete("page");
-      else params.set("page", String(targetPage));
-      const q = params.toString();
-      router.replace(`/feed${q ? `?${q}` : ""}`);
+    const count = parseInt(savedCount, 10);
+    const y = parseInt(savedScroll, 10);
+    if (count > 0) {
+      scrollRestoreY.current = y;
+      scrollRestorePending.current = true;
+      restoreCountRef.current = Math.min(count, 100); // API caps limit at 100
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // After products for the restored page are loaded, scroll to saved position
+  // After the restore batch is loaded and rendered, jump to the saved position.
   useEffect(() => {
     if (!scrollRestorePending.current || loading || products.length === 0) return;
     scrollRestorePending.current = false;
     const y = scrollRestoreY.current;
     scrollRestoreY.current = null;
     sessionStorage.removeItem("depot_feed_scroll");
-    sessionStorage.removeItem("depot_feed_page");
+    sessionStorage.removeItem("depot_feed_count");
     requestAnimationFrame(() => window.scrollTo(0, y));
   }, [loading, products]);
 
@@ -136,33 +136,35 @@ export default function FeedClient() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    setLocalStore(selectedStore);
-  }, [selectedStore]);
+  useEffect(() => { setLocalStore(selectedStore); }, [selectedStore]);
+  useEffect(() => { setInputValue(searchQuery); }, [searchQuery]);
+  useEffect(() => { setSelectedSort(urlSort); }, [urlSort]);
 
-  useEffect(() => {
-    setInputValue(searchQuery);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    setSelectedSort(urlSort);
-  }, [urlSort]);
-
-  // ── Fetch products from API whenever URL params change ──
+  // ── Filter key — changes whenever filters/sort/search change ──
   const categoriesKey = urlCategories.join(",");
+  const filterKey = `${selectedStore}|${categoriesKey}|${searchQuery}|${urlSort}`;
+
+  // ── Initial / reset fetch ──
+  // Runs on mount and whenever filterKey changes.
+  // On mount it respects restoreCountRef (set above) for back-nav restore.
+  // On filter change it cancels any in-flight Load More and resets state.
   useEffect(() => {
+    setLoadMoreOffset(null); // cancel any pending Load More for the old filter
+
+    const limit = restoreCountRef.current !== null ? restoreCountRef.current : LOAD_SIZE;
+    restoreCountRef.current = null; // consume
+
     const controller = new AbortController();
     setLoading(true);
+    setError(null);
 
     const params = new URLSearchParams();
-    params.set("page", String(rawPage));
-    params.set("limit", String(PAGE_SIZE));
+    params.set("page", "1");
+    params.set("limit", String(limit));
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
-    if (urlSort && urlSort !== "latest") {
-      params.set("sort", SORT_MAP[urlSort] || "newest");
-    }
+    if (urlSort && urlSort !== "latest") params.set("sort", SORT_MAP[urlSort] || "newest");
 
     fetch(`/api/products?${params}`, { signal: controller.signal })
       .then((res) => {
@@ -184,39 +186,53 @@ export default function FeedClient() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [rawPage, selectedStore, categoriesKey, searchQuery, urlSort]);
+  }, [filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Pagination ──
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const currentPage = Math.min(rawPage, totalPages);
+  // ── Load More fetch ──
+  // Fetches the next LOAD_SIZE products at loadMoreOffset and appends them.
+  // Aborted automatically when loadMoreOffset resets to null (filter change).
+  useEffect(() => {
+    if (loadMoreOffset === null) return;
 
-  const paginationItems = useMemo(() => {
-    if (totalPages <= 1) return [];
-    const pages = new Set([1, totalPages]);
-    for (let p = currentPage - 2; p <= currentPage + 2; p++) {
-      if (p >= 1 && p <= totalPages) pages.add(p);
-    }
-    const sorted = Array.from(pages).sort((a, b) => a - b);
-    const items = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const p = sorted[i];
-      const prev = sorted[i - 1];
-      if (i > 0 && p - prev > 1) items.push("…");
-      items.push(p);
-    }
-    return items;
-  }, [currentPage, totalPages]);
+    const controller = new AbortController();
+    setLoadingMore(true);
+
+    const page = Math.floor(loadMoreOffset / LOAD_SIZE) + 1;
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", String(LOAD_SIZE));
+    if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
+    if (categoriesKey) params.set("category", categoriesKey);
+    if (searchQuery) params.set("search", searchQuery);
+    if (urlSort && urlSort !== "latest") params.set("sort", SORT_MAP[urlSort] || "newest");
+
+    fetch(`/api/products?${params}`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      })
+      .then((data) => {
+        setProducts((prev) => [...prev, ...(data.products || [])]);
+        setTotal(data.total ?? 0);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setError("Failed to load products.");
+        }
+      })
+      .finally(() => setLoadingMore(false));
+
+    return () => controller.abort();
+  }, [loadMoreOffset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── URL builders & handlers ──
-  const buildFeedUrl = useCallback((updates, resetPage = false) => {
+  const buildFeedUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (resetPage) params.delete("page");
+    params.delete("page");
     Object.entries(updates || {}).forEach(([k, v]) => {
       if (k === "category") {
         params.delete("category");
-        if (Array.isArray(v)) {
-          v.forEach((cat) => params.append("category", cat));
-        }
+        if (Array.isArray(v)) v.forEach((cat) => params.append("category", cat));
       } else {
         if (v == null || v === "" || v === ALL_STORES_VALUE) params.delete(k);
         else params.set(k, String(v));
@@ -228,7 +244,7 @@ export default function FeedClient() {
 
   const handleStoreChange = useCallback((v) => {
     setLocalStore(v);
-    router.push(buildFeedUrl({ store: v }, true));
+    router.push(buildFeedUrl({ store: v }));
   }, [router, buildFeedUrl]);
 
   const handleToggleCategory = useCallback((cat) => {
@@ -254,15 +270,9 @@ export default function FeedClient() {
   const handleSearchSubmit = useCallback((e) => {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (localStore && localStore !== ALL_STORES_VALUE) {
-      params.set("store", localStore);
-    }
-    if (inputValue.trim()) {
-      params.set("search", inputValue.trim());
-    }
-    if (selectedSort !== "latest") {
-      params.set("sort", selectedSort);
-    }
+    if (localStore && localStore !== ALL_STORES_VALUE) params.set("store", localStore);
+    if (inputValue.trim()) params.set("search", inputValue.trim());
+    if (selectedSort !== "latest") params.set("sort", selectedSort);
     const q = params.toString();
     router.push(`/feed${q ? `?${q}` : ""}`);
   }, [inputValue, localStore, selectedSort, router]);
@@ -278,8 +288,13 @@ export default function FeedClient() {
     router.replace(`/feed${q ? `?${q}` : ""}`);
   }, [searchParams, router]);
 
+  const handleLoadMore = useCallback(() => {
+    setLoadMoreOffset(products.length);
+  }, [products.length]);
+
   const activeFilterCount = localCategories.length + (localStore !== ALL_STORES_VALUE ? 1 : 0);
   const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
+  const hasMore = !loading && products.length < total;
 
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-hidden">
@@ -287,7 +302,7 @@ export default function FeedClient() {
 
         {/* ── DESKTOP HEADER (md and above) ── */}
         <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "var(--nav-height)", marginTop: "-24px" }}>
-        <div className="mx-auto max-w-7xl space-y-2 px-4 pt-0 pb-2">
+          <div className="mx-auto max-w-7xl space-y-3 px-4 pt-0 pb-4">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1 space-y-1">
                 <h1 className="font-serif text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl" style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}>
@@ -336,9 +351,6 @@ export default function FeedClient() {
                 ))}
               </div>
             )}
-            <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              {loading ? "LOADING…" : `SHOWING ${products.length} OF ${total} PRODUCTS`}
-            </p>
           </div>
         </header>
 
@@ -391,8 +403,8 @@ export default function FeedClient() {
           onSortChange={handleSortChange}
         />
 
-<main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-32">
-          {/* Mobile product count — static, not part of the sticky bar */}
+        <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-32">
+          {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
               {loading ? "Loading…" : `${total} ${total === 1 ? "product" : "products"}`}
@@ -418,48 +430,28 @@ export default function FeedClient() {
                     key={`${p.productUrl ?? "unknown"}-${p.name}`}
                     onClick={() => {
                       sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
-                      sessionStorage.setItem("depot_feed_page", String(currentPage));
+                      sessionStorage.setItem("depot_feed_count", String(products.length));
                     }}
                   >
                     <ProductCard product={p} />
                   </div>
                 ))}
               </div>
-              {totalPages > 1 && (
-                <div className="flex justify-center gap-3 pt-2">
-                  <Link
-                    href={currentPage <= 1 ? "#" : buildFeedUrl({ page: currentPage - 1 }, false)}
-                    className={`font-mono text-xs uppercase tracking-widest transition-colors ${
-                      currentPage <= 1 ? "cursor-not-allowed text-zinc-600" : "text-zinc-500 hover:text-zinc-200"
-                    }`}
+              <div className="flex flex-col items-center gap-4 pt-10">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+                  {products.length.toLocaleString()} of {total.toLocaleString()} products
+                </p>
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="w-full border border-zinc-700 py-4 px-6 font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-400 transition-all duration-200 hover:border-zinc-400 hover:text-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed active:bg-zinc-900/40"
                   >
-                    ←
-                  </Link>
-                  {paginationItems.map((item, idx) =>
-                    item === "…" ? (
-                      <span key={`ellipsis-${idx}`} className="font-mono text-xs uppercase tracking-widest text-zinc-600">…</span>
-                    ) : (
-                      <Link
-                        key={item}
-                        href={buildFeedUrl({ page: item }, false)}
-                        className={`font-mono text-xs uppercase tracking-widest transition-colors ${
-                          item === currentPage ? "text-zinc-50 underline decoration-zinc-700 underline-offset-4" : "text-zinc-500 hover:text-zinc-200"
-                        }`}
-                      >
-                        {item}
-                      </Link>
-                    )
-                  )}
-                  <Link
-                    href={currentPage >= totalPages ? "#" : buildFeedUrl({ page: currentPage + 1 }, false)}
-                    className={`font-mono text-xs uppercase tracking-widest transition-colors ${
-                      currentPage >= totalPages ? "cursor-not-allowed text-zinc-600" : "text-zinc-500 hover:text-zinc-200"
-                    }`}
-                  >
-                    →
-                  </Link>
-                </div>
-              )}
+                    {loadingMore ? "—" : "Load More"}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </main>
