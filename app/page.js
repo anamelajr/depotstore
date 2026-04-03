@@ -10,7 +10,10 @@ export default async function Home() {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     const res = await fetch(`${baseUrl}/api/products`, { next: { revalidate: 3600 } });
-    if (res.ok) products = await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      products = data.products ?? [];
+    }
   } catch {
     // ignore
   }
