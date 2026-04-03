@@ -6,30 +6,36 @@ import ParisMap from "./components/ParisMap";
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  let products = [];
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/products?limit=100&sort=newest`, { next: { revalidate: 3600 } });
-    if (res.ok) {
+  let recentProducts = [];
+try {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const { STORES } = await import("./lib/stores.js");
+  const seed = Math.floor(Date.now() / 86400000);
+  
+  const perStore = await Promise.all(
+    STORES.map(async (store) => {
+      const res = await fetch(
+        `${baseUrl}/api/products?limit=20&store=${store.domain}&sort=newest`,
+        { next: { revalidate: 3600 } }
+      );
+      if (!res.ok) return [];
       const data = await res.json();
-      products = data.products ?? [];
-    }
-  } catch {
-    // ignore
-  }
-  const seed = Math.floor(Date.now() / 86400000); // changes once per day
-const shuffled = [...products].sort((a, b) => {
-  const hashA = ((a.productUrl ?? "").split("").reduce((acc, c) => acc + c.charCodeAt(0), seed)) % 1000;
-  const hashB = ((b.productUrl ?? "").split("").reduce((acc, c) => acc + c.charCodeAt(0), seed)) % 1000;
-  return hashA - hashB;
-});
-const storesSeen = {};
-const recentProducts = shuffled.filter(p => {
-  if (!p.available) return false;
-  if (storesSeen[p.storeName]) return false;
-  storesSeen[p.storeName] = true;
-  return true;
-}).slice(0, 8);
+      const products = data.products ?? [];
+      if (products.length === 0) return [];
+      // Pick one product per store using daily seed
+      const idx = seed % products.length;
+      return [products[idx]];
+    })
+  );
+  
+  recentProducts = perStore
+    .flat()
+    .filter(Boolean)
+    .slice(0, 8);
+} catch {
+  // ignore
+}
+  
 
   return (
     <div className="min-h-screen font-mono antialiased">
@@ -121,7 +127,7 @@ const recentProducts = shuffled.filter(p => {
               Across Paris
             </h2>
           </div>
-          <ParisMap products={products} />
+          <ParisMap products={recentProducts} />
         </div>
       </section>
 
