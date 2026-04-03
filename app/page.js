@@ -9,7 +9,7 @@ export default async function Home() {
   let products = [];
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/products`, { next: { revalidate: 3600 } });
+    const res = await fetch(`${baseUrl}/api/products?limit=100&sort=newest`, { next: { revalidate: 3600 } });
     if (res.ok) {
       const data = await res.json();
       products = data.products ?? [];
