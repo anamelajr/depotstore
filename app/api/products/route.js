@@ -8,7 +8,7 @@ export async function GET() {
     .select(
       "name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle"
     )
-    .limit(10000);
+    .limit(25000);
 
   if (error) {
     console.error("Supabase fetch error:", JSON.stringify({
