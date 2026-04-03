@@ -1,7 +1,7 @@
 import BRANDS from "../brands";
 
 export const ALL_STORES_VALUE = "ALL";
-export const PAGE_SIZE = 40;
+export const PAGE_SIZE = 42;
 
 const BAG_KEYWORDS = [
   "bag", "crossbody", "backpack", "handbag", "tote", "document holder",

@@ -122,7 +122,9 @@ export default function FeedClient() {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
-    params.set("sort", SORT_MAP[urlSort] || "newest");
+    if (urlSort && urlSort !== "latest") {
+      params.set("sort", SORT_MAP[urlSort] || "newest");
+    }
 
     fetch(`/api/products?${params}`, { signal: controller.signal })
       .then((res) => {
