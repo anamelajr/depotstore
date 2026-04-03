@@ -152,7 +152,7 @@ export async function fetchStoreProducts(store) {
       }
 
      // Brand filter — only applied to specific stores
-     if (FILTER_BY_BRAND.has(store.domain) && (!brand || !BRAND_SET.has(brand.toLowerCase()))) return null;
+     if (FILTER_BY_BRAND.has(store.domain) && brand && !BRAND_SET.has(brand.toLowerCase())) return null;
 
       const category = assignCategory(p);
 
