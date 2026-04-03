@@ -63,6 +63,44 @@ export default function FeedClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Scroll restore refs (back-navigation)
+  const scrollRestoreY = useRef(null);
+  const scrollRestorePending = useRef(false);
+
+  // On mount: check sessionStorage for back-navigation scroll restore
+  useEffect(() => {
+    const savedScroll = sessionStorage.getItem("depot_feed_scroll");
+    const savedPage = sessionStorage.getItem("depot_feed_page");
+    if (savedScroll === null || savedPage === null) return;
+
+    scrollRestoreY.current = parseInt(savedScroll, 10);
+    scrollRestorePending.current = true;
+
+    const targetPage = parseInt(savedPage, 10);
+    const currentPageFromUrl = Math.max(
+      1,
+      parseInt(new URLSearchParams(window.location.search).get("page") || "1", 10)
+    );
+    if (targetPage !== currentPageFromUrl) {
+      const params = new URLSearchParams(window.location.search);
+      if (targetPage === 1) params.delete("page");
+      else params.set("page", String(targetPage));
+      const q = params.toString();
+      router.replace(`/feed${q ? `?${q}` : ""}`);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // After products for the restored page are loaded, scroll to saved position
+  useEffect(() => {
+    if (!scrollRestorePending.current || loading || products.length === 0) return;
+    scrollRestorePending.current = false;
+    const y = scrollRestoreY.current;
+    scrollRestoreY.current = null;
+    sessionStorage.removeItem("depot_feed_scroll");
+    sessionStorage.removeItem("depot_feed_page");
+    requestAnimationFrame(() => window.scrollTo(0, y));
+  }, [loading, products]);
+
   // Scroll hide/show for mobile bar
   const [barVisible, setBarVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -376,10 +414,15 @@ export default function FeedClient() {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-10 lg:grid-cols-3">
                 {products.map((p) => (
-                  <ProductCard
+                  <div
                     key={`${p.productUrl ?? "unknown"}-${p.name}`}
-                    product={p}
-                  />
+                    onClick={() => {
+                      sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
+                      sessionStorage.setItem("depot_feed_page", String(currentPage));
+                    }}
+                  >
+                    <ProductCard product={p} />
+                  </div>
                 ))}
               </div>
               {totalPages > 1 && (
