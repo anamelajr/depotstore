@@ -29,6 +29,7 @@ export async function GET(request) {
         store_name: p.storeName,
         product_url: p.productUrl,
         available: p.available,
+        category: p.category ?? null,
         synced_at: syncStart,
       }));
 

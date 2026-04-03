@@ -1,4 +1,7 @@
 import { cleanTitle } from "./cleanTitle.js";
+import BRANDS from "../brands.js";
+
+const BRAND_SET = new Set(BRANDS.map((b) => b.toLowerCase()));
 
 export const STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
@@ -13,6 +16,18 @@ export const STORES = [
   { domain: "escoparis.com", storeName: "ESCO" },
   { domain: "graindesell.shop", storeName: "Grain de sell" },
 ];
+
+export function assignCategory(product) {
+  const text = `${product.productType} ${product.name}`.toLowerCase();
+  if (/\b(jacket|coat|blazer|parka|bomber|puffer|anorak|trench|overcoat|peacoat)\b/.test(text)) return "Jackets & Coats";
+  if (/\b(dress|skirt|midi|maxi|miniskirt)\b/.test(text)) return "Dresses & Skirts";
+  if (/\b(trouser|pant|jean|denim|short|cargo|legging|jogger|chino)\b/.test(text)) return "Bottoms";
+  if (/\b(shoe|boot|sneaker|heel|loafer|sandal|mule|clog|pump|trainer)\b/.test(text)) return "Footwear";
+  if (/\b(bag|tote|clutch|purse|wallet|belt|scarf|hat|cap|glove|jewelry|necklace|earring|bracelet|ring|accessory|sunglasses|beanie)\b/.test(text)) return "Bags & Accessories";
+  if (/\b(set|suit|co-ord|matching)\b/.test(text)) return "Sets";
+  if (/\b(top|shirt|tee|blouse|knit|sweater|hoodie|sweatshirt|cardigan|tank|vest|polo|jersey|longsleeve)\b/.test(text)) return "Tops";
+  return null;
+}
 
 export function toAbsoluteUrl(inputUrl, domain) {
   if (typeof inputUrl !== "string" || inputUrl.length === 0) return null;
@@ -134,9 +149,16 @@ export async function fetchStoreProducts(store) {
       } catch {
         title = result ?? p.name;
       }
-      return { ...p, brand, title };
+
+      // Brand filter — skip products whose brand is not in the allowlist
+      if (brand && !BRAND_SET.has(brand.toLowerCase())) return null;
+
+      const category = assignCategory(p);
+
+      return { ...p, brand, title, category };
     })
   );
 
-  return cleaned;
+  // Filter out nulls (products that failed brand check)
+  return cleaned.filter(Boolean);
 }
