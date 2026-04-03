@@ -5,12 +5,55 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "40")));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "42")));
   const store = searchParams.get("store");
   const category = searchParams.get("category");
   const search = searchParams.get("search");
-  const sort = searchParams.get("sort") || "newest";
-  const from = (page - 1) * limit;
+  const sort = searchParams.get("sort");
+  const offset = (page - 1) * limit;
+
+  // Use interleaved RPC when no explicit sort is set (default discovery mode)
+  if (!sort || sort === "interleaved") {
+    const [{ data, error }, { data: countData, error: countError }] = await Promise.all([
+      supabase.rpc("get_interleaved_products", {
+        p_store: store || null,
+        p_category: category || null,
+        p_search: search || null,
+        p_limit: limit,
+        p_offset: offset,
+      }),
+      supabase.rpc("count_interleaved_products", {
+        p_store: store || null,
+        p_category: category || null,
+        p_search: search || null,
+      }),
+    ]);
+
+    if (error || countError) {
+      const msg = error?.message || countError?.message;
+      console.error("RPC error:", msg);
+      return Response.json({ error: "Failed to fetch products", detail: msg }, { status: 500 });
+    }
+
+    const products = (data || []).map((row) => ({
+      name: row.name,
+      title: row.title,
+      brand: row.brand,
+      price: row.price,
+      imageUrl: row.image_url,
+      storeName: row.store_name,
+      storeDomain: row.store_domain,
+      productUrl: row.product_url,
+      available: row.available,
+      handle: row.handle,
+      category: row.category,
+    }));
+
+    return Response.json({ products, total: Number(countData), page, limit });
+  }
+
+  // Explicit sort — fall back to standard query
+  const from = offset;
   const to = from + limit - 1;
 
   let query = supabase
@@ -24,8 +67,8 @@ export async function GET(request) {
   if (search) query = query.ilike("title", `%${search}%`);
 
   query = sort === "oldest"
-  ? query.order("synced_at", { ascending: true }).order("id", { ascending: true })
-  : query.order("synced_at", { ascending: false }).order("id", { ascending: false });
+    ? query.order("synced_at", { ascending: true }).order("id", { ascending: true })
+    : query.order("synced_at", { ascending: false }).order("id", { ascending: false });
 
   const { data, count, error } = await query;
 
