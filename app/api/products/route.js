@@ -10,8 +10,15 @@ export async function GET() {
     );
 
   if (error) {
-    console.error("Supabase fetch error:", error.message);
-    return Response.json({ error: "Failed to fetch products" }, { status: 500 });
+    console.error("Supabase fetch error:", JSON.stringify({
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    }));
+    return Response.json({ error: "Failed to fetch products", detail: error.message, code: error.code }, { status: 500 });
   }
 
   const products = data.map((row) => ({
