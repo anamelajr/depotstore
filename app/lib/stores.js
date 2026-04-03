@@ -1,7 +1,31 @@
 import { cleanTitle } from "./cleanTitle.js";
 import BRANDS from "../brands.js";
 
-const BRAND_SET = new Set(BRANDS.map((b) => b.toLowerCase()));
+// Normalizes brand strings for reliable comparison
+// Handles accents, punctuation, slashes, spacing differences
+function normalizeBrand(value) {
+  if (!value || typeof value !== "string") return null;
+  const result = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return result || null;
+}
+
+// Check if a raw title string contains an allowed brand name
+function titleContainsAllowedBrand(rawTitle) {
+  if (!rawTitle) return false;
+  const normalizedTitle = normalizeBrand(rawTitle);
+  for (const brand of BRAND_SET_NORMALIZED) {
+    if (normalizedTitle.includes(brand)) return true;
+  }
+  return false;
+}
+
+const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
 const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
 export const STORES = [
@@ -151,15 +175,25 @@ export async function fetchStoreProducts(store) {
         title = result ?? p.name;
       }
 
-     // Brand filter — only applied to specific stores
-     if (FILTER_BY_BRAND.has(store.domain) && brand && !BRAND_SET.has(brand.toLowerCase())) return null;
+      // Brand filter — only applied to specific stores
+      if (FILTER_BY_BRAND.has(store.domain)) {
+        // Try cleanTitle brand first, then vendor as fallback, then raw title scan
+        const resolvedBrand =
+          normalizeBrand(brand) ||
+          normalizeBrand(p.vendor) ||
+          (titleContainsAllowedBrand(p.name) ? "matched_via_title" : null);
+
+        // No recognizable brand found — reject
+        if (!resolvedBrand) return null;
+
+        // Brand found but not in allowlist — reject
+        if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) return null;
+      }
 
       const category = assignCategory(p);
-
       return { ...p, brand, title, category };
     })
   );
 
-  // Filter out nulls (products that failed brand check)
   return cleaned.filter(Boolean);
 }
