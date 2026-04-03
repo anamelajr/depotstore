@@ -2,39 +2,39 @@ import { supabase } from "../../lib/supabase.js";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const PAGE_SIZE = 1000;
-  const allRows = [];
-  let from = 0;
-  let pages = 0;
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "40")));
+  const store = searchParams.get("store");
+  const category = searchParams.get("category");
+  const search = searchParams.get("search");
+  const sort = searchParams.get("sort") || "newest";
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
-  while (true) {
-    const { data, error } = await supabase
-      .from("products")
-      .select(
-        "name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle"
-      )
-      .range(from, from + PAGE_SIZE - 1);
+  let query = supabase
+    .from("products")
+    .select("name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle, category", { count: "exact" })
+    .eq("available", true)
+    .range(from, to);
 
-    if (error) {
-      console.error("Supabase fetch error:", JSON.stringify({
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      }));
-      return Response.json({ error: "Failed to fetch products", detail: error.message, code: error.code }, { status: 500 });
-    }
+  if (store) query = query.eq("store_domain", store);
+  if (category) query = query.eq("category", category);
+  if (search) query = query.ilike("title", `%${search}%`);
 
-    pages++;
-    allRows.push(...data);
-    if (data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
+  query = sort === "oldest"
+    ? query.order("synced_at", { ascending: true })
+    : query.order("synced_at", { ascending: false });
+
+  const { data, count, error } = await query;
+
+  if (error) {
+    console.error("Supabase fetch error:", error.message);
+    return Response.json({ error: "Failed to fetch products", detail: error.message }, { status: 500 });
   }
 
-  const products = allRows.map((row) => ({
+  const products = data.map((row) => ({
     name: row.name,
     title: row.title,
     brand: row.brand,
@@ -45,10 +45,8 @@ export async function GET() {
     productUrl: row.product_url,
     available: row.available,
     handle: row.handle,
+    category: row.category,
   }));
 
-  const distinctStores = new Set(products.map((p) => p.storeDomain)).size;
-  console.log(`Supabase fetch: ${products.length} products, ${pages} pages, ${distinctStores} stores`);
-
-  return Response.json(products);
+  return Response.json({ products, total: count, page, limit });
 }
