@@ -8,12 +8,8 @@ import StoreFilterBar from "../components/StoreFilterBar";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
 import { SORT_OPTIONS } from "../components/MobileSortSheet";
-import {
-  ALL_STORES_VALUE,
-  PAGE_SIZE,
-  normalizeText,
-  classifyProduct,
-} from "../lib/feed-utils";
+import { ALL_STORES_VALUE, PAGE_SIZE } from "../lib/feed-utils";
+import { STORES } from "../lib/stores";
 
 const CATEGORY_LABELS = {
   tops: "Tops",
@@ -33,25 +29,39 @@ const CATEGORY_LABELS = {
   sets: "Sets",
 };
 
-export default function FeedClient({ products }) {
+const SORT_MAP = { latest: "newest", price_asc: "price_asc", price_desc: "price_desc" };
+
+const storeOptions = [
+  { value: ALL_STORES_VALUE, label: "All Stores" },
+  ...STORES.map((s) => ({ value: s.domain, label: s.storeName })),
+];
+
+export default function FeedClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  // URL-derived state
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
-  const selectedBrand = searchParams.get("brand") || null;
   const urlCategories = searchParams.getAll("category");
   const rawPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+  const urlSort = searchParams.get("sort") || "latest";
 
-  // Local state — updates instantly without waiting for router
+  // Local state for instant UI feedback
   const [localCategories, setLocalCategories] = useState(urlCategories);
   const [localStore, setLocalStore] = useState(selectedStore);
-  const [selectedSort, setSelectedSort] = useState("latest");
+  const [selectedSort, setSelectedSort] = useState(urlSort);
   const [inputValue, setInputValue] = useState(searchQuery);
 
   // Mobile UI state
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+
+  // Fetch state
+  const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Scroll hide/show for mobile bar
   const [barVisible, setBarVisible] = useState(true);
@@ -62,9 +72,9 @@ export default function FeedClient({ products }) {
       if (current < 60) {
         setBarVisible(true);
       } else if (current < lastScrollY.current) {
-        setBarVisible(true); // scrolling up
+        setBarVisible(true);
       } else if (current > lastScrollY.current + 8) {
-        setBarVisible(false); // scrolling down
+        setBarVisible(false);
       }
       lastScrollY.current = current;
     };
@@ -96,63 +106,49 @@ export default function FeedClient({ products }) {
     setInputValue(searchQuery);
   }, [searchQuery]);
 
-  const [loading] = useState(false);
-  const [error] = useState(null);
+  useEffect(() => {
+    setSelectedSort(urlSort);
+  }, [urlSort]);
 
-  const storeOptions = useMemo(() => {
-    const stores = Array.from(new Set(products.map((p) => p?.storeName).filter(Boolean)));
-    return [
-      { value: ALL_STORES_VALUE, label: "All Stores" },
-      ...stores.map((s) => ({ value: s, label: s })),
-    ];
-  }, [products]);
+  // ── Fetch products from API whenever URL params change ──
+  const categoriesKey = urlCategories.join(",");
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
 
-  const filteredProducts = useMemo(() => {
-    const q = normalizeText(searchQuery).trim();
-    const hasQuery = q.length > 0;
-    const hasBrand = typeof selectedBrand === "string" && selectedBrand.length > 0;
-    const selectedBrandNorm = hasBrand ? normalizeText(selectedBrand) : null;
-    const hasCategories = localCategories.length > 0;
+    const params = new URLSearchParams();
+    params.set("page", String(rawPage));
+    params.set("limit", String(PAGE_SIZE));
+    if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
+    if (categoriesKey) params.set("category", categoriesKey);
+    if (searchQuery) params.set("search", searchQuery);
+    params.set("sort", SORT_MAP[urlSort] || "newest");
 
-    let results = products.filter((p) => {
-      const classification = classifyProduct(p);
-      if (localStore !== ALL_STORES_VALUE && p?.storeName !== localStore) return false;
-      if (hasQuery && !normalizeText(p?.name ?? "").includes(q)) return false;
-      if (hasBrand && !normalizeText(p?.name ?? "").includes(selectedBrandNorm)) return false;
-      if (hasCategories && !localCategories.some((cat) => classification.categories.has(cat))) return false;
-      return true;
-    });
+    fetch(`/api/products?${params}`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      })
+      .then((data) => {
+        setProducts(data.products || []);
+        setTotal(data.total ?? 0);
+        setError(null);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setError("Failed to load products.");
+          setProducts([]);
+          setTotal(0);
+        }
+      })
+      .finally(() => setLoading(false));
 
-    // Sort
-    const parsePrice = (val) => {
-        if (!val) return 0;
-        return parseFloat(String(val).replace(/[^0-9.]/g, "")) || 0;
-      };
-      
-      if (selectedSort === "price_asc") {
-        results = [...results].sort((a, b) => {
-          if (!a.available && b.available) return 1;
-          if (a.available && !b.available) return -1;
-          return parsePrice(a.price) - parsePrice(b.price);
-        });
-      } else if (selectedSort === "price_desc") {
-        results = [...results].sort((a, b) => {
-          if (!a.available && b.available) return 1;
-          if (a.available && !b.available) return -1;
-          return parsePrice(b.price) - parsePrice(a.price);
-        });
-      }
-    // "latest" = default order from API
+    return () => controller.abort();
+  }, [rawPage, selectedStore, categoriesKey, searchQuery, urlSort]);
 
-    return results;
-  }, [products, localStore, searchQuery, selectedBrand, localCategories, selectedSort]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  // ── Pagination ──
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(rawPage, totalPages);
-  const paginatedProducts = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredProducts.slice(start, start + PAGE_SIZE);
-  }, [filteredProducts, currentPage]);
 
   const paginationItems = useMemo(() => {
     if (totalPages <= 1) return [];
@@ -171,6 +167,7 @@ export default function FeedClient({ products }) {
     return items;
   }, [currentPage, totalPages]);
 
+  // ── URL builders & handlers ──
   const buildFeedUrl = useCallback((updates, resetPage = false) => {
     const params = new URLSearchParams(searchParams.toString());
     if (resetPage) params.delete("page");
@@ -223,9 +220,23 @@ export default function FeedClient({ products }) {
     if (inputValue.trim()) {
       params.set("search", inputValue.trim());
     }
+    if (selectedSort !== "latest") {
+      params.set("sort", selectedSort);
+    }
     const q = params.toString();
     router.push(`/feed${q ? `?${q}` : ""}`);
-  }, [inputValue, localStore, router]);
+  }, [inputValue, localStore, selectedSort, router]);
+
+  const handleSortChange = useCallback((v) => {
+    setSelectedSort(v);
+    setSortOpen(false);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
+    if (v === "latest") params.delete("sort");
+    else params.set("sort", v);
+    const q = params.toString();
+    router.replace(`/feed${q ? `?${q}` : ""}`);
+  }, [searchParams, router]);
 
   const activeFilterCount = localCategories.length + (localStore !== ALL_STORES_VALUE ? 1 : 0);
   const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
@@ -286,7 +297,7 @@ export default function FeedClient({ products }) {
               </div>
             )}
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              SHOWING {paginatedProducts.length} OF {filteredProducts.length} PRODUCTS
+              {loading ? "LOADING…" : `SHOWING ${products.length} OF ${total} PRODUCTS`}
             </p>
           </div>
         </header>
@@ -322,8 +333,6 @@ export default function FeedClient({ products }) {
           </div>
         </header>
 
-          
-
         {/* Mobile drawers */}
         <MobileFilterDrawer
           isOpen={filterOpen}
@@ -339,14 +348,14 @@ export default function FeedClient({ products }) {
           isOpen={sortOpen}
           onClose={() => setSortOpen(false)}
           selectedSort={selectedSort}
-          onSortChange={setSelectedSort}
+          onSortChange={handleSortChange}
         />
 
 <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-32">
           {/* Mobile product count — static, not part of the sticky bar */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              {filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}
+              {loading ? "Loading…" : `${total} ${total === 1 ? "product" : "products"}`}
             </p>
           </div>
           {loading ? (
@@ -357,14 +366,14 @@ export default function FeedClient({ products }) {
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-red-300">
               {error}
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : products.length === 0 ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               No products found.
             </div>
           ) : (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-10 lg:grid-cols-3">
-                {paginatedProducts.map((p) => (
+                {products.map((p) => (
                   <ProductCard
                     key={`${p.productUrl ?? "unknown"}-${p.name}`}
                     product={p}
