@@ -22,7 +22,14 @@ export default function ProductCard({ product }) {
     "Numero 13 Vintage": "Numero 13",
   };
   const badgeName = SHORT_NAMES[storeName] ?? storeName;
-  const displayTitle = title ?? name ?? "Untitled";
+  // Parse brand from title when brand is null (e.g. "BRAND - description" format)
+let displayBrand = brand ?? null;
+let displayTitle = title ?? name ?? "Untitled";
+if (!displayBrand && displayTitle.includes(" - ")) {
+  const parts = displayTitle.split(" - ");
+  displayBrand = parts[0].trim();
+  displayTitle = parts.slice(1).join(" - ").trim();
+}
   const isSold = !available;
 
   const internalUrl = handle && storeDomain
@@ -66,12 +73,12 @@ export default function ProductCard({ product }) {
       <div className="mt-4">
         {/* Mobile */}
         <div className="md:hidden">
-          {brand ? (
+          {displayBrand ? (
             <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
-              {brand}
+              {displayBrand}
             </div>
           ) : null}
-          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
+          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${displayBrand ? " mt-0.5" : ""}`}>
             {displayTitle}
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2">
@@ -89,12 +96,12 @@ export default function ProductCard({ product }) {
         {/* Desktop */}
         <div className="hidden md:flex md:justify-between md:gap-4">
           <div className="flex flex-col min-w-0">
-            {brand ? (
+            {displayBrand ? (
               <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
-                {brand}
+                {displayBrand}
               </div>
             ) : null}
-            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
+            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${displayBrand ? " mt-0.5" : ""}`}>
               {displayTitle}
             </div>
           </div>
