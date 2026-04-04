@@ -22,14 +22,7 @@ export default function ProductCard({ product }) {
     "Numero 13 Vintage": "Numero 13",
   };
   const badgeName = SHORT_NAMES[storeName] ?? storeName;
-  // Parse brand from title when brand is null (e.g. "BRAND - description" format)
-let displayBrand = brand ?? null;
-let displayTitle = title ?? name ?? "Untitled";
-if (!displayBrand && displayTitle.includes(" - ")) {
-  const parts = displayTitle.split(" - ");
-  displayBrand = parts[0].trim();
-  displayTitle = parts.slice(1).join(" - ").trim();
-}
+  const displayTitle = title ?? name ?? "Untitled";
   const isSold = !available;
 
   const internalUrl = handle && storeDomain
