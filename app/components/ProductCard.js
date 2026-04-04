@@ -66,12 +66,12 @@ export default function ProductCard({ product }) {
       <div className="mt-4">
         {/* Mobile */}
         <div className="md:hidden">
-          {displayBrand ? (
+          {brand ? (
             <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
-              {displayBrand}
+              {brand}
             </div>
           ) : null}
-          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${displayBrand ? " mt-0.5" : ""}`}>
+          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
             {displayTitle}
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2">
@@ -89,12 +89,12 @@ export default function ProductCard({ product }) {
         {/* Desktop */}
         <div className="hidden md:flex md:justify-between md:gap-4">
           <div className="flex flex-col min-w-0">
-            {displayBrand ? (
+            {brand ? (
               <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
-                {displayBrand}
+                {brand}
               </div>
             ) : null}
-            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${displayBrand ? " mt-0.5" : ""}`}>
+            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
               {displayTitle}
             </div>
           </div>
