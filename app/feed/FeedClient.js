@@ -68,39 +68,6 @@ export default function FeedClient() {
   // Load More: offset to fetch next batch from (null = idle)
   const [loadMoreOffset, setLoadMoreOffset] = useState(null);
 
-  // Scroll restore refs
-  const scrollRestoreY = useRef(null);
-  const scrollRestorePending = useRef(false);
-  // How many products to load on first fetch when restoring (null = normal LOAD_SIZE)
-  const restoreCountRef = useRef(null);
-
-  // On mount: check sessionStorage for back-navigation scroll restore.
-  // Runs before the filter fetch effect so restoreCountRef is set in time.
-  useEffect(() => {
-    const savedScroll = sessionStorage.getItem("depot_feed_scroll");
-    const savedCount = sessionStorage.getItem("depot_feed_count");
-    if (savedScroll === null || savedCount === null) return;
-
-    const count = parseInt(savedCount, 10);
-    const y = parseInt(savedScroll, 10);
-    if (count > 0) {
-      scrollRestoreY.current = y;
-      scrollRestorePending.current = true;
-      restoreCountRef.current = Math.min(count, 100); // API caps limit at 100
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // After the restore batch is loaded and rendered, jump to the saved position.
-  useEffect(() => {
-    if (!scrollRestorePending.current || loading || products.length === 0) return;
-    scrollRestorePending.current = false;
-    const y = scrollRestoreY.current;
-    scrollRestoreY.current = null;
-    sessionStorage.removeItem("depot_feed_scroll");
-    sessionStorage.removeItem("depot_feed_count");
-    requestAnimationFrame(() => window.scrollTo(0, y));
-  }, [loading, products]);
-
   // Scroll hide/show for mobile bar
   const [barVisible, setBarVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -146,13 +113,20 @@ export default function FeedClient() {
 
   // ── Initial / reset fetch ──
   // Runs on mount and whenever filterKey changes.
-  // On mount it respects restoreCountRef (set above) for back-nav restore.
-  // On filter change it cancels any in-flight Load More and resets state.
+  // Reads sessionStorage at effect-run time to decide restore count and scroll target.
+  // Using closure locals (not refs) avoids any ref timing race with Strict Mode.
   useEffect(() => {
     setLoadMoreOffset(null); // cancel any pending Load More for the old filter
 
-    const limit = restoreCountRef.current !== null ? restoreCountRef.current : LOAD_SIZE;
-    restoreCountRef.current = null; // consume
+    // Read restore state synchronously at effect-run time.
+    // On filter change (not mount) these will be null, so restore is skipped.
+    const restoreScrollRaw = sessionStorage.getItem("depot_feed_scroll");
+    const restoreCountRaw = sessionStorage.getItem("depot_feed_count");
+    const restoreY = restoreScrollRaw !== null ? parseInt(restoreScrollRaw, 10) : null;
+    const restoreCount = restoreCountRaw !== null ? parseInt(restoreCountRaw, 10) : null;
+    const limit = restoreCount !== null && restoreCount > 0
+      ? Math.min(restoreCount, 100)
+      : LOAD_SIZE;
 
     const controller = new AbortController();
     setLoading(true);
@@ -175,6 +149,15 @@ export default function FeedClient() {
         setProducts(data.products || []);
         setTotal(data.total ?? 0);
         setError(null);
+        // Scroll restore: only fires when this effect ran with restore data in sessionStorage.
+        // 200ms gives the expanded grid time to paint before we jump.
+        if (restoreY !== null) {
+          setTimeout(() => {
+            window.scrollTo(0, restoreY);
+            sessionStorage.removeItem("depot_feed_scroll");
+            sessionStorage.removeItem("depot_feed_count");
+          }, 200);
+        }
       })
       .catch((err) => {
         if (err.name !== "AbortError") {
