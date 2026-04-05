@@ -9,7 +9,7 @@ export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return rawTitle;
 
-  const CACHE_VERSION = "v7";
+  const CACHE_VERSION = "v8";
 const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
 
   try {
@@ -68,15 +68,26 @@ Description: ${description ? description.slice(0, 300) : "none"}`,
 
     if (!res.ok) return rawTitle;
     const data = await res.json();
-    const cleaned = data?.content?.[0]?.text?.trim() ?? rawTitle;
+    const cleaned = data?.content?.[0]?.text?.trim();
 
-    try {
-      await redis.set(cacheKey, cleaned);
-    } catch {
-      // ignore cache write failure
+    // Only cache if the response is valid JSON with both brand and title
+    if (cleaned) {
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (parsed.brand && parsed.title) {
+          try {
+            await redis.set(cacheKey, cleaned);
+          } catch {
+            // ignore cache write failure
+          }
+          return cleaned;
+        }
+      } catch {
+        // JSON parse failed — don't cache, fall through
+      }
     }
 
-    return cleaned;
+    return rawTitle;
   } catch {
     return rawTitle;
   }

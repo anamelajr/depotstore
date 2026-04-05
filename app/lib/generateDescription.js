@@ -9,7 +9,7 @@ export async function generateDescription(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return null;
 
-  const CACHE_VERSION = "v7";
+  const CACHE_VERSION = "v8";
 const cacheKey = `desc:${CACHE_VERSION}:${rawTitle}`;
 
   try {
