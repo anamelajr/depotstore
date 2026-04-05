@@ -146,6 +146,7 @@ ${JSON.stringify(titlesPayload, null, 2)}`;
 // ── Dirty row detection ───────────────────────────────────────────────────────
 
 function isDirty(row) {
+  if (!row.brand) return true;
   // Title identical to raw name — never cleaned
   if (!row.title || row.title === row.name) return true;
   // Still contains junk prefixes
