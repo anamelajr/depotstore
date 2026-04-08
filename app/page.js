@@ -7,10 +7,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   let recentProducts = [];
+  let stores = [];
 try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   const { getActiveStores } = await import("./lib/stores.js");
-  const STORES = await getActiveStores();
+  stores = await getActiveStores();
+  const STORES = stores;
   const seed = Math.floor(Date.now() / 86400000);
   
   const perStore = await Promise.all(
@@ -128,7 +130,7 @@ try {
               Across Paris
             </h2>
           </div>
-          <ParisMap products={recentProducts} stores={STORES} />
+          <ParisMap products={recentProducts} stores={stores} />
         </div>
       </section>
 
