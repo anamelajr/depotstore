@@ -1,18 +1,6 @@
 import Link from "next/link";
 
-const STORES = [
-  { storeName: "L'OBSCUR", displayName: "L'Obscur", location: "Le Marais" },
-  { storeName: "Dolce Vita Hub", displayName: "Dolce Vita Hub", location: "Le Marais" },
-  { storeName: "Seys Wardrobe", displayName: "Seys Wardrobe", location: "Paris" },
-  { storeName: "Numero 13 Vintage", displayName: "Numero 13 Vintage", location: "Le Marais" },
-  { storeName: "Les Archives Paris", displayName: "Les Archives Paris", location: "Saint-Germain-des-Prés" },
-  { storeName: "at dawn paris", displayName: "AT Dawn Paris", location: "Le Marais" },
-  { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
-  { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
-  {storeName: "dot COMME", displayName: "dot COMME", location: "Paris"},
-];
-
-export default function PartnerStoresSection({ products = [] }) {
+export default function PartnerStoresSection({ products = [], stores = [] }) {
   const counts = {};
   for (const p of products) {
     const name = p?.storeName;
@@ -22,13 +10,13 @@ export default function PartnerStoresSection({ products = [] }) {
 
   return (
     <div className="divide-y divide-zinc-800">
-      {STORES.slice(0, 5).map((store, index) => {
+      {stores.slice(0, 5).map((store, index) => {
         const count = pieceCounts[store.storeName] ?? 0;
         const num = String(index + 1).padStart(2, "0");
         return (
           <Link
             key={store.storeName}
-            href={`/feed?store=${encodeURIComponent(store.storeName)}`}
+            href={`/feed?store=${encodeURIComponent(store.domain)}`}
             className="group flex items-center justify-between gap-8 py-10 transition-colors"
           >
             <div className="flex items-baseline gap-8">

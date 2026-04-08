@@ -2,48 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
-export default function ParisMap({ products = [] }) {
+export default function ParisMap({ products = [], stores = [] }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
-  const STORES = [
-    {
-      name: "Dolce Vita Hub",
-      location: "11th arr.",
-      lat: 48.8574,
-      lng: 2.3756,
-    },
-    {
-      name: "L'OBSCUR",
-      location: "Le Marais",
-      lat: 48.8621,
-      lng: 2.3543,
-    },
-    {
-      name: "Nuovo Paris",
-      location: "Le Marais",
-      lat: 48.8609,
-      lng: 2.3601,
-    },
-    {
-      name: "at dawn paris",
-      location: "Le Marais",
-      lat: 48.8626,
-      lng: 2.3574,
-    },
-    {
-      name: "Numero 13 Vintage",
-      location: "Le Marais",
-      lat: 48.8601,
-      lng: 2.3589,
-    },
-    {
-      name: "Les Archives Paris",
-      location: "Saint-Germain",
-      lat: 48.8502,
-      lng: 2.3278,
-    },
-  ];
+  const mapStores = stores
+    .filter((s) => s.lat != null && s.lng != null)
+    .map((s) => ({
+      name: s.storeName,
+      location: s.location || "",
+      lat: s.lat,
+      lng: s.lng,
+    }));
 
   useEffect(() => {
     if (mapInstanceRef.current) return;
@@ -72,7 +42,7 @@ export default function ParisMap({ products = [] }) {
         if (p?.storeName) counts[p.storeName] = (counts[p.storeName] ?? 0) + 1;
       }
 
-      STORES.forEach((store) => {
+      mapStores.forEach((store) => {
         const count = counts[store.name] ?? 0;
         const circle = L.circleMarker([store.lat, store.lng], {
           radius: 6,

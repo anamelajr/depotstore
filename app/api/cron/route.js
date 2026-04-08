@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { STORES, fetchStoreProducts } from "../../lib/stores.js";
+import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -12,6 +12,14 @@ export async function GET(request) {
 
   const syncStart = new Date().toISOString();
   const summary = { stores: {}, errors: [], totalUpserted: 0 };
+
+  const STORES = await getActiveStores();
+  if (STORES.length === 0) {
+    return Response.json(
+      { error: "No active stores returned — aborting sync to protect existing data" },
+      { status: 500 }
+    );
+  }
 
   const results = await Promise.allSettled(
     STORES.map(async (store) => {

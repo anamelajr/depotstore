@@ -1,21 +1,8 @@
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
+import { getAllStores } from "../lib/stores.js";
 
 export const dynamic = 'force-dynamic';
-
-const STORES = [
-  { storeName: "L'OBSCUR", displayName: "L'Obscur", location: "Le Marais" },
-  { storeName: "Dolce Vita Hub", displayName: "Dolce Vita Hub", location: "Le Marais" },
-  { storeName: "Seys Wardrobe", displayName: "Seys Wardrobe", location: "Paris" },
-  { storeName: "Numero 13 Vintage", displayName: "Numero 13 Vintage", location: "Le Marais" },
-  { storeName: "Les Archives Paris", displayName: "Les Archives Paris", location: "Saint-Germain-des-Prés" },
-  { storeName: "at dawn paris", displayName: "AT Dawn Paris", location: "Le Marais" },
-  { storeName: "Nuovo Paris", displayName: "Nuovo Paris", location: "Le Marais" },
-  { storeName: "yourgarmentz", displayName: "yourgarmentz", location: "Paris" },
-  { storeName: "dot COMME", displayName: "dot COMME", location: "Le Marais" },
-  { storeName: "ESCO", displayName: "ESCO", location: "Paris" },
-{ storeName: "Grain de sell", displayName: "Grain de sell", location: "Paris" },
-];
 
 async function getPieceCounts() {
   const { data, error } = await supabase.rpc("count_products_by_store");
@@ -28,7 +15,11 @@ async function getPieceCounts() {
 }
 
 export default async function StoresPage() {
-  const pieceCounts = await getPieceCounts();
+  const [allStores, pieceCounts] = await Promise.all([
+    getAllStores(),
+    getPieceCounts(),
+  ]);
+  const stores = allStores.filter((s) => s.active);
 
   return (
     <div
@@ -54,13 +45,13 @@ export default async function StoresPage() {
         </h1>
 
         <div className="divide-y divide-zinc-800">
-          {STORES.map((store, index) => {
+          {stores.map((store, index) => {
             const count = pieceCounts[store.storeName] ?? 0;
             const num = String(index + 1).padStart(2, "0");
             return (
               <Link
                 key={store.storeName}
-                href={`/feed?store=${encodeURIComponent(store.storeName)}`}
+                href={`/feed?store=${encodeURIComponent(store.domain)}`}
                 className="group flex items-center justify-between gap-8 py-10 transition-colors"
               >
                 <div className="flex items-baseline gap-8">
