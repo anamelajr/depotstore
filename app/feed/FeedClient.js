@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProductCard from "../components/ProductCard";
@@ -88,15 +88,17 @@ export default function FeedClient({ stores = [] }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // After the restore batch is loaded and rendered, jump to the saved position.
-  useEffect(() => {
+  // After the restore batch is loaded, jump to the saved position before paint.
+  // useLayoutEffect fires synchronously after DOM mutations and before the browser
+  // paints, so the grid is never visible at scroll=0 — no flash, no snap.
+  useLayoutEffect(() => {
     if (!scrollRestorePending.current || loading || products.length === 0) return;
     scrollRestorePending.current = false;
     const y = scrollRestoreY.current;
     scrollRestoreY.current = null;
     sessionStorage.removeItem("depot_feed_scroll");
     sessionStorage.removeItem("depot_feed_count");
-    requestAnimationFrame(() => window.scrollTo(0, y));
+    window.scrollTo(0, y);
   }, [loading, products]);
 
   // Scroll hide/show for mobile bar
