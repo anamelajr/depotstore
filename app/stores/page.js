@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { supabase } from "../../lib/supabase.js";
 
 export const dynamic = 'force-dynamic';
 
@@ -17,19 +18,13 @@ const STORES = [
 ];
 
 async function getPieceCounts() {
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/api/products`, { next: { revalidate: 3600 } });
-    if (!res.ok) return {};
-    const products = await res.json();
-    const counts = {};
-    for (const p of products) {
-      const name = p?.storeName;
-      if (name) counts[name] = (counts[name] ?? 0) + 1;
-    }
-    return counts;
-  } catch {
-    return {};
+  const { data, error } = await supabase.rpc("count_products_by_store");
+  if (error || !data) return {};
+  const counts = {};
+  for (const row of data) {
+    if (row.store_name) counts[row.store_name] = Number(row.count);
   }
+  return counts;
 }
 
 export default async function StoresPage() {
