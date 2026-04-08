@@ -1,4 +1,5 @@
 import { cleanTitle } from "./cleanTitle.js";
+import { supabaseAdmin } from "./supabase.js";
 import BRANDS from "../brands.js";
 
 // Normalizes brand strings for reliable comparison
@@ -28,7 +29,7 @@ function titleContainsAllowedBrand(rawTitle) {
 const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
 const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
-export const STORES = [
+const FALLBACK_STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
   { domain: "dolcevitahub.com", storeName: "Dolce Vita Hub" },
   { domain: "seyswardrobe.fr", storeName: "Seys Wardrobe" },
@@ -41,6 +42,46 @@ export const STORES = [
   { domain: "escoparis.com", storeName: "ESCO" },
   { domain: "graindesell.shop", storeName: "Grain de sell" },
 ];
+
+function mapStoreRow(row) {
+  return {
+    domain: row.domain,
+    storeName: row.store_name,
+    displayName: row.display_name,
+    location: row.location,
+    lat: row.lat,
+    lng: row.lng,
+  };
+}
+
+export async function getActiveStores() {
+  const { data, error } = await supabaseAdmin
+    .from("stores")
+    .select("domain, store_name, display_name, location, lat, lng")
+    .eq("active", true)
+    .order("store_name");
+
+  if (error) {
+    console.error("Failed to fetch stores:", error.message);
+    return [];
+  }
+
+  return data.map(mapStoreRow);
+}
+
+export async function getAllStores() {
+  const { data, error } = await supabaseAdmin
+    .from("stores")
+    .select("domain, store_name, display_name, location, lat, lng, active")
+    .order("store_name");
+
+  if (error) {
+    console.error("Failed to fetch stores:", error.message);
+    return [];
+  }
+
+  return data.map((row) => ({ ...mapStoreRow(row), active: row.active }));
+}
 
 export function assignCategory(product) {
   const text = `${product.productType} ${product.name}`.toLowerCase();

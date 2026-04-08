@@ -9,7 +9,8 @@ export default async function Home() {
   let recentProducts = [];
 try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-  const { STORES } = await import("./lib/stores.js");
+  const { getActiveStores } = await import("./lib/stores.js");
+  const STORES = await getActiveStores();
   const seed = Math.floor(Date.now() / 86400000);
   
   const perStore = await Promise.all(
@@ -127,7 +128,7 @@ try {
               Across Paris
             </h2>
           </div>
-          <ParisMap products={recentProducts} />
+          <ParisMap products={recentProducts} stores={STORES} />
         </div>
       </section>
 

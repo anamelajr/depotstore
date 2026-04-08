@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import FeedClient from "./FeedClient";
+import { getActiveStores } from "../lib/stores.js";
 
 export const dynamic = 'force-dynamic';
 
-export default function FeedPage() {
+export default async function FeedPage() {
+  const stores = await getActiveStores();
   return (
     <Suspense fallback={null}>
-      <FeedClient />
+      <FeedClient stores={stores} />
     </Suspense>
   );
 }

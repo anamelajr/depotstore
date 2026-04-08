@@ -9,7 +9,6 @@ import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
 import { SORT_OPTIONS } from "../components/MobileSortSheet";
 import { ALL_STORES_VALUE } from "../lib/feed-utils";
-import { STORES } from "../lib/stores";
 
 const LOAD_SIZE = 30;
 
@@ -33,12 +32,11 @@ const CATEGORY_LABELS = {
 
 const SORT_MAP = { latest: "newest", price_asc: "price_asc", price_desc: "price_desc" };
 
-const storeOptions = [
-  { value: ALL_STORES_VALUE, label: "All Stores" },
-  ...STORES.map((s) => ({ value: s.domain, label: s.storeName })),
-];
-
-export default function FeedClient() {
+export default function FeedClient({ stores = [] }) {
+  const storeOptions = [
+    { value: ALL_STORES_VALUE, label: "All Stores" },
+    ...stores.map((s) => ({ value: s.domain, label: s.storeName })),
+  ];
   const searchParams = useSearchParams();
   const router = useRouter();
 
