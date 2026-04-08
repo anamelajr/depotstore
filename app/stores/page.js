@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { supabase } from "../../lib/supabase.js";
+import { supabase } from "../lib/supabase.js";
 
 export const dynamic = 'force-dynamic';
 
