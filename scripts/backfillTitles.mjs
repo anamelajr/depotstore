@@ -180,12 +180,6 @@ function isDirty(row) {
 async function main() {
   console.log("Fetching dirty products from Supabase...");
 
-  const { count } = await supabaseAdmin
-  .from("products")
-  .select("*", { count: "exact", head: true })
-  .is("brand", null);
-  console.log("Null brand count from backfill connection:", count);
-
   // Paginate through all products to find dirty ones
   const PAGE = 1000;
   let from = 0;
