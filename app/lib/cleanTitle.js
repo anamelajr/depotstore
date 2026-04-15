@@ -1,23 +1,6 @@
-import { Redis } from "@upstash/redis";
-
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
-
 export async function cleanTitle(product) {
   const rawTitle = product?.name;
-  if (!rawTitle) return rawTitle;
-
-  const CACHE_VERSION = "v8";
-const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
-
-  try {
-    const cached = await redis.get(cacheKey);
-    if (cached) return cached;
-  } catch {
-    // Redis unavailable, continue without cache
-  }
+  if (!rawTitle) return null;
 
   const vendor = product?.vendor ?? null;
   const tags = Array.isArray(product?.tags) ? product.tags.join(", ") : "";
@@ -37,58 +20,61 @@ const cacheKey = `title:${CACHE_VERSION}:${rawTitle}`;
         messages: [
           {
             role: "user",
-            content: `You are extracting and formatting vintage fashion product data for an editorial platform.
+            content: `You are a vintage archive fashion expert extracting product data for Dépôt, a curated Paris editorial platform.
 
-Return ONLY a JSON object in this exact format, nothing else:
-{"brand": "BRAND NAME IN ALL CAPS", "title": "Title Case Description"}
+Return ONLY a JSON object: {"brand": "BRAND NAME", "title": "Clean Title"}
 
-Rules for brand:
-- Extract the brand from the title itself first — it is almost always at the start
-- Brand must be in ALL CAPS (e.g. "RICK OWENS", "COMME DES GARÇONS", "JUNYA WATANABE")
-- The vendor field sometimes contains the real brand name — use it if the title has no clear brand signal
-- Only ignore the vendor field if it exactly matches one of these store names: "L'Obscur", "Dolce Vita Hub", "yourgarmentz", "Numero 13 Vintage", "Les Archives Paris", "at dawn paris", "Nuovo Paris", "dot COMME", "ESCO", "Grain de Sell", "Seys Wardrobe", "VINTAGE"
-- Never hallucinate a brand — if truly no brand identifiable from title or vendor, return empty string ""
+BRAND rules:
+- Always ALL CAPS. E.g. "RICK OWENS", "ANN DEMEULEMEESTER", "YOHJI YAMAMOTO POUR HOMME"
+- Extract from the title first — almost always at the start before a dash or separator
+- Common formats: "BRAND - description", "(New Arrival) BRAND - description"
+- Also check the store description field — brand is sometimes mentioned there
+- If truly unidentifiable, return {"brand": "", "title": ""}
+- Never invent or guess
 
-Rules for title:
-- Title case — first letter of every word capitalised (e.g. "Long Parka FW11", "Wool Tartan Scarf 2000s")
-- Remove the brand name from the title entirely
-- Keep item type and ONE key detail maximum (colour, fabric, or silhouette)
-- Season/era codes always at the end (e.g. FW11, SS03, 2000s)
-- Remove parenthetical tags like (New Arrival) (Runway) (Sale)
-- Keep it short — maximum 6 words
+TITLE rules:
+- Format: [Season+Year if present] [Garment type] [ONE detail max]
+- Season ALWAYS comes first: "SS16 Wool Coat", "FW99 Wide Trousers"
+- If no season: "Wool Coat", "Leather Belt", "Wide Trousers"
+- Maximum 5 words, Title Case only
+- Remove: brand name, "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, parentheticals
+- If you cannot produce a clean 2-5 word title, return {"brand": "", "title": ""}
+
+QUALITY GATE — return {"brand": "", "title": ""} if:
+- Brand not confidently identifiable
+- Title would exceed 5 words
+- Raw title is a placeholder with no fashion signal
 
 Title: ${rawTitle}
 Vendor: ${vendor ?? "unknown"}
 Tags: ${tags || "none"}
-Description: ${description ? description.slice(0, 300) : "none"}`,
+Description from store: ${description ? description.slice(0, 400) : "none"}`,
           },
         ],
       }),
     });
 
-    if (!res.ok) return rawTitle;
+    if (!res.ok) return null;
     const data = await res.json();
     const cleaned = data?.content?.[0]?.text?.trim();
 
-    // Only cache if the response is valid JSON with both brand and title
     if (cleaned) {
       try {
         const parsed = JSON.parse(cleaned);
-        if (parsed.brand && parsed.title) {
-          try {
-            await redis.set(cacheKey, cleaned);
-          } catch {
-            // ignore cache write failure
-          }
+        const titleWords = parsed.title ? parsed.title.trim().split(/\s+/).length : 0;
+        const brandValid = parsed.brand && parsed.brand.trim().length > 0;
+        const titleValid = parsed.title && titleWords >= 2 && titleWords <= 5;
+
+        if (brandValid && titleValid) {
           return cleaned;
         }
       } catch {
-        // JSON parse failed — don't cache, fall through
+        // JSON parse failed
       }
     }
 
-    return rawTitle;
+    return null;
   } catch {
-    return rawTitle;
+    return null;
   }
 }

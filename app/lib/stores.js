@@ -202,19 +202,21 @@ export async function fetchStoreProducts(store) {
     .map((p) => normalizeProduct(p, store))
     .filter(Boolean);
 
-  const cleaned = await Promise.all(
-    normalized.map(async (p) => {
-      const result = await cleanTitle(p);
-      let brand = null;
-      let title = p.name;
-      try {
-        const clean = result.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(clean);
-        brand = parsed.brand ?? null;
-        title = parsed.title ?? p.name;
-      } catch {
-        title = result ?? p.name;
-      }
+    const cleaned = await Promise.all(
+      normalized.map(async (p) => {
+        const result = await cleanTitle(p);
+        let brand = null;
+        let title = null;
+        if (result) {
+          try {
+            const clean = result.replace(/```json|```/g, "").trim();
+            const parsed = JSON.parse(clean);
+            brand = parsed.brand || null;
+            title = parsed.title || null;
+          } catch {
+            // parse failed — leave brand and title as null
+          }
+        }
 
       // Brand filter — only applied to specific stores
       if (FILTER_BY_BRAND.has(store.domain)) {

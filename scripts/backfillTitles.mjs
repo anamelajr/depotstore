@@ -99,16 +99,35 @@ async function cleanBatch(rows) {
     index: i,
     title: r.name ?? "",
     vendor: "unknown",
+    description: r.description ? r.description.slice(0, 400) : "",
   }));
 
-  const prompt = `You are cleaning vintage fashion product titles for an editorial platform.
+  const prompt = `You are a vintage archive fashion expert cleaning product data for Dépôt, a curated Paris editorial platform.
 
-For each product below, return a JSON array where each element has:
-- "index": the same index number provided
-- "brand": brand name in ALL CAPS (e.g. "RICK OWENS", "COMME DES GARÇONS"). Empty string "" if truly unidentifiable.
-- "title": clean Title Case description, max 6 words, no brand name, no junk like (New Arrival)
+For each product, extract brand and title following these STRICT rules.
 
-Return ONLY the JSON array, no other text.
+BRAND rules:
+- Always ALL CAPS. E.g. "RICK OWENS", "ANN DEMEULEMEESTER", "YOHJI YAMAMOTO POUR HOMME"
+- Extract from the title first — it is almost always at the start before a dash or separator
+- Common formats: "BRAND - description", "BRAND / description", "(New Arrival) BRAND - description"
+- Also check the description field — brand is sometimes mentioned there
+- If truly no brand identifiable anywhere, return "" (empty string)
+- Never invent or guess a brand
+
+TITLE rules:
+- Format: [Season+Year if present] [Garment type] [ONE detail max]
+- Season ALWAYS comes first: "SS16 Wool Coat", "FW99 Wide Trousers", "FW02 Leather Jacket"
+- If no season: "Wool Coat", "Wide Trousers", "Leather Belt"
+- Maximum 5 words, Title Case only — never ALL CAPS
+- Remove: brand name, "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, parentheticals
+- If you cannot produce a clean 2-5 word title, return "" (empty string)
+
+QUALITY GATE — return {"brand": "", "title": ""} for this product if:
+- You are not confident in the brand
+- Title would exceed 5 words
+- Raw title is a placeholder with no fashion signal
+
+Return ONLY a JSON array, no other text. Each element: {"index": N, "brand": "...", "title": "..."}
 
 Products:
 ${JSON.stringify(titlesPayload, null, 2)}`;
@@ -169,7 +188,7 @@ async function main() {
   while (true) {
     const { data, error } = await supabaseAdmin
       .from("products")
-      .select("id, name, title, brand, store_domain")
+      .select("id, name, title, brand, store_domain, description")
       .range(from, from + PAGE - 1);
 
     if (error) { console.error("Fetch error:", error.message); break; }
@@ -210,7 +229,10 @@ async function main() {
       if (haikuResults) {
         for (const result of haikuResults) {
           const row = needsHaiku[result.index];
-          if (row && (result.brand || result.title)) {
+          const titleWords = result.title ? result.title.trim().split(/\s+/).length : 0;
+const brandValid = result.brand && result.brand.trim().length > 0;
+const titleValid = result.title && titleWords >= 2 && titleWords <= 5;
+if (row && brandValid && titleValid) {
             updates.push({
               id: row.id,
               brand: result.brand || null,

@@ -1,23 +1,6 @@
-import { Redis } from "@upstash/redis";
-
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
-
 export async function generateDescription(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return null;
-
-  const CACHE_VERSION = "v8";
-const cacheKey = `desc:${CACHE_VERSION}:${rawTitle}`;
-
-  try {
-    const cached = await redis.get(cacheKey);
-    if (cached) return cached;
-  } catch {
-    // Redis unavailable, continue without cache
-  }
 
   const vendor = product?.vendor ?? null;
   const tags = Array.isArray(product?.tags) ? product.tags.join(", ") : "";
@@ -68,15 +51,7 @@ Description from store: ${description ? description.slice(0, 500) : "none"}`,
 
     if (!res.ok) return null;
     const data = await res.json();
-    const generated = data?.content?.[0]?.text?.trim() ?? null;
-
-    try {
-      if (generated) await redis.set(cacheKey, generated);
-    } catch {
-      // ignore cache write failure
-    }
-
-    return generated;
+    return data?.content?.[0]?.text?.trim() ?? null;
   } catch {
     return null;
   }
