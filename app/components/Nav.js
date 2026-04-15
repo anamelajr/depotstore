@@ -324,7 +324,8 @@ export default function Nav({ onAboutOpen }) {
                     }
                   }}
                   placeholder="Search archive..."
-                  className="font-mono text-[16px] tracking-widest uppercase bg-transparent text-zinc-50 placeholder-zinc-600 outline-none flex-1"
+                  className="font-mono tracking-widest uppercase bg-transparent text-zinc-50 placeholder-zinc-600 outline-none flex-1 origin-left"
+style={{ fontSize: '16px', transform: 'scale(0.6875)', width: '145%' }}
                 />
                 <button
                   onClick={() => {
