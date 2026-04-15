@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import DesignersDropdown from "./DesignersDropdown";
@@ -213,11 +213,15 @@ export default function Nav({ onAboutOpen }) {
   const selectedCategories = searchParams.getAll("category");
   const selectedBrand = searchParams.get("brand");
 
+  const router = useRouter();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [mobileSearchQuery, setMobileSearchQuery] = useState("");
   const [isDesignersOpen, setIsDesignersOpen] = useState(false);
   const [designersDropdownTop, setDesignersDropdownTop] = useState(0);
   const [categoryDropdown, setCategoryDropdown] = useState(null);
   const [categoryDropdownRect, setCategoryDropdownRect] = useState(null);
+  const mobileSearchInputRef = useRef(null);
   const designersRef = useRef(null);
   const designersDropdownRef = useRef(null);
   const navRef = useRef(null);
@@ -226,6 +230,12 @@ export default function Nav({ onAboutOpen }) {
   const topsRef = useRef(null);
   const jacketsRef = useRef(null);
   const bagsRef = useRef(null);
+
+  useEffect(() => {
+    if (isMobileSearchOpen && mobileSearchInputRef.current) {
+      mobileSearchInputRef.current.focus();
+    }
+  }, [isMobileSearchOpen]);
 
   const brandsByLetter = useMemo(() => {
     const sorted = [...BRANDS].sort((a, b) => a.localeCompare(b));
@@ -294,20 +304,68 @@ export default function Nav({ onAboutOpen }) {
       <nav ref={navRef} className="sticky top-0 z-50 flex h-[50px] items-center border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center px-4">
 
-          {/* Mobile: logo + hamburger */}
+          {/* Mobile: logo + search + hamburger */}
           <div className="flex md:hidden items-center justify-between w-full">
-            <Link href="/" className="font-mono text-[13px] tracking-[0.15em] text-zinc-50">
-              DÉPÔT
-            </Link>
-            <button
-              onClick={() => setIsMobileOpen(true)}
-              className="flex flex-col gap-[5px] p-1 text-zinc-300 hover:text-zinc-50 transition-colors"
-              aria-label="Open menu"
-            >
-              <span className="block w-5 h-px bg-current" />
-              <span className="block w-5 h-px bg-current" />
-              <span className="block w-3.5 h-px bg-current" />
-            </button>
+            {isMobileSearchOpen ? (
+              <div className="flex items-center w-full h-[50px] px-5 gap-3">
+                <input
+                  ref={mobileSearchInputRef}
+                  type="text"
+                  value={mobileSearchQuery}
+                  onChange={(e) => setMobileSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const trimmed = mobileSearchQuery.trim();
+                      if (trimmed) {
+                        router.push(`/feed?search=${encodeURIComponent(trimmed)}`);
+                      }
+                      setIsMobileSearchOpen(false);
+                      setMobileSearchQuery("");
+                    }
+                  }}
+                  placeholder="Search archive..."
+                  className="font-mono text-[11px] tracking-widest uppercase bg-transparent text-zinc-50 placeholder-zinc-600 outline-none flex-1"
+                />
+                <button
+                  onClick={() => {
+                    setMobileSearchQuery("");
+                    setIsMobileSearchOpen(false);
+                  }}
+                  className="text-zinc-400 hover:text-zinc-50 transition-colors p-1"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" strokeWidth="1.5"/>
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link href="/" className="font-mono text-[13px] tracking-[0.15em] text-zinc-50">
+                  DÉPÔT
+                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsMobileSearchOpen(true)}
+                    className="text-zinc-300 hover:text-zinc-50 transition-colors p-1"
+                    aria-label="Search"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setIsMobileOpen(true)}
+                    className="flex flex-col gap-[5px] p-1 text-zinc-300 hover:text-zinc-50 transition-colors"
+                    aria-label="Open menu"
+                  >
+                    <span className="block w-5 h-px bg-current" />
+                    <span className="block w-5 h-px bg-current" />
+                    <span className="block w-3.5 h-px bg-current" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Desktop nav */}
