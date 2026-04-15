@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-  const limit = Math.min(300, Math.max(1, parseInt(searchParams.get("limit") || "42")));
+  const limit = Math.min(600, Math.max(1, parseInt(searchParams.get("limit") || "42")));
   const store = searchParams.get("store");
   const categoryRaw = searchParams.get("category");
   const categories = categoryRaw ? categoryRaw.split(",").filter(Boolean) : [];
