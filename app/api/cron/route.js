@@ -38,6 +38,7 @@ export async function GET(request) {
         product_url: p.productUrl,
         available: p.available,
         synced_at: syncStart,
+        description: p.rawDescription ?? null,
       }));
 
       if (syncRows.length === 0) {
