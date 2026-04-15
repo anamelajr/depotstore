@@ -77,14 +77,23 @@ export default function FeedClient({ stores = [] }) {
   useEffect(() => {
     const savedScroll = sessionStorage.getItem("depot_feed_scroll");
     const savedCount = sessionStorage.getItem("depot_feed_count");
+    const savedKey = sessionStorage.getItem("depot_feed_filter_key");
     if (savedScroll === null || savedCount === null) return;
+
+    // Only restore if the current feed state matches the saved state
+    if (savedKey !== null && savedKey !== filterKey) {
+      sessionStorage.removeItem("depot_feed_scroll");
+      sessionStorage.removeItem("depot_feed_count");
+      sessionStorage.removeItem("depot_feed_filter_key");
+      return;
+    }
 
     const count = parseInt(savedCount, 10);
     const y = parseInt(savedScroll, 10);
     if (count > 0) {
       scrollRestoreY.current = y;
       scrollRestorePending.current = true;
-      restoreCountRef.current = Math.min(count, 100); // API caps limit at 100
+      restoreCountRef.current = count;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -98,6 +107,7 @@ export default function FeedClient({ stores = [] }) {
     scrollRestoreY.current = null;
     sessionStorage.removeItem("depot_feed_scroll");
     sessionStorage.removeItem("depot_feed_count");
+    sessionStorage.removeItem("depot_feed_filter_key");
     window.scrollTo(0, y);
   }, [loading, products]);
 
@@ -431,6 +441,7 @@ export default function FeedClient({ stores = [] }) {
                     onClick={() => {
                       sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
                       sessionStorage.setItem("depot_feed_count", String(products.length));
+                      sessionStorage.setItem("depot_feed_filter_key", filterKey);
                     }}
                   >
                     <ProductCard product={p} />

@@ -5,26 +5,28 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "42")));
+  const limit = Math.min(300, Math.max(1, parseInt(searchParams.get("limit") || "42")));
   const store = searchParams.get("store");
-  const category = searchParams.get("category");
+  const categoryRaw = searchParams.get("category");
+  const categories = categoryRaw ? categoryRaw.split(",").filter(Boolean) : [];
   const search = searchParams.get("search");
   const sort = searchParams.get("sort");
   const offset = (page - 1) * limit;
 
   // Use interleaved RPC when no explicit sort is set (default discovery mode)
+  // RPC receives the original comma-separated string (single value or multi)
   if (!sort || sort === "interleaved") {
     const [{ data, error }, { data: countData, error: countError }] = await Promise.all([
       supabase.rpc("get_interleaved_products", {
         p_store: store || null,
-        p_category: category || null,
+        p_category: categoryRaw || null,
         p_search: search || null,
         p_limit: limit,
         p_offset: offset,
       }),
       supabase.rpc("count_interleaved_products", {
         p_store: store || null,
-        p_category: category || null,
+        p_category: categoryRaw || null,
         p_search: search || null,
       }),
     ]);
@@ -63,12 +65,19 @@ export async function GET(request) {
     .range(from, to);
 
   if (store) query = query.eq("store_domain", store);
-  if (category) query = query.eq("category", category);
+  if (categories.length === 1) query = query.eq("category", categories[0]);
+  else if (categories.length > 1) query = query.in("category", categories);
   if (search) query = query.ilike("title", `%${search}%`);
 
-  query = sort === "oldest"
-    ? query.order("synced_at", { ascending: true }).order("id", { ascending: true })
-    : query.order("synced_at", { ascending: false }).order("id", { ascending: false });
+  if (sort === "price_asc") {
+    query = query.order("price", { ascending: true }).order("id", { ascending: true });
+  } else if (sort === "price_desc") {
+    query = query.order("price", { ascending: false }).order("id", { ascending: false });
+  } else if (sort === "oldest") {
+    query = query.order("synced_at", { ascending: true }).order("id", { ascending: true });
+  } else {
+    query = query.order("synced_at", { ascending: false }).order("id", { ascending: false });
+  }
 
   const { data, count, error } = await query;
 
