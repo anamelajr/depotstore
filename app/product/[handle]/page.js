@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BackToFeedLink from "../../components/BackToFeedLink";
 import { generateDescription } from "../../lib/generateDescription";
 
 async function getProduct(handle, storeDomain) {
@@ -72,12 +73,9 @@ const available = availableParam !== "false";
       <div className="mx-auto max-w-6xl px-6 py-16">
         
         {/* Back link */}
-        <Link
-          href="/feed"
+        <BackToFeedLink
           className="mb-12 block text-[13px] tracking-wide text-zinc-400 transition-colors hover:text-zinc-50"
-        >
-          ← Back to feed
-        </Link>
+        />
 
         <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
           

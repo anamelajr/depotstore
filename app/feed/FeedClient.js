@@ -85,6 +85,7 @@ export default function FeedClient({ stores = [] }) {
       sessionStorage.removeItem("depot_feed_scroll");
       sessionStorage.removeItem("depot_feed_count");
       sessionStorage.removeItem("depot_feed_filter_key");
+      sessionStorage.removeItem("depot_feed_url");
       return;
     }
 
@@ -108,6 +109,7 @@ export default function FeedClient({ stores = [] }) {
     sessionStorage.removeItem("depot_feed_scroll");
     sessionStorage.removeItem("depot_feed_count");
     sessionStorage.removeItem("depot_feed_filter_key");
+    sessionStorage.removeItem("depot_feed_url");
     window.scrollTo(0, y);
   }, [loading, products]);
 
@@ -442,6 +444,7 @@ export default function FeedClient({ stores = [] }) {
                       sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
                       sessionStorage.setItem("depot_feed_count", String(products.length));
                       sessionStorage.setItem("depot_feed_filter_key", filterKey);
+                      sessionStorage.setItem("depot_feed_url", window.location.pathname + window.location.search);
                     }}
                   >
                     <ProductCard product={p} />
