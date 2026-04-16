@@ -83,16 +83,116 @@ export async function getAllStores() {
   return data.map((row) => ({ ...mapStoreRow(row), active: row.active }));
 }
 
-export function assignCategory(product) {
-  const text = `${product.productType} ${product.name}`.toLowerCase();
-  if (/\b(jacket|coat|blazer|parka|bomber|puffer|anorak|trench|overcoat|peacoat)\b/.test(text)) return "Jackets & Coats";
-  if (/\b(dress|skirt|midi|maxi|miniskirt)\b/.test(text)) return "Dresses & Skirts";
-  if (/\b(trouser|pant|jean|denim|short|cargo|legging|jogger|chino)\b/.test(text)) return "Bottoms";
-  if (/\b(shoe|boot|sneaker|heel|loafer|sandal|mule|clog|pump|trainer)\b/.test(text)) return "Footwear";
-  if (/\b(bag|tote|clutch|purse|wallet|belt|scarf|hat|cap|glove|jewelry|necklace|earring|bracelet|ring|accessory|sunglasses|beanie)\b/.test(text)) return "Bags & Accessories";
-  if (/\b(set|suit|co-ord|matching)\b/.test(text)) return "Sets";
-  if (/\b(top|shirt|tee|blouse|knit|sweater|hoodie|sweatshirt|cardigan|tank|vest|polo|jersey|longsleeve)\b/.test(text)) return "Tops";
+// Apply the ordered category rules to a prepared (lowercased, collapsed)
+// text blob. Returns a category string or null when nothing matches.
+function tryClassify(text) {
+  if (!text) return null;
+
+  // 1. Footwear — specific nouns, very low false-positive risk.
+  if (/\b(boots?|shoes?|sneakers?|trainers?|sandals?|heels?|loafers?|mules?|clogs?|pumps?|slippers?|espadrilles?|oxfords?|brogues?|moccasins?|derby|derbies)\b/.test(text)) {
+    return "Footwear";
+  }
+
+  // 2. Bags & Accessories — run before Bottoms/Tops so "Cargo Shoulder Bag"
+  //    and "Jean Paul Gaultier Watch" cannot be hijacked by fabric / brand tokens.
+  // Note on irregular plurals: "watch"/"brooch" pluralise as "watches"/"brooches",
+  // not "watchs"/"broochs", so `watches?` would ONLY match "watche"/"watches"
+  // (never the singular). Use `watch(?:es)?` / `brooch(?:es)?` to catch both.
+  if (/\b(bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|belts?|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|bowtie|bow[\s-]?tie)\b/.test(text)) {
+    return "Bags & Accessories";
+  }
+
+  // 3. Jackets & Coats.
+  if (/\b(jackets?|coats?|blazers?|parkas?|bombers?|puffers?|anoraks?|trench(?:coats?|es)?|overcoats?|peacoats?|windbreakers?|raincoats?|shearlings?)\b/.test(text)) {
+    return "Jackets & Coats";
+  }
+
+  // 4. Dresses & Skirts — negative lookahead stops "dress shirt"/"dress pants"
+  //    from being pulled in. midi/maxi only count when modifying dress/skirt.
+  if (/\bdress(?:es)?\b(?!\s*(shirt|shirts|pants?|trousers?))/.test(text) ||
+      /\b(skirts?|miniskirts?|gowns?|jumpsuits?|sundress(?:es)?|rompers?|kaftans?|caftans?)\b/.test(text) ||
+      /\b(midi|maxi)\s+(dress(?:es)?|skirts?)\b/.test(text)) {
+    return "Dresses & Skirts";
+  }
+
+  // 4b. High-confidence Tops nouns — these run BEFORE Bottoms so that a
+  //     product whose name contains both a Bottoms token AND an unambiguous
+  //     top noun (e.g. "Jean Paul Gaultier 'Jeans' Hawaiian Shirt", where
+  //     'Jeans' is a JPG sub-line and the garment is a shirt) resolves to
+  //     Tops. Zip-up garments are captured here too. Low-confidence tops
+  //     nouns (top, tank, vest, knit, jersey, long/short-sleeve) stay in
+  //     the catch-all rule 7.
+  if (/\b(t[\s-]?shirts?|tee[\s-]?shirts?|tees?|shirts?|blouses?|sweaters?|hoodies?|sweatshirts?|cardigans?|tank[\s-]?tops?|polo[\s-]?shirts?|polos?|turtlenecks?|pullovers?|crewnecks?|knitwears?|camisoles?|bodysuits?|waistcoats?|tunics?|zip[\s-]?ups?|zipups?)\b/.test(text)) {
+    return "Tops";
+  }
+
+  // 5. Bottoms — plural-biased to avoid "short sleeve" / bare-"jean" collisions.
+  //    Generic fabric words (denim / cargo) do NOT match on their own; they
+  //    need an accompanying bottoms noun to count.
+  if (/\b(trousers?|pants?|jeans|shorts|leggings?|joggers?|chinos?|slacks|sweatpants?|culottes?|bermudas?)\b/.test(text) ||
+      /\b(denim|cargo)\s+(pants?|jeans?|shorts|trousers?)\b/.test(text)) {
+    return "Bottoms";
+  }
+
+  // 6. Sets — bare "set" / "suit" is far too noisy; require explicit phrasing.
+  if (/\b(matching\s+sets?|two[\s-]?piece\s+sets?|three[\s-]?piece\s+sets?|co[\s-]?ord(?:s|inates?)?|tracksuits?)\b/.test(text)) {
+    return "Sets";
+  }
+
+  // 7. Tops — most ambiguous, runs last. Explicit short/long-sleeve catches
+  //    products like "Short Sleeves Polo Shirt" that singular-"short" used
+  //    to hijack into Bottoms.
+  if (/\b(t[\s-]?shirts?|tee[\s-]?shirts?|tees?|shirts?|blouses?|sweaters?|hoodies?|sweatshirts?|cardigans?|tank[\s-]?tops?|tanks?|vests?|waistcoats?|polo[\s-]?shirts?|polos?|jerseys?|turtlenecks?|pullovers?|knitwears?|knits?|crewnecks?|long[\s-]?sleeves?|short[\s-]?sleeves?|camisoles?|cami|bodysuits?|tunics?|tops?)\b/.test(text)) {
+    return "Tops";
+  }
+
   return null;
+}
+
+// Classify a product into one of the feed categories, or return null when
+// there is no confident match. Prefers null over a wrong guess — the feed
+// filter is unforgiving when rows are mislabelled.
+//
+// Expected input (any field may be missing / null):
+//   productType — Shopify product_type string (sync time only; absent on backfill)
+//   title       — cleanTitle() output, brand already stripped
+//   name        — raw Shopify title (brand usually prefixed)
+//   brand       — cleanTitle() brand, used to strip from `name`
+//   vendor      — Shopify vendor, fallback brand source for stripping
+//
+// Two-pass strategy:
+//   1. Try the cleaned `title` (already brand-stripped by cleanTitle()).
+//   2. If that yields null, fall back to the raw `name` with brand/vendor
+//      tokens stripped. This catches cleanTitle() regressions where the key
+//      garment noun was dropped — e.g. title "Van Gogh Skeleton Buffalo
+//      Leather" (missing "Jacket") or "Royal Legacy Archive Zip-up" cleaned
+//      to "Royal Legacy Archive Zip" (missing "-up").
+export function assignCategory(product) {
+  const rawType = typeof product?.productType === "string" ? product.productType : "";
+  const rawName = typeof product?.name === "string" ? product.name : "";
+  const rawTitle = typeof product?.title === "string" ? product.title : "";
+  const rawBrand = typeof product?.brand === "string" ? product.brand : "";
+  const rawVendor = typeof product?.vendor === "string" ? product.vendor : "";
+
+  const prepareText = (primary) =>
+    `${rawType} ${primary}`.toLowerCase().replace(/\s+/g, " ").trim();
+
+  // Pass 1: cleaned title + productType.
+  if (rawTitle.trim()) {
+    const result = tryClassify(prepareText(rawTitle));
+    if (result !== null) return result;
+  }
+
+  // Pass 2: raw name with brand/vendor tokens stripped. Handles cleanTitle
+  // regressions where the decisive garment noun was dropped.
+  let strippedName = rawName;
+  for (const candidate of [rawBrand, rawVendor]) {
+    const b = candidate.trim();
+    if (!b) continue;
+    const escaped = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    strippedName = strippedName.replace(new RegExp(`\\b${escaped}\\b`, "gi"), " ");
+  }
+  return tryClassify(prepareText(strippedName));
 }
 
 export function toAbsoluteUrl(inputUrl, domain) {
@@ -233,7 +333,7 @@ export async function fetchStoreProducts(store) {
         if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) return null;
       }
 
-      const category = assignCategory(p);
+      const category = assignCategory({ ...p, brand, title });
       return { ...p, brand, title, category };
     })
   );

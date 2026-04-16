@@ -20,7 +20,7 @@ the product's differentiator.
 ## Key flows
 
 **Nightly sync** — cron hits `/api/cron`, pulls Shopify inventory, normalises
-and upserts into Supabase. Editorial fields (branry) only write
+and upserts into Supabase. Editorial fields (brand, title, category) only write
 if currently NULL — sync fields always overwrite.
 
 **Feed** — `FeedClient.js` manages URL-driven filter/sort state, load-more
@@ -42,7 +42,8 @@ Do not change these without explicit instruction.
 - **`stores.js` parse block must write `null` on `cleanTitle` failure**,
   never `rawTitle`.
 - **`get_interleaved_products` RPC must return the `name` column.** Do not
-  recreate it without `name` — `ProductCard` falls back to it when   is null.
+  recreate it without `name` — `ProductCard` falls back to it when `title`
+  is null.
 - **Price is stored as TEXT** (`'€29.99'`). Never assume numeric ordering.
 - **`FALLBACK_STORES` in `stores.js` is a safety net.** Do not delete it.
 - **`BackToFeedLink` enables filter-aware back navigation.** Do not delete it.
@@ -63,7 +64,7 @@ Do not change these without explicit instruction.
 
 ## Workflow
 
-- Preferal diffs. Do not refactor unrelated code in the same change.
+- Prefer minimal diffs. Do not refactor unrelated code in the same change.
 - Verify all changes on Vercel before considering a task done.
 - Dropping and recreating an RPC loses dependent query logic — confirm the full
   column list before recreating.
@@ -88,5 +89,3 @@ npm run dev      # Dev server — verify on Vercel, not here
 npm run build    # Production build
 npm run lint     # ESLint
 ```
-
-
