@@ -1,5 +1,5 @@
-import Link from "next/link";
 import BackToFeedLink from "../../components/BackToFeedLink";
+import ProductGallery from "../../components/ProductGallery";
 import { generateDescription } from "../../lib/generateDescription";
 
 async function getProduct(handle, storeDomain) {
@@ -27,13 +27,13 @@ const { store: storeDomain, available: availableParam } = await searchParams;
 const available = availableParam !== "false";
 
   if (!handle || !storeDomain) {
-    return <div className="min-h-screen bg-[#0a0a0a] text-zinc-50 flex items-center justify-center">Product not found.</div>;
+    return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
   }
 
   const product = await getProduct(handle, storeDomain);
 
   if (!product) {
-    return <div className="min-h-screen bg-[#0a0a0a] text-zinc-50 flex items-center justify-center">Product not found.</div>;
+    return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
   }
 
   const images = Array.isArray(product.images)
@@ -69,81 +69,72 @@ const available = availableParam !== "false";
   const storeName = storeDomain.replace(".com", "").replace(".fr", "").replace(".net", "");
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-50 font-mono">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        
-        {/* Back link */}
-        <BackToFeedLink
-          className="mb-12 block text-[13px] tracking-wide text-zinc-400 transition-colors hover:text-zinc-50"
-        />
+    <div className="min-h-screen bg-white text-zinc-900">
+      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 py-0 lg:py-10">
 
-        <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
-          
-          {/* Images */}
-          <div className="space-y-4">
-            {images.length > 0 ? (
-              images.map((src, i) => (
-                <img
-                  key={i}
-                  src={src}
-                  alt={product.title}
-                  className="w-full object-cover"
-                />
-              ))
-            ) : (
-              <div className="aspect-[4/5] bg-zinc-900 flex items-center justify-center text-zinc-600 text-sm">
-                No image
-              </div>
-            )}
-          </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[88px_1fr_340px] lg:gap-12">
+
+          <ProductGallery images={images} alt={product.title} />
 
           {/* Product info */}
-          <div className="lg:sticky lg:top-16 lg:self-start">
-            
-            {/* Title */}
-            <h1
-              className="text-[clamp(24px,3vw,36px)] font-medium leading-tight tracking-tight mb-4"
-              style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
-            >
-              {product.title}
-            </h1>
+          <div className="order-2 lg:order-none px-5 lg:px-0 lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start">
+            <div className="space-y-8">
 
-            {/* Price */}
-            {price && (
-              <p className="text-xl font-mono text-zinc-300 mb-8">
-                {price}
-              </p>
-            )}
+              {/* Vendor / brand */}
+              {vendor && (
+                <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-500">
+                  {vendor}
+                </p>
+              )}
 
-            {/* Editorial description */}
-            {description && (
-              <p className="text-sm leading-relaxed text-zinc-400 mb-10">
-                {description}
-              </p>
-            )}
+              {/* Title */}
+              <h1
+                className="text-[clamp(22px,2.2vw,30px)] font-normal leading-snug tracking-tight text-zinc-900"
+                style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
+              >
+                {product.title}
+              </h1>
 
-            {/* Sold indicator */}
-            {!available && (
-  <p className="text-[11px] uppercase tracking-widest text-zinc-500 mb-6">
-    Sold
-  </p>
-)}
+              {/* Price */}
+              {price && (
+                <p className="font-mono text-[14px] text-zinc-700">
+                  {price}
+                </p>
+              )}
 
-            {/* Shop button */}
-           <a 
-            href={`${productUrl}?utm_source=depot`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block border border-zinc-700 px-6 py-3 text-[13px] tracking-wide text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 mb-8"
-            >
-              Shop at {storeDomain} →
-            </a>
+              {/* Sold indicator */}
+              {!available && (
+                <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+                  Sold
+                </p>
+              )}
 
-            {/* Store tag */}
-            <p className="mt-8 text-[11px] uppercase tracking-widest text-zinc-600">
-              {storeDomain}
-            </p>
+              {/* Editorial description */}
+              {description && (
+                <p className="text-[13px] leading-relaxed text-zinc-600">
+                  {description}
+                </p>
+              )}
 
+              {/* Shop button */}
+              <div>
+                <a
+                  href={`${productUrl}?utm_source=depot`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 border-b border-zinc-900 pb-1 font-mono text-[11px] uppercase tracking-widest text-zinc-900 hover:text-zinc-500 hover:border-zinc-500 transition-colors"
+                >
+                  Shop at {storeName}
+                  <span aria-hidden="true">&rarr;</span>
+                </a>
+              </div>
+
+              {/* Back to feed */}
+              <BackToFeedLink
+                className="mt-12 block font-mono text-[11px] uppercase tracking-widest text-zinc-500 hover:text-zinc-900 transition-colors"
+              />
+
+            </div>
           </div>
         </div>
       </div>
