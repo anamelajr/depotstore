@@ -267,6 +267,16 @@ export function normalizeProduct(product, store) {
 
   const price = minPrice === null ? null : `€${minPrice.toFixed(2)}`;
 
+  if (handle === "jitrois-leather-dress-1") {
+    console.log("[price-debug] jitrois-leather-dress-1", {
+      store: store.domain,
+      variants: variants.map((v) => ({ price: v?.price, available: v?.available })),
+      minPrice,
+      finalPrice: price,
+      available,
+    });
+  }
+
   const productUrl =
     toAbsoluteUrl(product?.url, store.domain) ??
     (handle ? `https://${store.domain}/products/${handle}` : null);
