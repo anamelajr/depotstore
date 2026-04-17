@@ -48,11 +48,15 @@ function deterministicClean(row) {
     const possibleTitle = dashParts.slice(1).join(" - ").trim();
     // Only accept if brand part looks like a brand (not too long, no lowercase)
     if (possibleBrand.length < 40 && possibleBrand === possibleBrand.toUpperCase()) {
-      return {
-        brand: possibleBrand,
-        title: toTitleCase(possibleTitle),
-        resolved: true,
-      };
+      const cleanedTitle = toTitleCase(possibleTitle);
+      const titleWords = cleanedTitle.trim().split(/\s+/).length;
+      if (titleWords >= 2 && titleWords <= 5) {
+        return {
+          brand: possibleBrand,
+          title: cleanedTitle,
+          resolved: true,
+        };
+      }
     }
   }
 
