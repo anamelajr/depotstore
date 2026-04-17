@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const WHEEL_COOLDOWN_MS = 450;
+const WHEEL_COOLDOWN_MS = 750;
 
 function isEditableTarget(el) {
   if (!el) return false;
@@ -219,10 +219,10 @@ export default function ProductGallery({ images, alt }) {
               onClick={() => setSelectedIndex(i)}
               aria-label={`View image ${i + 1}`}
               aria-current={isActive ? "true" : undefined}
-              className={`relative block aspect-[3/4] w-full flex-none overflow-hidden bg-zinc-100 transition-opacity ${
+              className={`relative block aspect-[3/4] w-full flex-none overflow-hidden bg-zinc-100 ${
                 isActive
-                  ? "opacity-100 before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-zinc-900 before:content-['']"
-                  : "opacity-60 hover:opacity-100"
+                  ? "ring-1 ring-inset ring-zinc-900"
+                  : ""
               }`}
             >
               <img src={src} alt="" className="h-full w-full object-cover" />
@@ -236,7 +236,7 @@ export default function ProductGallery({ images, alt }) {
         {/* Desktop hero */}
         <div
           ref={heroRef}
-          className="relative hidden lg:block w-full bg-zinc-50 lg:h-[calc(100vh-var(--nav-height)-4rem)]"
+          className="relative hidden lg:block w-full lg:h-[calc(100vh-var(--nav-height)-4rem)]"
         >
           <img
             src={activeSrc}
@@ -259,7 +259,7 @@ export default function ProductGallery({ images, alt }) {
                   slideRefs.current[i] = el;
                 }}
                 data-index={i}
-                className="relative flex-none w-full aspect-[3/4] snap-start snap-always bg-zinc-50"
+                className="relative flex-none w-full aspect-[3/4] snap-start snap-always"
               >
                 <img
                   src={src}
