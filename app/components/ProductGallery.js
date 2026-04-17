@@ -221,7 +221,7 @@ export default function ProductGallery({ images, alt }) {
               aria-current={isActive ? "true" : undefined}
               className={`relative block aspect-[3/4] w-full flex-none overflow-hidden bg-zinc-100 ${
                 isActive
-                  ? "ring-1 ring-inset ring-zinc-900"
+                  ? "ring-1 ring-zinc-900"
                   : ""
               }`}
             >

@@ -70,7 +70,7 @@ const available = availableParam !== "false";
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
-      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 py-0 lg:py-10">
+      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 py-0 lg:pt-16 lg:pb-10">
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[88px_1fr_340px] lg:gap-12">
 
