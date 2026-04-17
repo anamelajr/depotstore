@@ -5,7 +5,7 @@ import { generateDescription } from "../../lib/generateDescription";
 async function getProduct(handle, storeDomain) {
   try {
     const res = await fetch(
-      `https://${storeDomain}/products/${handle}.json`,
+      `https://${storeDomain}/products/${handle}.json?country=FR`,
       { cache: "no-store" }
     );
     if (!res.ok) return null;
