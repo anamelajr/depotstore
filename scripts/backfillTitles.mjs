@@ -108,8 +108,19 @@ For each product, extract brand and title following these STRICT rules.
 
 BRAND rules:
 - Always ALL CAPS. E.g. "RICK OWENS", "ANN DEMEULEMEESTER", "YOHJI YAMAMOTO POUR HOMME"
-- Extract from the title first — it is almost always at the start before a dash or separator
-- Common formats: "BRAND - description", "BRAND / description", "(New Arrival) BRAND - description"
+- Extract from the title first
+- Common formats:
+    "BRAND - description"
+    "BRAND / description"
+    "(New Arrival) BRAND - description"
+    "2000s BRAND description" (decade prefix — brand follows the decade)
+    "FW2017 BRAND description" (season-year prefix — brand follows the season code)
+    "SS1999 BRAND description" (season-year prefix — brand follows the season code)
+- Era/season tokens at the start (e.g. "2000s", "1990s", "FW2017", "SS1999", "AW1999") are NOT the brand — skip past them to find the brand
+- Numbers, decades, and season codes are never a brand
+- The brand may be one or multiple words (e.g. "Prada", "Saint Laurent", "Dolce & Gabbana")
+  It appears immediately after any era/season prefix and before the garment description
+  Do NOT include garment or material descriptors (e.g. "Nylon", "Leather", "Wool", "Shirt", "Jacket") as part of the brand
 - Also check the description field — brand is sometimes mentioned there
 - If truly no brand identifiable anywhere, return "" (empty string)
 - Never invent or guess a brand
@@ -117,6 +128,7 @@ BRAND rules:
 TITLE rules:
 - Format: [Season+Year if present] [Garment type] [ONE detail max]
 - Season ALWAYS comes first: "SS16 Wool Coat", "FW99 Wide Trousers", "FW02 Leather Jacket"
+- Decade markers (e.g. "2000s", "1990s") are treated the same as season codes — they come first in the title and are preserved: "2000s Crossbody Bag", "1990s Leather Jacket"
 - If no season: "Wool Coat", "Wide Trousers", "Leather Belt"
 - Maximum 5 words, Title Case only — never ALL CAPS
 - Remove: brand name, "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, parentheticals
@@ -178,6 +190,13 @@ function isDirty(row) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
+  const argv = process.argv.slice(2);
+  const storeIdx = argv.indexOf("--store");
+  const storeFilter = storeIdx !== -1 ? argv[storeIdx + 1] : null;
+  const dryRun = argv.includes("--dry-run");
+
+  if (storeFilter) console.log(`Store filter: ${storeFilter}`);
+  if (dryRun) console.log("Dry-run mode — no writes will occur.");
   console.log("Fetching dirty products from Supabase...");
 
   // Paginate through all products to find dirty ones
@@ -186,10 +205,12 @@ async function main() {
   const dirty = [];
 
   while (true) {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("products")
       .select("id, name, title, brand, store_domain, description")
       .range(from, from + PAGE - 1);
+    if (storeFilter) query = query.eq("store_domain", storeFilter);
+    const { data, error } = await query;
 
     if (error) { console.error("Fetch error:", error.message); break; }
     if (!data || data.length === 0) break;
@@ -245,16 +266,20 @@ if (row && brandValid && titleValid) {
 
     // Write updates to Supabase
     for (const update of updates) {
-      const { error } = await supabaseAdmin
-        .from("products")
-        .update({ brand: update.brand, title: update.title })
-        .eq("id", update.id);
-
-      if (error) {
-        console.error(`Failed updating id ${update.id}:`, error.message);
-        skipped++;
-      } else {
+      if (dryRun) {
+        console.log(`[dry-run] id=${update.id}  brand=${JSON.stringify(update.brand)}  title=${JSON.stringify(update.title)}`);
         fixed++;
+      } else {
+        const { error } = await supabaseAdmin
+          .from("products")
+          .update({ brand: update.brand, title: update.title })
+          .eq("id", update.id);
+        if (error) {
+          console.error(`Failed updating id ${update.id}:`, error.message);
+          skipped++;
+        } else {
+          fixed++;
+        }
       }
     }
 
