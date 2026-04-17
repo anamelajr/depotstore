@@ -2,6 +2,28 @@ import { cleanTitle } from "./cleanTitle.js";
 import { supabaseAdmin } from "./supabase.js";
 import BRANDS from "../brands.js";
 
+async function fetchExistingEditorialByHandle(storeDomain) {
+  const map = {};
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from("products")
+      .select("handle, brand, title, category")
+      .eq("store_domain", storeDomain)
+      .range(from, from + PAGE - 1);
+    if (error) {
+      console.error(`Existing-products fetch failed for ${storeDomain}:`, error.message);
+      return map;
+    }
+    if (!data || data.length === 0) break;
+    for (const row of data) map[row.handle] = row;
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return map;
+}
+
 // Normalizes brand strings for reliable comparison
 // Handles accents, punctuation, slashes, spacing differences
 function normalizeBrand(value) {
@@ -302,8 +324,28 @@ export async function fetchStoreProducts(store) {
     .map((p) => normalizeProduct(p, store))
     .filter(Boolean);
 
+  const existingByHandle = await fetchExistingEditorialByHandle(store.domain);
+
     const cleaned = await Promise.all(
       normalized.map(async (p) => {
+        const existing = p.handle ? existingByHandle[p.handle] : null;
+        if (existing && existing.brand && existing.title && existing.category) {
+          const brand = existing.brand;
+          const title = existing.title;
+          const category = existing.category;
+
+          if (FILTER_BY_BRAND.has(store.domain)) {
+            const resolvedBrand =
+              normalizeBrand(brand) ||
+              normalizeBrand(p.vendor) ||
+              (titleContainsAllowedBrand(p.name) ? "matched_via_title" : null);
+            if (!resolvedBrand) return null;
+            if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) return null;
+          }
+
+          return { ...p, brand, title, category };
+        }
+
         const result = await cleanTitle(p);
         let brand = null;
         let title = null;
