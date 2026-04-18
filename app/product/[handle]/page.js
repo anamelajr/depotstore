@@ -1,12 +1,13 @@
 import BackToFeedLink from "../../components/BackToFeedLink";
 import ProductGallery from "../../components/ProductGallery";
 import { generateDescription } from "../../lib/generateDescription";
+import { supabase, supabaseAdmin } from "../../lib/supabase.js";
 
 async function getProduct(handle, storeDomain) {
   try {
     const res = await fetch(
       `https://${storeDomain}/products/${handle}.json?country=FR`,
-      { cache: "no-store" }
+      { next: { revalidate: 300 } }
     );
     if (!res.ok) return null;
     const data = await res.json();
@@ -63,7 +64,30 @@ const available = availableParam !== "false";
     storeName: storeDomain,
   };
 
-  const description = await generateDescription(productData);
+  const { data: dbRow } = await supabase
+    .from("products")
+    .select("editorial_description")
+    .eq("store_domain", storeDomain)
+    .eq("handle", handle)
+    .maybeSingle();
+
+  let description = dbRow?.editorial_description || null;
+
+  if (!description) {
+    const generated = await generateDescription(productData);
+    description = generated;
+    if (generated) {
+      try {
+        await supabaseAdmin
+          .from("products")
+          .update({ editorial_description: generated })
+          .eq("store_domain", storeDomain)
+          .eq("handle", handle);
+      } catch {
+        // Write failure: page still renders with the generated description
+      }
+    }
+  }
 
   const productUrl = `https://${storeDomain}/products/${handle}`;
   const storeName = storeDomain.replace(".com", "").replace(".fr", "").replace(".net", "");
