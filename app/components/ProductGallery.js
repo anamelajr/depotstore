@@ -279,7 +279,7 @@ export default function ProductGallery({ images, alt }) {
                 type="button"
                 onClick={() => goToIndex(Math.max(0, selectedIndex - 1))}
                 aria-label="Previous image"
-                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/60 backdrop-blur-sm text-zinc-900 active:bg-white/80 transition-colors"
+                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center text-zinc-900"
               >
                 <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="M12.5 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -291,7 +291,7 @@ export default function ProductGallery({ images, alt }) {
                 type="button"
                 onClick={() => goToIndex(Math.min(count - 1, selectedIndex + 1))}
                 aria-label="Next image"
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/60 backdrop-blur-sm text-zinc-900 active:bg-white/80 transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center text-zinc-900"
               >
                 <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -299,7 +299,7 @@ export default function ProductGallery({ images, alt }) {
               </button>
 
               {/* Indicators — overlaid on bottom edge */}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 rounded-full bg-white/60 backdrop-blur-sm px-2.5 py-1.5">
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
                 {images.map((_, i) => {
                   const isActive = i === selectedIndex;
                   return (

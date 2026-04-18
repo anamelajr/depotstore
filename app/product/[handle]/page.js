@@ -1,7 +1,10 @@
+import { Inter } from "next/font/google";
 import BackToFeedLink from "../../components/BackToFeedLink";
 import ProductGallery from "../../components/ProductGallery";
 import { generateDescription } from "../../lib/generateDescription";
 import { supabase, supabaseAdmin } from "../../lib/supabase.js";
+
+const inter = Inter({ subsets: ["latin"] });
 
 async function getProduct(handle, storeDomain) {
   try {
@@ -118,17 +121,16 @@ export default async function ProductPage({ params, searchParams }) {
                 </p>
               )}
 
-              {/* Title — serif, Title Case */}
+              {/* Title */}
               <h1
-                className="mt-3 text-[clamp(26px,2.4vw,34px)] font-normal leading-[1.2] tracking-tight text-zinc-900"
-                style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
+                className={`${inter.className} mt-2 text-[clamp(22px,2.2vw,28px)] font-medium leading-[1.25] tracking-tight text-zinc-900`}
               >
                 {title}
               </h1>
 
               {/* Price */}
               {price && (
-                <p className="mt-8 font-mono text-[13px] text-zinc-700">
+                <p className="mt-5 font-mono text-[13px] text-zinc-700 lg:mt-8">
                   {price}
                 </p>
               )}
@@ -142,13 +144,15 @@ export default async function ProductPage({ params, searchParams }) {
 
               {/* Editorial description */}
               {description && (
-                <p className="mt-10 text-[13px] leading-[1.8] text-zinc-600">
+                <p
+                  className={`${inter.className} mt-6 border-t border-zinc-200 pt-6 text-[13px] leading-[1.7] text-zinc-600 lg:mt-10 lg:border-0 lg:pt-0`}
+                >
                   {description}
                 </p>
               )}
 
               {/* Shop link */}
-              <div className="mt-12">
+              <div className="mt-8 border-t border-zinc-200 pt-6 lg:mt-12 lg:border-0 lg:pt-0">
                 <a
                   href={`${productUrl}?utm_source=depot`}
                   target="_blank"
@@ -160,7 +164,7 @@ export default async function ProductPage({ params, searchParams }) {
               </div>
 
               {/* Back to feed */}
-              <div className="mt-5">
+              <div className="mt-4 lg:mt-5">
                 <BackToFeedLink
                   className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-900 hover:decoration-zinc-900 transition-colors"
                 />
