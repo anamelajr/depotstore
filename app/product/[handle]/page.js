@@ -101,7 +101,7 @@ export default async function ProductPage({ params, searchParams }) {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
-      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 pt-6 lg:pt-16 lg:pb-10">
+      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 lg:pt-16 lg:pb-10">
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[88px_1fr_340px] lg:gap-16">
 
