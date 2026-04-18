@@ -13,7 +13,7 @@ export default function BackToFeedLink({ className }) {
 
   return (
     <Link href={feedUrl} className={className}>
-      &larr; Back to feed
+      &larr; Back
     </Link>
   );
 }

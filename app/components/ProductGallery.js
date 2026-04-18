@@ -219,10 +219,8 @@ export default function ProductGallery({ images, alt }) {
               onClick={() => setSelectedIndex(i)}
               aria-label={`View image ${i + 1}`}
               aria-current={isActive ? "true" : undefined}
-              className={`relative block aspect-[3/4] w-full flex-none overflow-hidden bg-zinc-100 ${
-                isActive
-                  ? "ring-1 ring-zinc-900"
-                  : ""
+              className={`relative block aspect-[3/4] w-full flex-none overflow-hidden bg-zinc-100 border ${
+                isActive ? "border-zinc-900" : "border-transparent"
               }`}
             >
               <img src={src} alt="" className="h-full w-full object-cover" />
