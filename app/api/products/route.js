@@ -2,6 +2,21 @@ import { supabase } from "../../lib/supabase.js";
 
 export const dynamic = "force-dynamic";
 
+// Split search query into words; each word must appear in title, brand, or name.
+// Chained .or() calls are ANDed by PostgREST (append semantics, not overwrite).
+function applySearchFilter(query, search) {
+  if (!search) return query;
+  const words = search
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[%_]/g, ""))
+    .filter((w) => w.length >= 2);
+  for (const word of words) {
+    query = query.or(`title.ilike.%${word}%,brand.ilike.%${word}%,name.ilike.%${word}%`);
+  }
+  return query;
+}
+
 // Map URL-safe category slugs to the display-name strings stored in the DB.
 // Subcategory slugs (e.g. tops_tees) map to their parent category.
 const CATEGORY_SLUG_TO_DB = {
@@ -95,7 +110,7 @@ export async function GET(request) {
     if (store) priceQuery = priceQuery.eq("store_domain", store);
     if (categories.length === 1) priceQuery = priceQuery.eq("category", categories[0]);
     else if (categories.length > 1) priceQuery = priceQuery.in("category", categories);
-    if (search) priceQuery = priceQuery.ilike("title", `%${search}%`);
+    priceQuery = applySearchFilter(priceQuery, search);
 
     const { data, count, error } = await priceQuery;
 
@@ -140,7 +155,7 @@ export async function GET(request) {
   if (store) query = query.eq("store_domain", store);
   if (categories.length === 1) query = query.eq("category", categories[0]);
   else if (categories.length > 1) query = query.in("category", categories);
-  if (search) query = query.ilike("title", `%${search}%`);
+  query = applySearchFilter(query, search);
 
   if (sort === "oldest") {
     query = query.order("synced_at", { ascending: true }).order("id", { ascending: true });
