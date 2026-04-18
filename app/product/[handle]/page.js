@@ -60,19 +60,12 @@ export default async function ProductPage({ params, searchParams }) {
   const tags = Array.isArray(product.tags) ? product.tags :
     typeof product.tags === "string" ? product.tags.split(",").map(t => t.trim()) : [];
 
-  const [{ data: dbRow }, { data: storeRow }] = await Promise.all([
-    supabase
-      .from("products")
-      .select("brand, title, editorial_description")
-      .eq("store_domain", storeDomain)
-      .eq("handle", handle)
-      .maybeSingle(),
-    supabase
-      .from("stores")
-      .select("store_name")
-      .eq("domain", storeDomain)
-      .maybeSingle(),
-  ]);
+  const { data: dbRow } = await supabase
+    .from("products")
+    .select("brand, title, editorial_description")
+    .eq("store_domain", storeDomain)
+    .eq("handle", handle)
+    .maybeSingle();
 
   const brand = nonEmpty(dbRow?.brand) ?? nonEmpty(product.vendor);
   const title = nonEmpty(dbRow?.title) ?? nonEmpty(product.title) ?? product.title;
@@ -105,13 +98,10 @@ export default async function ProductPage({ params, searchParams }) {
   }
 
   const productUrl = `https://${storeDomain}/products/${handle}`;
-  const storeName =
-    nonEmpty(storeRow?.store_name) ??
-    storeDomain.replace(".com", "").replace(".fr", "").replace(".net", "");
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
-      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 py-0 lg:pt-16 lg:pb-10">
+      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 pt-6 lg:pt-16 lg:pb-10">
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[88px_1fr_340px] lg:gap-16">
 
@@ -165,7 +155,7 @@ export default async function ProductPage({ params, searchParams }) {
                   rel="noopener noreferrer"
                   className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-900 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-500 hover:decoration-zinc-500 transition-colors"
                 >
-                  Shop at {storeName} &rarr;
+                  Shop &rarr;
                 </a>
               </div>
 

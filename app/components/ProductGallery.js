@@ -26,6 +26,12 @@ export default function ProductGallery({ images, alt }) {
     indexRef.current = selectedIndex;
   }, [selectedIndex]);
 
+  // Reset scroll on mount — Next.js navigation from scrolled feed pages
+  // sometimes lands mid-page.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const hasImages = images && images.length > 0;
   const count = hasImages ? images.length : 0;
   const multiple = count > 1;
@@ -232,14 +238,12 @@ export default function ProductGallery({ images, alt }) {
       {/* Hero (desktop) + swipe gallery (mobile) */}
       <div className="order-1 lg:order-none">
         {/* Desktop hero */}
-        <div
-          ref={heroRef}
-          className="relative hidden lg:block w-full lg:h-[calc(100vh-var(--nav-height)-4rem)]"
-        >
+        <div className="hidden lg:flex lg:w-full lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:items-start lg:justify-center">
           <img
+            ref={heroRef}
             src={activeSrc}
             alt={alt}
-            className="h-full w-full object-contain"
+            className="h-full w-auto max-w-full object-contain"
           />
         </div>
 
@@ -262,36 +266,53 @@ export default function ProductGallery({ images, alt }) {
                 <img
                   src={src}
                   alt={i === 0 ? alt : ""}
-                  className="h-full w-full object-contain"
+                  className="h-full w-full object-cover"
                 />
               </div>
             ))}
           </div>
 
-          {/* Dot indicator */}
-          {multiple && (
-            <div className="mt-3 flex justify-center gap-2">
-              {images.map((_, i) => {
-                const isActive = i === selectedIndex;
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => goToIndex(i)}
-                    aria-label={`Go to image ${i + 1}`}
-                    aria-current={isActive ? "true" : undefined}
-                    className="p-2 -m-2"
-                  >
-                    <span
-                      className={`block h-1.5 w-1.5 rounded-full transition-colors ${
-                        isActive ? "bg-zinc-900" : "bg-zinc-300"
-                      }`}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* Square indicators — sliding window of 5 */}
+          {multiple && (() => {
+            const MAX_INDICATORS = 5;
+            let start = 0;
+            let visibleCount = count;
+            if (count > MAX_INDICATORS) {
+              visibleCount = MAX_INDICATORS;
+              const half = Math.floor(MAX_INDICATORS / 2);
+              start = Math.max(
+                0,
+                Math.min(count - MAX_INDICATORS, selectedIndex - half),
+              );
+            }
+            const visibleIndices = Array.from(
+              { length: visibleCount },
+              (_, i) => start + i,
+            );
+            return (
+              <div className="mt-3 flex justify-center gap-2">
+                {visibleIndices.map((actualIndex) => {
+                  const isActive = actualIndex === selectedIndex;
+                  return (
+                    <button
+                      key={actualIndex}
+                      type="button"
+                      onClick={() => goToIndex(actualIndex)}
+                      aria-label={`Go to image ${actualIndex + 1}`}
+                      aria-current={isActive ? "true" : undefined}
+                      className="p-2 -m-2"
+                    >
+                      <span
+                        className={`block h-1.5 w-1.5 transition-colors ${
+                          isActive ? "bg-zinc-900" : "bg-zinc-300"
+                        }`}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </>
