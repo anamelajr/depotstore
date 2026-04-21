@@ -28,7 +28,33 @@ async function fetchExistingEditorialByHandle(storeDomain) {
 // Handles accents, punctuation, slashes, spacing differences
 function normalizeBrand(value) {
   if (!value || typeof value !== "string") return null;
-  const result = value
+
+  const ALIASES = {
+    "MARGIELA": "MAISON MARGIELA",
+    "MARTIN MARGIELA": "MAISON MARGIELA",
+    "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
+    "A.P.C": "A.P.C.",
+    "ALAIA": "ALAÏA",
+    "AZZEDINE ALAÏA": "ALAÏA",
+    "AZZEDINE ALAIA": "ALAÏA",
+    "ALEXANDER MCQUEEN": "ALEXANDER MCQUEEN",
+    "BELLEVILLE SASSOON": "BELLVILLE SASSOON",
+    "CÉLINE": "CELINE",
+    "COURREGES": "COURRÈGES",
+    "FAYCAL AMOR": "FAYÇAL AMOR",
+    "GIANFRANCO FERRE": "GIANFRANCO FERRÉ",
+    "CHRISTIAN DIOR": "DIOR",
+    "DIOR HOMME": "DIOR",
+    "GIANNI VERSACE": "VERSACE",
+    "GUCCI BY TOM FORD": "GUCCI",
+    "CAVALLI CLASS": "CAVALLI",
+    "BIKKEMBERGS": "DIRK BIKKEMBERGS",
+  };
+
+  const upper = value.trim().toUpperCase();
+  const resolved = ALIASES[upper] !== undefined ? ALIASES[upper] : value;
+
+  const result = resolved
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
