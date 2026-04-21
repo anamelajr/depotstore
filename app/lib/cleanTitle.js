@@ -47,13 +47,13 @@ TITLE rules:
 - Season ALWAYS comes first: "SS16 Wool Coat", "FW99 Wide Trousers"
 - Decade markers (e.g. "2000s", "1990s") are treated the same as season codes — they come first in the title and are preserved: "2000s Crossbody Bag", "1990s Leather Jacket"
 - If no season: "Wool Coat", "Leather Belt", "Wide Trousers"
-- Maximum 5 words, Title Case only
+- Maximum 7 words, Title Case only
 - Remove: brand name, "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, parentheticals
-- If you cannot produce a clean 2-5 word title, return {"brand": "", "title": ""}
+- If you cannot produce a clean 2-7 word title, return {"brand": "", "title": ""}
 
 QUALITY GATE — return {"brand": "", "title": ""} if:
 - Brand not confidently identifiable
-- Title would exceed 5 words
+- Title would exceed 7 words
 - Raw title is a placeholder with no fashion signal
 
 Title: ${rawTitle}
@@ -75,9 +75,35 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
         const parsed = JSON.parse(jsonText);
         const titleWords = parsed.title ? parsed.title.trim().split(/\s+/).length : 0;
         const brandValid = parsed.brand && parsed.brand.trim().length > 0;
-        const titleValid = parsed.title && titleWords >= 2 && titleWords <= 5;
+        const titleValid = parsed.title && titleWords >= 2 && titleWords <= 7;
 
-        if (brandValid && titleValid) {
+        // Accent-safe normalizer — matches normalizeBrand() style in stores.js
+        const normalize = (s) =>
+          s
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+
+        // Guard 1: reject if Haiku echoed the raw name back unchanged.
+        const echoedInput =
+          titleValid && normalize(parsed.title) === normalize(rawTitle);
+
+        // Guard 2: reject if a distinctive (≥4 char) brand token appears in
+        // the title — catches leaks like brand "DIOR HOMME" with title
+        // "Dior Wool Coat". Short tokens are skipped because they collide
+        // with common words ("des"/"van" in multi-word brands, or "a"/"p"/"c"
+        // from A.P.C.).
+        const titleTokens = titleValid
+          ? new Set(normalize(parsed.title).split(" ").filter(Boolean))
+          : new Set();
+        const brandTokens = brandValid
+          ? normalize(parsed.brand).split(" ").filter((t) => t.length >= 4)
+          : [];
+        const brandInTitle = brandTokens.some((t) => titleTokens.has(t));
+
+        if (brandValid && titleValid && !echoedInput && !brandInTitle) {
           return cleaned;
         }
       } catch {
