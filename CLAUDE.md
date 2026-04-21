@@ -55,7 +55,7 @@ Do not change these without explicit instruction.
 ## Known sharp edges
 
 - **dot COMME** uses `/collections/paris/products.json`, not `/products.json`.
-- **`backfillTitles.mjs` and `prewarm.js`** have hardcoded store arrays not
+- **`backfillTitles.mjs`** has hardcoded store arrays not
   connected to the `stores` table. Update them manually when adding stores.
 - **Treat Vercel as the source of truth for behavioural verification.**
   Localhost may mislead on hydration and UI issues.
@@ -69,7 +69,7 @@ Do not change these without explicit instruction.
 - Dropping and recreating an RPC loses dependent query logic — confirm the full
   column list before recreating.
 - When adding a store: INSERT into `stores` table, then update hardcoded arrays
-  in `scripts/backfillTitles.mjs` and `scripts/prewarm.js` manually.
+  in `scripts/backfillTitles.mjs` manually.
 - Straightforward changes: push to `main`. Risky or multi-file changes: branch,
   verify Vercel preview, then merge.
 
