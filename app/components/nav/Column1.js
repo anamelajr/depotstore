@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { buildFeedUrl } from "../../lib/feed-utils";
+import { buildFreshFeedUrl } from "../../lib/feed-utils";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
@@ -14,14 +14,6 @@ const CATEGORY_ITEMS = [
   { key: "bags_accessories",label: "Bags & Accessories",   expandable: true, expandKey: "bags", aliases: ["bags", "accessories"] },
   { key: "sets",            label: "Sets",                 expandable: false },
 ];
-
-function buildToggleCategoryUrl(searchParams, categoryValue) {
-  const current = searchParams.getAll("category");
-  const next = current.includes(categoryValue)
-    ? current.filter((c) => c !== categoryValue)
-    : [...current, categoryValue];
-  return buildFeedUrl(searchParams, { category: next });
-}
 
 function isCategoryActive(selectedCategories, item) {
   const slugs = [item.key, ...(item.aliases || [])];
@@ -72,7 +64,7 @@ export default function Column1({
           return (
             <Link
               key={item.key}
-              href={buildToggleCategoryUrl(searchParams, item.key)}
+              href={buildFreshFeedUrl({ category: [item.key] })}
               className={`${itemBase} ${active ? itemActive : ""}`}
             >
               {active && <span className="-ml-4 mr-1">— </span>}

@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { buildFreshFeedUrl } from "../lib/feed-utils";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import DesktopNav from "./DesktopNav";
@@ -43,21 +44,6 @@ const MOBILE_NAV_SECONDARY = [
   { label: "DESIGNERS", href: "/designers" },
 ];
 
-// Builds a /feed URL that toggles a category in/out of the current selection
-function buildToggleCategoryUrl(searchParams, categoryValue) {
-  const current = searchParams.getAll("category");
-  const next = current.includes(categoryValue)
-    ? current.filter((c) => c !== categoryValue)
-    : [...current, categoryValue];
-  const params = new URLSearchParams();
-  next.forEach((c) => params.append("category", c));
-  // Preserve store if set
-  const store = searchParams.get("store");
-  if (store) params.set("store", store);
-  const q = params.toString();
-  return `/feed${q ? `?${q}` : ""}`;
-}
-
 function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
   const [expandedKey, setExpandedKey] = useState(null);
   const selectedCategories = searchParams.getAll("category");
@@ -98,8 +84,6 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
           const hasSubs = !!CATEGORY_ITEMS[subKey];
           const isExpanded = expandedKey === subKey;
           const isActive = selectedCategories.includes(key) || selectedCategories.some((c) => c.startsWith(subKey));
-          const toggleUrl = buildToggleCategoryUrl(searchParams, key);
-
           return (
             <div key={key}>
               <div
@@ -109,7 +93,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
                     setExpandedKey(isExpanded ? null : subKey);
                   } else {
                     onClose();
-                    window.location.href = toggleUrl;
+                    window.location.href = buildFreshFeedUrl({ category: [key] });
                   }
                 }}
               >
@@ -130,12 +114,11 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
               {hasSubs && isExpanded && (
                 <div className="bg-zinc-950 border-b border-zinc-800">
                   {CATEGORY_ITEMS[subKey].map(([value, sublabel]) => {
-                    const subToggleUrl = buildToggleCategoryUrl(searchParams, value);
                     const subIsActive = selectedCategories.includes(value);
                     return (
                       <Link
                         key={value}
-                        href={subToggleUrl}
+                        href={buildFreshFeedUrl({ category: [value] })}
                         onClick={onClose}
                         className="flex items-center px-8 py-3 border-b border-zinc-900 last:border-0"
                       >
