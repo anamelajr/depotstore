@@ -17,6 +17,7 @@ export const SORT_OPTIONS = [
 export const SORT_MAP = {
   interleaved: null,
   latest:      "newest",
+  newest:      "newest",  // alias: tolerate ?sort=newest in the wild
   oldest:      "oldest",
   price_asc:   "price_asc",
   price_desc:  "price_desc",

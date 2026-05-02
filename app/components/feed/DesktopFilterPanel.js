@@ -1,22 +1,44 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ALL_STORES_VALUE } from "../../lib/feed-utils";
 
-// Flat category list. Sub-items get extra left padding via `indent: true`.
-// Order and labels match MobileFilterDrawer.CATEGORY_GROUPS exactly.
-const CATEGORY_ITEMS = [
-  { value: "tops",                  label: "All Tops",                 indent: false },
-  { value: "tops_hoodies_sweaters", label: "Hoodies & Sweaters",       indent: true  },
-  { value: "tops_shirts_blouses",   label: "Shirts & Blouses",         indent: true  },
-  { value: "tops_tees",             label: "Tees",                     indent: true  },
-  { value: "tops_knitwear",         label: "Knitwear",                 indent: true  },
-  { value: "bottoms",               label: "Bottoms",                  indent: false },
-  { value: "dresses_skirts",        label: "Dresses & Skirts",         indent: false },
-  { value: "jackets_coats",         label: "All Jackets & Coats",      indent: false },
-  { value: "footwear",              label: "Footwear",                 indent: false },
-  { value: "bags_accessories",      label: "All Bags & Accessories",   indent: false },
-  { value: "sets",                  label: "Sets",                     indent: false },
+// Grouped category hierarchy. Groups with `children` are collapsible;
+// groups without are direct filter buttons.
+const CATEGORY_GROUPS = [
+  {
+    value: "tops",
+    label: "Tops",
+    children: [
+      { value: "tops",                  label: "All Tops"          },
+      { value: "tops_hoodies_sweaters", label: "Hoodies & Sweaters" },
+      { value: "tops_shirts_blouses",   label: "Shirts & Blouses"   },
+      { value: "tops_tees",             label: "Tees"               },
+      { value: "tops_knitwear",         label: "Knitwear"           },
+    ],
+  },
+  { value: "bottoms",        label: "Bottoms"          },
+  { value: "dresses_skirts", label: "Dresses & Skirts" },
+  {
+    value: "jackets_coats",
+    label: "Jackets & Coats",
+    children: [
+      { value: "jackets_coats", label: "All Jackets & Coats" },
+      { value: "jackets",       label: "Jackets"              },
+      { value: "coats",         label: "Coats"                },
+    ],
+  },
+  { value: "footwear", label: "Footwear" },
+  {
+    value: "bags_accessories",
+    label: "Bags & Accessories",
+    children: [
+      { value: "bags_accessories", label: "All Bags & Accessories" },
+      { value: "bags",             label: "Bags"                   },
+      { value: "accessories",      label: "Accessories"            },
+    ],
+  },
+  { value: "sets", label: "Sets" },
 ];
 
 export default function DesktopFilterPanel({
@@ -32,6 +54,24 @@ export default function DesktopFilterPanel({
   const closeButtonRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const panelRef = useRef(null);
+
+  // `manuallyExpanded` tracks groups the user has explicitly toggled open.
+  // A group is visible if manually expanded OR if it has an active child —
+  // computed inline at render so no useEffect → setState is needed.
+  const [manuallyExpanded, setManuallyExpanded] = useState(new Set());
+
+  const toggleGroup = (value) => {
+    setManuallyExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  };
+
+  const isGroupExpanded = (group) =>
+    manuallyExpanded.has(group.value) ||
+    Boolean(group.children?.some((c) => selectedCategories.includes(c.value)));
 
   // Body scroll lock while open
   useEffect(() => {
@@ -68,10 +108,7 @@ export default function DesktopFilterPanel({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
-  // Focus trap: while the panel is open, Tab cycles within it instead of
-  // escaping into the feed/floating bar behind the overlay. Without this
-  // the dialog's aria-modal would be a lie: keyboard users could tab past
-  // the Reset button into product cards and trigger background navigation.
+  // Focus trap: Tab cycles within the panel while it's open
   useEffect(() => {
     if (!isOpen) return;
     const panel = panelRef.current;
@@ -98,18 +135,9 @@ export default function DesktopFilterPanel({
     return () => document.removeEventListener("keydown", handleTab);
   }, [isOpen]);
 
-  // NOTE: panel and overlay stay mounted always so the slide/fade transitions
-  // can run on open AND close. Visibility is controlled via transform + opacity
-  // classes plus pointer-events-none on the overlay when closed.
-  //
-  // The `inert` attribute on the closed panel removes its buttons from the
-  // tab order AND blocks pointer events — necessary because translateX off-
-  // screen leaves them keyboard-focusable. React 19 supports boolean toggling
-  // of `inert` directly via the JSX boolean attribute syntax.
-
   return (
     <>
-      {/* Overlay — dims the feed, click to close */}
+      {/* Overlay */}
       <div
         className={`hidden md:block fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -148,7 +176,76 @@ export default function DesktopFilterPanel({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-6 space-y-8">
-          {/* STORE section */}
+          {/* CATEGORY section — above store */}
+          <section>
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
+              Category
+            </p>
+            {CATEGORY_GROUPS.map((group) => {
+              if (!group.children) {
+                // Leaf — direct filter button
+                const active = selectedCategories.includes(group.value);
+                return (
+                  <button
+                    key={group.value}
+                    type="button"
+                    onClick={() => onToggleCategory(group.value)}
+                    className={`block w-full text-left py-2 pl-4 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                      active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                    }`}
+                  >
+                    {active && <span className="-ml-4 mr-1">— </span>}
+                    {group.label}
+                  </button>
+                );
+              }
+
+              // Expandable group
+              const isExpanded = isGroupExpanded(group);
+              const hasActiveChild = group.children.some((c) =>
+                selectedCategories.includes(c.value)
+              );
+
+              return (
+                <div key={group.value}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.value)}
+                    className={`flex w-full items-center justify-between py-2 pl-4 pr-1 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                      hasActiveChild ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                    }`}
+                  >
+                    <span>{group.label}</span>
+                    <span className="text-zinc-600 text-[13px] leading-none pr-1">
+                      {isExpanded ? "−" : "+"}
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div>
+                      {group.children.map((child) => {
+                        const active = selectedCategories.includes(child.value);
+                        return (
+                          <button
+                            key={child.value}
+                            type="button"
+                            onClick={() => onToggleCategory(child.value)}
+                            className={`block w-full text-left py-2 pl-8 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+                              active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                            }`}
+                          >
+                            {active && <span className="-ml-4 mr-1">— </span>}
+                            {child.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+
+          {/* STORE section — below category */}
           <section>
             <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
               Store
@@ -161,7 +258,6 @@ export default function DesktopFilterPanel({
                   type="button"
                   onClick={() => {
                     if (opt.value === ALL_STORES_VALUE) {
-                      // Re-clicking "All Stores" while active is a no-op
                       if (!active) onStoreChange(ALL_STORES_VALUE);
                     } else {
                       onStoreChange(active ? ALL_STORES_VALUE : opt.value);
@@ -173,31 +269,6 @@ export default function DesktopFilterPanel({
                 >
                   {active && <span className="-ml-4 mr-1">— </span>}
                   {opt.label}
-                </button>
-              );
-            })}
-          </section>
-
-          {/* CATEGORY section */}
-          <section>
-            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
-              Category
-            </p>
-            {CATEGORY_ITEMS.map((item) => {
-              const active = selectedCategories.includes(item.value);
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => onToggleCategory(item.value)}
-                  className={`block w-full text-left py-2 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                    item.indent ? "pl-8" : "pl-4"
-                  } ${
-                    active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
-                  }`}
-                >
-                  {active && <span className="-ml-4 mr-1">— </span>}
-                  {item.label}
                 </button>
               );
             })}
