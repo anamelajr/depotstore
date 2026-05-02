@@ -104,7 +104,7 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
         const brandInTitle = brandTokens.some((t) => titleTokens.has(t));
 
         if (brandValid && titleValid && !echoedInput && !brandInTitle) {
-          return cleaned;
+          return { brand: parsed.brand.trim(), title: parsed.title.trim() };
         }
       } catch {
         // JSON parse failed

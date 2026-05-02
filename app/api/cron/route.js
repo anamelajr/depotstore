@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
 
@@ -140,6 +141,18 @@ export async function GET(request) {
   if (deleteError) {
     summary.errors.push(`Stale cleanup failed: ${deleteError.message}`);
   }
+
+  const enrichUrl = `${new URL(request.url).origin}/api/enrich?depth=0`;
+  const enrichHeaders = {
+    Authorization: `Bearer ${process.env.CRON_SECRET}`,
+  };
+  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+    enrichHeaders["x-vercel-protection-bypass"] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  }
+  waitUntil(
+    fetch(enrichUrl, { method: "POST", headers: enrichHeaders }).catch(() => {})
+  );
+  summary.enrichTriggered = true;
 
   return Response.json(summary);
 }

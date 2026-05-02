@@ -1,4 +1,3 @@
-import { cleanTitle } from "./cleanTitle.js";
 import { supabaseAdmin } from "./supabase.js";
 import BRANDS from "../brands.js";
 
@@ -26,7 +25,7 @@ async function fetchExistingEditorialByHandle(storeDomain) {
 
 // Normalizes brand strings for reliable comparison
 // Handles accents, punctuation, slashes, spacing differences
-function normalizeBrand(value) {
+export function normalizeBrand(value) {
   if (!value || typeof value !== "string") return null;
 
   const ALIASES = {
@@ -74,8 +73,8 @@ function titleContainsAllowedBrand(rawTitle) {
   return false;
 }
 
-const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
-const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
+export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
+export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
 // Safety net used by getActiveStores() when Supabase is unreachable.
 // Intentionally minimal: domain + storeName only. Downstream consumers
@@ -356,61 +355,39 @@ export async function fetchStoreProducts(store) {
     .map((p) => normalizeProduct(p, store))
     .filter(Boolean);
 
-  const existingByHandle = await fetchExistingEditorialByHandle(store.domain);
+  const existingByHandle = FILTER_BY_BRAND.has(store.domain)
+    ? await fetchExistingEditorialByHandle(store.domain)
+    : {};
 
-    const cleaned = await Promise.all(
-      normalized.map(async (p) => {
+  const cleaned = normalized
+    .map((p) => {
+      if (FILTER_BY_BRAND.has(p.storeDomain)) {
         const existing = p.handle ? existingByHandle[p.handle] : null;
-        if (existing && existing.brand && existing.title && existing.category) {
-          const brand = existing.brand;
-          const title = existing.title;
-          const category = existing.category;
-
-          if (FILTER_BY_BRAND.has(store.domain)) {
-            const resolvedBrand =
-              normalizeBrand(brand) ||
-              normalizeBrand(p.vendor) ||
-              (titleContainsAllowedBrand(p.name) ? "matched_via_title" : null);
-            if (!resolvedBrand) return null;
-            if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) return null;
-          }
-
-          return { ...p, brand, title, category };
-        }
-
-        const result = await cleanTitle(p);
-        let brand = null;
-        let title = null;
-        if (result) {
-          try {
-            const clean = result.replace(/```json|```/g, "").trim();
-            const parsed = JSON.parse(clean);
-            brand = parsed.brand || null;
-            title = parsed.title || null;
-          } catch {
-            // parse failed — leave brand and title as null
-          }
-        }
-
-      // Brand filter — only applied to specific stores
-      if (FILTER_BY_BRAND.has(store.domain)) {
-        // Try cleanTitle brand first, then vendor as fallback, then raw title scan
+        // Path 1 (existing curated brand) is preserved — without it, an
+        // active row whose vendor/raw-title don't match the allowlist
+        // would be filtered out of this run, miss the synced_at refresh,
+        // and get deleted by the cron's stale cleanup.
         const resolvedBrand =
-          normalizeBrand(brand) ||
+          (existing?.brand ? normalizeBrand(existing.brand) : null) ||
           normalizeBrand(p.vendor) ||
           (titleContainsAllowedBrand(p.name) ? "matched_via_title" : null);
 
-        // No recognizable brand found — reject
         if (!resolvedBrand) return null;
-
-        // Brand found but not in allowlist — reject
-        if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) return null;
+        if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) {
+          return null;
+        }
       }
 
-      const category = assignCategory({ ...p, brand, title });
-      return { ...p, brand, title, category };
+      // Editorial fields stay null at sync time. /api/enrich runs cleanTitle
+      // and then calls assignCategory with the freshly extracted brand/title,
+      // which gives Pass 1 (cleaned-title classifier) a chance to run. If we
+      // assigned category here from vendor-strip, the cron's editorial-
+      // protective upsert would persist that and /api/enrich's null-only
+      // RPC update would never re-classify with the better context —
+      // locking in the lower-quality match.
+      return { ...p, brand: null, title: null, category: null };
     })
-  );
+    .filter(Boolean);
 
-  return cleaned.filter(Boolean);
+  return cleaned;
 }
