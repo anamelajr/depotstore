@@ -208,7 +208,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
   );
 }
 
-export default function Nav({ onAboutOpen }) {
+export default function Nav({ onAboutOpen, stores = [] }) {
   const searchParams = useSearchParams();
   const selectedCategories = searchParams.getAll("category");
   const selectedBrand = searchParams.get("brand");

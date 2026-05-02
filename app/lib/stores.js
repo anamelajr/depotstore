@@ -111,8 +111,10 @@ export async function getActiveStores() {
 
   if (error) {
     console.error("Failed to fetch stores:", error.message);
-    return [];
+    return FALLBACK_STORES;
   }
+
+  if (!data) return FALLBACK_STORES;
 
   return data.map(mapStoreRow);
 }
