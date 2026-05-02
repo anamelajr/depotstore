@@ -52,54 +52,47 @@ export async function POST(request) {
     try {
       const result = await cleanTitle({ name: row.name });
       if (result) {
-        const cleaned = result.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(cleaned);
-        const newBrand = parsed.brand || null;
-        const newTitle = parsed.title || null;
-        if (newBrand && newTitle) {
-          // Allowlist gate for filtered stores. Sync passed this row through
-          // its weakened filter (no Haiku at sync time), so we re-apply the
-          // allowlist here against Haiku's extracted brand. If the brand
-          // isn't in the allowlist, mirror sync's pre-Task-4 behavior:
-          // delete the row so it doesn't surface in the feed. Sync will
-          // re-add it next night and we'll re-reject; the cycle is bounded.
-          if (FILTER_BY_BRAND.has(row.store_domain)) {
-            const normalizedNewBrand = normalizeBrand(newBrand);
-            const allowed =
-              normalizedNewBrand &&
-              BRAND_SET_NORMALIZED.has(normalizedNewBrand);
-            if (!allowed) {
-              await supabaseAdmin
-                .from("products")
-                .delete()
-                .eq("handle", row.handle)
-                .eq("store_domain", row.store_domain);
-              rejected++;
-              const elapsed = Date.now() - t0;
-              await sleep(Math.max(0, CYCLE_MS - elapsed));
-              continue;
-            }
+        const { brand: newBrand, title: newTitle } = result;
+        // Allowlist gate for filtered stores. Sync passed this row through
+        // its weakened filter (no Haiku at sync time), so we re-apply the
+        // allowlist here against Haiku's extracted brand. If the brand
+        // isn't in the allowlist, mirror sync's pre-Task-4 behavior:
+        // delete the row so it doesn't surface in the feed. Sync will
+        // re-add it next night and we'll re-reject; the cycle is bounded.
+        if (FILTER_BY_BRAND.has(row.store_domain)) {
+          const normalizedNewBrand = normalizeBrand(newBrand);
+          const allowed =
+            normalizedNewBrand &&
+            BRAND_SET_NORMALIZED.has(normalizedNewBrand);
+          if (!allowed) {
+            await supabaseAdmin
+              .from("products")
+              .delete()
+              .eq("handle", row.handle)
+              .eq("store_domain", row.store_domain);
+            rejected++;
+            const elapsed = Date.now() - t0;
+            await sleep(Math.max(0, CYCLE_MS - elapsed));
+            continue;
           }
-
-          const newCategory =
-            assignCategory({ ...row, brand: newBrand, title: newTitle }) ?? null;
-          // Atomic null-only write via RPC — COALESCE evaluates against the
-          // row's current state inside the UPDATE, so a concurrent enrich
-          // run that filled brand/title between our SELECT and now cannot
-          // be clobbered by our stale snapshot. Application-side
-          // `row.brand ?? newBrand` would have that race.
-          const { error: rpcErr } = await supabaseAdmin.rpc("enrich_product", {
-            p_handle: row.handle,
-            p_store_domain: row.store_domain,
-            p_brand: newBrand,
-            p_title: newTitle,
-            p_category: newCategory,
-          });
-          if (rpcErr) failed++;
-          else succeeded++;
-        } else {
-          failed++;
         }
+
+        const newCategory =
+          assignCategory({ ...row, brand: newBrand, title: newTitle }) ?? null;
+        // Atomic null-only write via RPC — COALESCE evaluates against the
+        // row's current state inside the UPDATE, so a concurrent enrich
+        // run that filled brand/title between our SELECT and now cannot
+        // be clobbered by our stale snapshot. Application-side
+        // `row.brand ?? newBrand` would have that race.
+        const { error: rpcErr } = await supabaseAdmin.rpc("enrich_product", {
+          p_handle: row.handle,
+          p_store_domain: row.store_domain,
+          p_brand: newBrand,
+          p_title: newTitle,
+          p_category: newCategory,
+        });
+        if (rpcErr) failed++;
+        else succeeded++;
       } else {
         failed++;
       }
