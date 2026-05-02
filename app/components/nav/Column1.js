@@ -8,9 +8,9 @@ const CATEGORY_ITEMS = [
   { key: "tops",            label: "Tops",                 expandable: true  },
   { key: "bottoms",         label: "Bottoms",              expandable: false },
   { key: "dresses_skirts",  label: "Dresses & Skirts",     expandable: false },
-  { key: "jackets_coats",   label: "Jackets & Coats",      expandable: true, expandKey: "jackets" },
+  { key: "jackets_coats",   label: "Jackets & Coats",      expandable: true, expandKey: "jackets", aliases: ["jackets", "coats"] },
   { key: "footwear",        label: "Footwear",             expandable: false },
-  { key: "bags_accessories",label: "Bags & Accessories",   expandable: true, expandKey: "bags" },
+  { key: "bags_accessories",label: "Bags & Accessories",   expandable: true, expandKey: "bags", aliases: ["bags", "accessories"] },
   { key: "sets",            label: "Sets",                 expandable: false },
 ];
 
@@ -27,9 +27,10 @@ function buildToggleCategoryUrl(searchParams, categoryValue) {
   return `/feed${q ? `?${q}` : ""}`;
 }
 
-function isCategoryActive(selectedCategories, key) {
+function isCategoryActive(selectedCategories, item) {
+  const slugs = [item.key, ...(item.aliases || [])];
   return selectedCategories.some(
-    (c) => c === key || c.startsWith(key + "_") || key.startsWith(c + "_")
+    (c) => slugs.includes(c) || slugs.some((s) => c.startsWith(s + "_") || s.startsWith(c + "_"))
   );
 }
 
@@ -43,6 +44,7 @@ export default function Column1({
   searchParams,
   expandedKey,
   selectedBrand,
+  selectedStore,
   onExpand,
   onClose,
 }) {
@@ -53,7 +55,7 @@ export default function Column1({
       <div>
         <div className={labelStyle}>Categories</div>
         {CATEGORY_ITEMS.map((item) => {
-          const active = isCategoryActive(selectedCategories, item.key);
+          const active = isCategoryActive(selectedCategories, item);
           const expandKey = item.expandKey || item.key;
           const isExpanded = item.expandable && expandedKey === expandKey;
 
@@ -97,9 +99,9 @@ export default function Column1({
         <button
           type="button"
           onClick={() => onExpand(expandedKey === "stores" ? null : "stores")}
-          className={`${itemBase} text-left w-full ${expandedKey === "stores" ? itemActive : ""}`}
+          className={`${itemBase} text-left w-full ${selectedStore || expandedKey === "stores" ? itemActive : ""}`}
         >
-          {expandedKey === "stores" && <span className="-ml-4 mr-1">— </span>}
+          {(selectedStore || expandedKey === "stores") && <span className="-ml-4 mr-1">— </span>}
           Stores
         </button>
       </div>
