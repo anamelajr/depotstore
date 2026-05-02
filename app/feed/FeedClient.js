@@ -5,12 +5,13 @@ import { useSearchParams, useRouter } from "next/navigation";
 import ProductCard from "../components/ProductCard";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
-import { SORT_OPTIONS } from "../components/MobileSortSheet";
+import DesktopFeedBar from "../components/feed/DesktopFeedBar";
+import DesktopSortMenu from "../components/feed/DesktopSortMenu";
+import DesktopFilterPanel from "../components/feed/DesktopFilterPanel";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
+import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
 const LOAD_SIZE = 30;
-
-const SORT_MAP = { latest: "newest", price_asc: "price_asc", price_desc: "price_desc" };
 
 export default function FeedClient({ stores = [] }) {
   const storeOptions = [
@@ -24,7 +25,7 @@ export default function FeedClient({ stores = [] }) {
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const urlCategories = searchParams.getAll("category");
-  const urlSort = searchParams.get("sort") || "latest";
+  const urlSort = searchParams.get("sort") || "interleaved";
 
   // Local state for instant UI feedback
   const [localCategories, setLocalCategories] = useState(urlCategories);
@@ -34,6 +35,10 @@ export default function FeedClient({ stores = [] }) {
   // Mobile UI state
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+
+  // Desktop UI state (≥ md)
+  const [desktopFilterOpen, setDesktopFilterOpen] = useState(false);
+  const [desktopSortOpen, setDesktopSortOpen] = useState(false);
 
   // Fetch state
   const [products, setProducts] = useState([]);
@@ -111,6 +116,30 @@ export default function FeedClient({ stores = [] }) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Close ALL filter/sort UI on either breakpoint crossing.
+  //
+  // Desktop → mobile: closes the desktop panel + sort dropdown so a stuck
+  // body { overflow: hidden } can't happen.
+  //
+  // Mobile → desktop: closes the mobile drawer/sheet so they can't persist
+  // mounted at z-9998/9999 over the new desktop layout (they're not gated by
+  // a Tailwind breakpoint; their visibility is purely state-driven). Without
+  // this, a tablet user opening Refine in portrait and rotating to landscape
+  // would see the mobile drawer pinned over the desktop bar with body scroll
+  // locked.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 767px)");
+    const handler = () => {
+      setDesktopFilterOpen(false);
+      setDesktopSortOpen(false);
+      setFilterOpen(false);
+      setSortOpen(false);
+    };
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
   // Sync local state when URL changes externally
   const prevUrlCatsRef = useRef(JSON.stringify(urlCategories));
   useEffect(() => {
@@ -154,7 +183,8 @@ export default function FeedClient({ stores = [] }) {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
-    if (urlSort && urlSort !== "latest") params.set("sort", SORT_MAP[urlSort] || "newest");
+    const apiSort = SORT_MAP[urlSort];
+    if (apiSort) params.set("sort", apiSort);
 
     fetch(`/api/products?${params}`, { signal: controller.signal })
       .then((res) => {
@@ -194,7 +224,8 @@ export default function FeedClient({ stores = [] }) {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
-    if (urlSort && urlSort !== "latest") params.set("sort", SORT_MAP[urlSort] || "newest");
+    const apiSort = SORT_MAP[urlSort];
+    if (apiSort) params.set("sort", apiSort);
 
     fetch(`/api/products?${params}`, { signal: controller.signal })
       .then((res) => {
@@ -234,6 +265,16 @@ export default function FeedClient({ stores = [] }) {
     router.replace(`/feed${q ? `?${q}` : ""}`);
   }, [localCategories, searchParams, router]);
 
+  const openDesktopFilter = useCallback(() => {
+    setDesktopSortOpen(false);
+    setDesktopFilterOpen(true);
+  }, []);
+
+  const toggleDesktopSort = useCallback(() => {
+    setDesktopFilterOpen(false);
+    setDesktopSortOpen((o) => !o);
+  }, []);
+
   const handleClearAll = useCallback(() => {
     setLocalCategories([]);
     setLocalStore(ALL_STORES_VALUE);
@@ -244,9 +285,10 @@ export default function FeedClient({ stores = [] }) {
   const handleSortChange = useCallback((v) => {
     setSelectedSort(v);
     setSortOpen(false);
+    setDesktopSortOpen(false);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("page");
-    if (v === "latest") params.delete("sort");
+    if (v === "interleaved") params.delete("sort");
     else params.set("sort", v);
     const q = params.toString();
     router.replace(`/feed${q ? `?${q}` : ""}`);
@@ -290,7 +332,7 @@ export default function FeedClient({ stores = [] }) {
               onPointerDown={() => setSortOpen(true)}
               className="flex h-full flex-1 items-center justify-center gap-2 px-4 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300 active:bg-zinc-900/80"
             >
-              {selectedSort !== "latest" ? activeSortLabel : "Sort"}
+              {selectedSort !== "interleaved" ? activeSortLabel : "Sort"}
             </button>
           </div>
         </header>
@@ -313,7 +355,7 @@ export default function FeedClient({ stores = [] }) {
           onSortChange={handleSortChange}
         />
 
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-8">
+        <main className="mx-auto max-w-7xl px-4 pb-24 md:pb-32 pt-3 md:pt-8">
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -367,6 +409,34 @@ export default function FeedClient({ stores = [] }) {
             </div>
           )}
         </main>
+
+        {/* ── DESKTOP: floating filter/sort bar (≥ md) ── */}
+        <div className="hidden md:block fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
+          <DesktopSortMenu
+            isOpen={desktopSortOpen}
+            onClose={() => setDesktopSortOpen(false)}
+            selectedSort={selectedSort}
+            onSortChange={handleSortChange}
+          />
+          <DesktopFeedBar
+            activeFilterCount={activeFilterCount}
+            sortOpen={desktopSortOpen}
+            onOpenFilters={openDesktopFilter}
+            onToggleSort={toggleDesktopSort}
+          />
+        </div>
+
+        {/* ── DESKTOP: filter panel (≥ md) ── */}
+        <DesktopFilterPanel
+          isOpen={desktopFilterOpen}
+          onClose={() => setDesktopFilterOpen(false)}
+          selectedCategories={localCategories}
+          onToggleCategory={handleToggleCategory}
+          selectedStore={localStore}
+          storeOptions={storeOptions}
+          onStoreChange={handleStoreChange}
+          onClearAll={handleClearAll}
+        />
       </div>
     </div>
   );
