@@ -59,10 +59,12 @@ export default function TopBar({
           onChange={(e) => onSearchQueryChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
+              e.stopPropagation();
               const trimmed = searchQuery.trim();
               if (trimmed) onSearchSubmit(trimmed);
               else onSearchClose();
             } else if (e.key === "Escape") {
+              e.stopPropagation();
               onSearchClose();
             }
           }}
