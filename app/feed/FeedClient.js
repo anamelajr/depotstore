@@ -7,6 +7,7 @@ import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
 import DesktopFeedBar from "../components/feed/DesktopFeedBar";
 import DesktopSortMenu from "../components/feed/DesktopSortMenu";
+import DesktopFilterPanel from "../components/feed/DesktopFilterPanel";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
@@ -400,6 +401,18 @@ export default function FeedClient({ stores = [] }) {
             onToggleSort={toggleDesktopSort}
           />
         </div>
+
+        {/* ── DESKTOP: filter panel (≥ md) ── */}
+        <DesktopFilterPanel
+          isOpen={desktopFilterOpen}
+          onClose={() => setDesktopFilterOpen(false)}
+          selectedCategories={localCategories}
+          onToggleCategory={handleToggleCategory}
+          selectedStore={localStore}
+          storeOptions={storeOptions}
+          onStoreChange={handleStoreChange}
+          onClearAll={handleClearAll}
+        />
       </div>
     </div>
   );
