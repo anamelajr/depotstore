@@ -1,6 +1,5 @@
 import Link from "next/link";
 import ProductCard from "./components/ProductCard";
-import NewsletterForm from "./components/NewsletterForm";
 import ParisMap from "./components/ParisMap";
 
 export const dynamic = 'force-dynamic';
@@ -134,28 +133,6 @@ try {
         </div>
       </section>
 
-      {/* Footer / Newsletter */}
-      <footer className="border-t border-zinc-800 bg-[#0a0a0a] py-24 text-zinc-50">
-        <div className="mx-auto max-w-4xl px-6">
-          <div className="flex flex-col items-start gap-12 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-[clamp(32px,5vw,56px)] font-bold uppercase leading-none tracking-tight">
-                DÉPÔT
-              </p>
-              <p className="mt-3 text-[13px] text-zinc-500">
-                Paris. Archive. One feed.
-              </p>
-            </div>
-            <div id="newsletter" className="w-full max-w-sm scroll-mt-[80px]">
-              <NewsletterForm />
-            </div>
-          </div>
-          <div className="mt-16 border-t border-zinc-800 pt-8 flex flex-col gap-2 md:flex-row md:justify-between text-[11px] text-zinc-600 uppercase tracking-widest">
-            <span>© 2026 Dépôt</span>
-            <span>Paris</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
