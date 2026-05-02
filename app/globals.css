@@ -3,7 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --nav-height: 50px;
+  --nav-height: 56px;
 }
 
 @theme inline {
@@ -34,4 +34,9 @@ body {
 }
 .store-filter-bar::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes navMenuEnter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
