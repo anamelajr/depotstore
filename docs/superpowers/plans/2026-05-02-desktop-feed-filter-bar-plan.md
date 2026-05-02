@@ -172,7 +172,26 @@ const handleSortChange = useCallback((v) => {
 
 The only change is `"latest"` → `"interleaved"` on the param-deletion line. Selecting "Default" produces clean URLs with no `?sort=` noise; selecting any other value (including `latest`/`oldest`) writes the value directly.
 
-- [ ] **Step 1.7: Run lint**
+- [ ] **Step 1.7: Update the mobile sticky-header sort-label condition**
+
+The mobile sticky bar in `FeedClient.js` displays either the active sort label or the generic "Sort" word, gated on `selectedSort !== "latest"`. After Step 1.4 the no-sort default becomes `"interleaved"` (not `"latest"`), so without this fix a fresh `/feed` would display **"Default"** in the mobile header where it used to display **"Sort"** — a silent mobile UX regression.
+
+In `app/feed/FeedClient.js`, find the SORT button inside the mobile sticky header (currently around line 293):
+```jsx
+              {selectedSort !== "latest" ? activeSortLabel : "Sort"}
+```
+
+Replace with:
+```jsx
+              {selectedSort !== "interleaved" ? activeSortLabel : "Sort"}
+```
+
+After this edit:
+- Fresh `/feed` (no sort param, `selectedSort === "interleaved"`) → mobile bar shows "Sort" (unchanged from today).
+- User picks "Default" in the mobile sheet → still "Sort" in the bar.
+- User picks "Newest" / "Oldest" / "Price low → high" / "Price high → low" → bar shows the active label (slightly improved feedback vs. today, where "Latest arrivals" was suppressed because it was the default).
+
+- [ ] **Step 1.8: Run lint**
 
 ```bash
 npm run lint
@@ -180,7 +199,7 @@ npm run lint
 
 Expected: passes with no new errors. (The project has zero existing lint errors on the current `main`; if pre-existing warnings appear, ignore them but do not introduce new ones.)
 
-- [ ] **Step 1.8: Run build**
+- [ ] **Step 1.9: Run build**
 
 ```bash
 npm run build
@@ -188,7 +207,7 @@ npm run build
 
 Expected: build succeeds. The build will execute `next build` which type-checks JS and bundles the app.
 
-- [ ] **Step 1.9: Commit**
+- [ ] **Step 1.10: Commit**
 
 ```bash
 git add app/lib/sort-options.js app/components/MobileSortSheet.js app/feed/FeedClient.js
@@ -200,6 +219,9 @@ desktop stay in sync. Make "interleaved" (the existing API default) a real
 selectable value labeled "Default", and expose "Oldest" which the API
 already supports. URL convention is unchanged — Default still omits
 ?sort=, falling through to get_interleaved_products on the API side.
+Update the mobile sticky-header label condition to treat "interleaved" as
+the unselected display state so fresh /feed still shows "Sort" rather than
+the new "Default" label.
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -529,6 +551,7 @@ export default function DesktopFilterPanel({
 }) {
   const closeButtonRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+  const panelRef = useRef(null);
 
   // Body scroll lock while open
   useEffect(() => {
@@ -565,9 +588,44 @@ export default function DesktopFilterPanel({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
+  // Focus trap: while the panel is open, Tab cycles within it instead of
+  // escaping into the feed/floating bar behind the overlay. Without this
+  // the dialog's aria-modal would be a lie: keyboard users could tab past
+  // the Reset button into product cards and trigger background navigation.
+  useEffect(() => {
+    if (!isOpen) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const handleTab = (e) => {
+      if (e.key !== "Tab") return;
+      const focusable = panel.querySelectorAll(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleTab);
+    return () => document.removeEventListener("keydown", handleTab);
+  }, [isOpen]);
+
   // NOTE: panel and overlay stay mounted always so the slide/fade transitions
   // can run on open AND close. Visibility is controlled via transform + opacity
   // classes plus pointer-events-none on the overlay when closed.
+  //
+  // The `inert` attribute on the closed panel removes its buttons from the
+  // tab order AND blocks pointer events — necessary because translateX off-
+  // screen leaves them keyboard-focusable. React 19 supports boolean toggling
+  // of `inert` directly via the JSX boolean attribute syntax.
 
   return (
     <>
@@ -582,10 +640,12 @@ export default function DesktopFilterPanel({
 
       {/* Panel */}
       <aside
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Refine filters"
         aria-hidden={!isOpen}
+        inert={!isOpen}
         className={`hidden md:flex flex-col fixed left-0 top-0 h-screen w-[360px] bg-[#0a0a0a] border-r border-zinc-800 z-50 transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -802,15 +862,25 @@ In `app/feed/FeedClient.js`, find the existing scroll-hide-show effect:
 Right AFTER that effect's closing `}, []);`, add:
 
 ```js
-  // Close desktop panels if viewport drops below md (prevents stuck scroll lock)
+  // Close ALL filter/sort UI on either breakpoint crossing.
+  //
+  // Desktop → mobile: closes the desktop panel + sort dropdown so a stuck
+  // body { overflow: hidden } can't happen.
+  //
+  // Mobile → desktop: closes the mobile drawer/sheet so they can't persist
+  // mounted at z-9998/9999 over the new desktop layout (they're not gated by
+  // a Tailwind breakpoint; their visibility is purely state-driven). Without
+  // this, a tablet user opening Refine in portrait and rotating to landscape
+  // would see the mobile drawer pinned over the desktop bar with body scroll
+  // locked.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mql = window.matchMedia("(max-width: 767px)");
-    const handler = (e) => {
-      if (e.matches) {
-        setDesktopFilterOpen(false);
-        setDesktopSortOpen(false);
-      }
+    const handler = () => {
+      setDesktopFilterOpen(false);
+      setDesktopSortOpen(false);
+      setFilterOpen(false);
+      setSortOpen(false);
     };
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
@@ -838,12 +908,15 @@ Expected: build succeeds.
 ```bash
 git add app/feed/FeedClient.js
 git commit -m "$(cat <<'EOF'
-feat(feed): main padding bump + responsive resize close for desktop bar
+feat(feed): main padding bump + symmetric responsive resize cleanup
 
 Bump main pb to md:pb-32 so Load More clears the floating bar, and add a
-matchMedia listener that force-closes the desktop panel + sort dropdown if
-the viewport drops below md (prevents a stuck body scroll lock if a user
-resizes while the panel is open).
+matchMedia listener that force-closes BOTH the desktop panel/dropdown AND
+the mobile drawer/sheet on either breakpoint crossing. Symmetric cleanup
+prevents two failure modes: a stuck body scroll lock if a user resizes
+desktop→mobile while the panel is open, and a mobile drawer pinned over
+the desktop layout if a tablet user opens Refine in portrait then rotates
+to landscape.
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -882,24 +955,37 @@ Open the preview URL at `/feed` on a desktop viewport (≥ 768px wide). Walk thr
 - [ ] Pick "Oldest" → URL becomes `?sort=oldest`, feed re-orders.
 - [ ] Pick "Price low → high" → URL `?sort=price_asc`, feed re-orders cheapest first.
 
-- [ ] **Step 4.8: Verify on Vercel preview — mobile checks (viewport < 768px)**
+- [ ] **Step 4.8: Verify on Vercel preview — keyboard accessibility (≥ 768px)**
+
+These checks confirm the `inert` attribute and focus trap added to the panel work correctly. Use Tab / Shift+Tab on a real keyboard (not the inspector).
+
+- [ ] Load `/feed` (panel closed). Press Tab repeatedly. Focus should NEVER land on an invisible button — the closed panel's contents (close button, store buttons, category buttons, Reset) must be skipped because the panel is `inert`.
+- [ ] Open the panel via FILTERS. Focus moves to the `×` close button automatically.
+- [ ] Press Tab repeatedly inside the panel. Focus cycles through close → store buttons → category buttons → Reset → BACK TO close (the focus trap loops). Focus must never escape into the floating bar or product cards behind the overlay.
+- [ ] Press Shift+Tab from the close button → focus jumps to Reset (last focusable in the panel).
+- [ ] Close the panel via Escape → focus returns to the FILTERS button on the floating bar (focus restore).
+
+- [ ] **Step 4.9: Verify on Vercel preview — mobile checks (viewport < 768px)**
 
 Resize browser below 768px or use device emulation:
 
 - [ ] Floating desktop bar is hidden — only the existing mobile sticky `Refine | Sort` header is visible at the top.
 - [ ] No layout shift, no double bar.
+- [ ] On a fresh `/feed` load (no `sort` param), the SORT half of the mobile sticky bar shows the literal word **"Sort"** — NOT "Default". (This guards against the regression introduced by changing the default sort key from `latest` to `interleaved`.)
 - [ ] Tap **Sort** → mobile sort sheet appears with 5 options (Default, Newest, Oldest, Price low → high, Price high → low).
-- [ ] Tap **Default** → URL clears `sort`; reopen sheet → "Default" is highlighted.
+- [ ] Tap **Default** → URL clears `sort`; reopen sheet → "Default" is highlighted; close sheet → mobile bar still says "Sort".
+- [ ] Tap **Newest** → mobile bar now shows "Newest" (it's an explicit non-default choice).
 - [ ] Tap **Refine** → mobile filter drawer opens (unchanged behavior).
 
-- [ ] **Step 4.9: Verify on Vercel preview — cross-cut behavior**
+- [ ] **Step 4.10: Verify on Vercel preview — cross-cut & resize behavior**
 
 - [ ] Click any product card → navigates to PDP. Hit browser Back → scroll position restored, exact product count restored. (Same flow as before; the new UI state isn't part of `filterKey`.)
 - [ ] On desktop, scroll to bottom → "Load More" button is fully visible above the floating bar (not occluded by it).
 - [ ] Click "Load More" → next batch loads, bar still visible.
-- [ ] Open the desktop panel, then resize the browser below 768px → panel disappears cleanly, body scroll returns (no stuck `overflow: hidden`).
+- [ ] **Desktop → mobile:** open the desktop panel, then resize the browser below 768px → panel disappears cleanly, body scroll returns (no stuck `overflow: hidden`).
+- [ ] **Mobile → desktop:** at < 768px, tap **Refine** to open the mobile drawer. Resize the browser above 768px → mobile drawer disappears cleanly, body scroll returns, desktop floating bar is visible (no mobile drawer pinned over the desktop layout). Repeat with **Sort** instead of Refine.
 
-- [ ] **Step 4.10: Open PR**
+- [ ] **Step 4.11: Open PR**
 
 If all checks pass:
 
@@ -917,10 +1003,11 @@ gh pr create --title "feat(feed): desktop filter bar & panel + Default/Oldest so
 
 ## Test plan
 - [ ] Desktop ≥ md: bar visible, FILTERS opens panel, store/category writes URL and refetches, RESET clears URL, SORT dropdown opens/closes, Default omits `?sort=`, Oldest sets `?sort=oldest`
-- [ ] Mobile < md: existing sticky bar untouched, sort sheet shows 5 options
+- [ ] Mobile < md: existing sticky bar untouched, sticky-bar SORT label shows "Sort" on fresh load (not "Default"), sort sheet shows 5 options
+- [ ] Keyboard: Tab on `/feed` skips closed-panel buttons (`inert`); when panel open, focus cycles inside the panel and never escapes to the feed/bar
 - [ ] Scroll restore on back-nav still works
 - [ ] Load More still works on desktop with bar visible
-- [ ] Resize across md boundary while panel is open closes panel cleanly
+- [ ] Resize is symmetric: desktop→mobile while panel open closes panel cleanly; mobile→desktop while drawer/sheet open closes drawer cleanly
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -940,12 +1027,14 @@ If you're executing this plan and want to double-check coverage against the spec
 | `app/lib/sort-options.js`          | Task 1 |
 | `MobileSortSheet.js` migration     | Task 1 |
 | `FeedClient` default-as-interleaved | Task 1 |
+| Mobile sticky-header label adjustment for new default | Task 1 (Step 1.7) |
 | `DesktopFeedBar` component         | Task 2 |
 | `DesktopSortMenu` component        | Task 2 |
 | `FeedClient` desktop UI state, helpers, mutual exclusion | Task 2 |
 | `DesktopFilterPanel` component (header, body, footer, focus, Escape) | Task 3 |
+| Modal isolation: `inert` on closed panel + Tab focus trap when open | Task 3 (Step 3.1) |
 | `FeedClient` panel render          | Task 3 |
 | Bottom padding bump (`md:pb-32`)   | Task 4 |
-| Resize edge case (matchMedia)      | Task 4 |
+| Symmetric resize edge case (closes mobile + desktop UI on either crossing) | Task 4 (Step 4.2) |
 | Z-index map                        | Tasks 2 + 3 (matches spec by construction) |
-| Verification checklist             | Task 4 (steps 4.7–4.9) |
+| Verification checklist             | Task 4 (steps 4.7–4.10) |
