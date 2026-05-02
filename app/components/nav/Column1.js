@@ -15,35 +15,18 @@ const CATEGORY_ITEMS = [
   { key: "sets",            label: "Sets",                 expandable: false },
 ];
 
-function isCategoryActive(selectedCategories, item) {
-  const slugs = [item.key, ...(item.aliases || [])];
-  return selectedCategories.some(
-    (c) => slugs.includes(c) || slugs.some((s) => c.startsWith(s + "_") || s.startsWith(c + "_"))
-  );
-}
-
 const itemBase =
   "block py-2 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-300 hover:text-zinc-50";
 const itemActive = "text-zinc-50";
 const labelStyle =
   "mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600";
 
-export default function Column1({
-  searchParams,
-  expandedKey,
-  selectedBrand,
-  selectedStore,
-  onExpand,
-  onClose,
-}) {
-  const selectedCategories = searchParams.getAll("category");
-
+export default function Column1({ expandedKey, onExpand, onClose }) {
   return (
     <div className="px-8 py-8">
       <div>
         <div className={labelStyle}>Categories</div>
         {CATEGORY_ITEMS.map((item) => {
-          const active = isCategoryActive(selectedCategories, item);
           const expandKey = item.expandKey || item.key;
           const isExpanded = item.expandable && expandedKey === expandKey;
 
@@ -53,9 +36,9 @@ export default function Column1({
                 key={item.key}
                 type="button"
                 onClick={() => onExpand(isExpanded ? null : expandKey)}
-                className={`${itemBase} text-left w-full ${active ? itemActive : ""}`}
+                className={`${itemBase} text-left w-full ${isExpanded ? itemActive : ""}`}
               >
-                {(active || isExpanded) && <span className="-ml-4 mr-1">— </span>}
+                {isExpanded && <span className="-ml-4 mr-1">— </span>}
                 {item.label}
               </button>
             );
@@ -65,9 +48,8 @@ export default function Column1({
             <Link
               key={item.key}
               href={buildFreshFeedUrl({ category: [item.key] })}
-              className={`${itemBase} ${active ? itemActive : ""}`}
+              className={itemBase}
             >
-              {active && <span className="-ml-4 mr-1">— </span>}
               {item.label}
             </Link>
           );
@@ -79,17 +61,17 @@ export default function Column1({
         <button
           type="button"
           onClick={() => onExpand(expandedKey === "designers" ? null : "designers")}
-          className={`${itemBase} text-left w-full ${selectedBrand || expandedKey === "designers" ? itemActive : ""}`}
+          className={`${itemBase} text-left w-full ${expandedKey === "designers" ? itemActive : ""}`}
         >
-          {(selectedBrand || expandedKey === "designers") && <span className="-ml-4 mr-1">— </span>}
+          {expandedKey === "designers" && <span className="-ml-4 mr-1">— </span>}
           Designers
         </button>
         <button
           type="button"
           onClick={() => onExpand(expandedKey === "stores" ? null : "stores")}
-          className={`${itemBase} text-left w-full ${selectedStore || expandedKey === "stores" ? itemActive : ""}`}
+          className={`${itemBase} text-left w-full ${expandedKey === "stores" ? itemActive : ""}`}
         >
-          {(selectedStore || expandedKey === "stores") && <span className="-ml-4 mr-1">— </span>}
+          {expandedKey === "stores" && <span className="-ml-4 mr-1">— </span>}
           Stores
         </button>
       </div>

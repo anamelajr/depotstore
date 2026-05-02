@@ -50,6 +50,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
 
   useEffect(() => {
     onClose();
+    setExpandedKey(null);
   }, [searchParams]);
 
   useEffect(() => {
@@ -83,7 +84,6 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
           const subKey = key.split("_")[0];
           const hasSubs = !!CATEGORY_ITEMS[subKey];
           const isExpanded = expandedKey === subKey;
-          const isActive = selectedCategories.includes(key) || selectedCategories.some((c) => c.startsWith(subKey));
           return (
             <div key={key}>
               <div
@@ -97,7 +97,7 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
                   }
                 }}
               >
-                <span className={`font-mono text-[11px] tracking-widest uppercase ${isActive ? "text-zinc-50" : "text-zinc-400"}`}>
+                <span className="font-mono text-[11px] tracking-widest uppercase text-zinc-400">
                   {label}
                 </span>
                 {hasSubs && (
