@@ -23,6 +23,8 @@ const itemBase =
   "block py-1 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-300 hover:text-zinc-50";
 const labelStyle =
   "mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600";
+const letterBase =
+  "font-mono text-[11px] uppercase tracking-widest";
 
 export default function DesignersPanel() {
   const lettersWithBrands = useMemo(() => {
@@ -52,8 +54,8 @@ export default function DesignersPanel() {
       <div>
         <div className={labelStyle}>Brands A–Z</div>
         <div
-          className="gap-x-3 gap-y-1"
-          style={{ display: "grid", gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+          className="grid gap-x-3 gap-y-1"
+          style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
         >
           {ALPHABET.map((letter) => {
             const has = lettersWithBrands.has(letter);
@@ -61,14 +63,14 @@ export default function DesignersPanel() {
               <Link
                 key={letter}
                 href={`/designers#${letter}`}
-                className="font-mono text-[11px] uppercase tracking-widest text-zinc-50 hover:text-zinc-300 transition-colors"
+                className={`${letterBase} text-zinc-50`}
               >
                 {letter}
               </Link>
             ) : (
               <span
                 key={letter}
-                className="font-mono text-[11px] uppercase tracking-widest text-zinc-700"
+                className={`${letterBase} text-zinc-700`}
               >
                 {letter}
               </span>
