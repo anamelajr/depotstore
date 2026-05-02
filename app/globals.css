@@ -32,9 +32,6 @@ body {
   border: none;
   box-shadow: none;
 }
-.store-filter-bar::-webkit-scrollbar {
-  display: none;
-}
 
 @keyframes navMenuEnter {
   from { opacity: 0; transform: translateY(-4px); }
