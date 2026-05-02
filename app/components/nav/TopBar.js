@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 
 function MenuIcon() {
@@ -32,13 +33,55 @@ const baseLink =
 
 export default function TopBar({
   isMenuOpen,
+  isSearchMode,
+  searchQuery,
+  onSearchQueryChange,
   onMenuClick,
   onCloseClick,
   onSearchClick,
+  onSearchSubmit,
+  onSearchClose,
 }) {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (isSearchMode) inputRef.current?.focus();
+  }, [isSearchMode]);
+
+  if (isSearchMode) {
+    return (
+      <div className="mx-auto flex h-[56px] w-full items-center gap-4 px-6">
+        <SearchIcon />
+        <input
+          ref={inputRef}
+          type="text"
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const trimmed = searchQuery.trim();
+              if (trimmed) onSearchSubmit(trimmed);
+              else onSearchClose();
+            } else if (e.key === "Escape") {
+              onSearchClose();
+            }
+          }}
+          placeholder="Search the archive..."
+          className="flex-1 bg-transparent font-mono text-[13px] uppercase tracking-widest text-zinc-50 placeholder-zinc-600 outline-none"
+        />
+        <button
+          type="button"
+          onClick={onSearchClose}
+          className={`${baseLink} flex items-center gap-2`}
+        >
+          <CloseIcon /> Close
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex h-[56px] w-full items-center px-6">
-      {/* Left */}
       <div className="flex flex-1 items-center gap-6">
         {isMenuOpen ? (
           <>
@@ -61,12 +104,10 @@ export default function TopBar({
         )}
       </div>
 
-      {/* Center */}
       <Link href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-50">
         DÉPÔT
       </Link>
 
-      {/* Right */}
       <div className="flex flex-1 items-center justify-end gap-6">
         {!isMenuOpen && (
           <>
