@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { cleanTitle } from "../../lib/cleanTitle.js";
 import {
@@ -12,6 +13,7 @@ export const maxDuration = 300;
 
 const BATCH_SIZE = 150;
 const CYCLE_MS = 1200; // 50 RPM = one call every 1.2 s, measured from start
+const MAX_DEPTH = 30;
 // 150 × 1.2 s = 180 s baseline. Vercel maxDuration is 300 s. The ~120 s
 // headroom absorbs Haiku-call latency that exceeds the 1.2 s sleep budget.
 // If a batch is killed before reaching the final waitUntil, the chain breaks
@@ -113,6 +115,23 @@ export async function POST(request) {
     .select("*", { count: "exact", head: true })
     .or("brand.is.null,title.is.null");
 
+  let chained = false;
+  if ((remaining ?? 0) > 0 && depth < MAX_DEPTH) {
+    const nextUrl = `${url.origin}/api/enrich?depth=${depth + 1}`;
+    const headers = { Authorization: `Bearer ${process.env.CRON_SECRET}` };
+    // Vercel SSO blocks self-fetches to a deployment URL when Deployment
+    // Protection is on. The bypass secret is auto-injected by Vercel when
+    // a project-level Protection Bypass for Automation is configured.
+    // Harmless when unset (no SSO) or unmatched (production custom domain).
+    if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+      headers["x-vercel-protection-bypass"] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    }
+    waitUntil(
+      fetch(nextUrl, { method: "POST", headers }).catch(() => {})
+    );
+    chained = true;
+  }
+
   return Response.json({
     processed: rows?.length ?? 0,
     succeeded,
@@ -120,5 +139,6 @@ export async function POST(request) {
     rejected,
     remaining: remaining ?? 0,
     depth,
+    chained,
   });
 }
