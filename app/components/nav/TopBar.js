@@ -62,17 +62,17 @@ export default function TopBar({
       </div>
 
       {/* Center */}
-      <Link href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-50">
+      <a href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-50">
         DÉPÔT
-      </Link>
+      </a>
 
       {/* Right */}
       <div className="flex flex-1 items-center justify-end gap-6">
         {!isMenuOpen && (
           <>
-            <Link href="/#newsletter" className={baseLink}>
+            <a href="/#newsletter" className={baseLink}>
               Newsletter
-            </Link>
+            </a>
             <Link href="/saved" className={baseLink}>
               Saved
             </Link>
