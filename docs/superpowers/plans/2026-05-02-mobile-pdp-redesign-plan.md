@@ -478,20 +478,32 @@ Create `app/components/MoreFromStore.js` with this exact content:
 
 ```jsx
 import Link from "next/link";
+import { supabase } from "../lib/supabase.js";
 
 async function fetchMore(storeDomain) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-  try {
-    const res = await fetch(
-      `${baseUrl}/api/products?store=${encodeURIComponent(storeDomain)}&sort=newest&limit=5`,
-      { next: { revalidate: 300 } }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data?.products) ? data.products : [];
-  } catch {
+  const { data, error } = await supabase
+    .from("products")
+    .select("name, title, brand, price, image_url, store_domain, product_url, available, handle")
+    .eq("store_domain", storeDomain)
+    .eq("available", true)
+    .order("synced_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(5);
+
+  if (error) {
+    console.error("[MoreFromStore] Supabase fetch error:", error.message);
     return [];
   }
+  return (data || []).map((row) => ({
+    title: row.title,
+    name: row.name,
+    brand: row.brand,
+    price: row.price,
+    imageUrl: row.image_url,
+    storeDomain: row.store_domain,
+    available: row.available,
+    handle: row.handle,
+  }));
 }
 
 export default async function MoreFromStore({ storeDomain, currentHandle, storeName }) {
@@ -968,7 +980,7 @@ Before handing off the plan, the agent who wrote this confirmed:
   - PDP layout (top-to-bottom) → all 8 sections rendered in Task 7. ✓
   - Typography decisions → applied verbatim in Task 7. ✓
   - Components → all 4 created (Accordion, SaveShareRow, MoreFromStore, Footer). ✓
-  - Data flow → no source changes; new size derivation + parallel store query added. ✓
+  - Data flow → no source changes; new size derivation + parallel store query added. `MoreFromStore` queries Supabase directly (no self-HTTP-fetch) — avoids `NEXT_PUBLIC_BASE_URL` ambiguity on preview deployments. ✓
   - Global footer → Task 3 component, Task 4 mount + homepage cleanup. ✓
   - Save behavior → visual-only toggle in SaveShareRow (matches the Option B amendment in Task 1). ✓
   - Share behavior → Web Share API + clipboard fallback with "Copied" confirmation. ✓
