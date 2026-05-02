@@ -108,7 +108,7 @@ export default function Column1({
 
       <div className="mt-8">
         <div className={labelStyle}>Dépôt</div>
-        <Link href="/about" className={itemBase}>About</Link>
+        <Link href="/about" onClick={onClose} className={itemBase}>About</Link>
         <a href={`mailto:${CONTACT_EMAIL}`} onClick={onClose} className={itemBase}>Contact</a>
       </div>
     </div>

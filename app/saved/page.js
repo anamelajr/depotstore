@@ -6,7 +6,7 @@ export const metadata = {
 
 export default function SavedPage() {
   return (
-    <main className="flex min-h-[calc(100vh-56px)] flex-col items-center justify-center px-6">
+    <main className="flex min-h-[calc(100vh-var(--nav-height))] flex-col items-center justify-center px-6">
       <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600 mb-4">
         Saved
       </p>

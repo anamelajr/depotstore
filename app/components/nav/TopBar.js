@@ -113,9 +113,9 @@ export default function TopBar({
       <div className="flex flex-1 items-center justify-end gap-6">
         {!isMenuOpen && (
           <>
-            <a href="/#newsletter" className={baseLink}>
+            <Link href="/#newsletter" className={baseLink}>
               Newsletter
-            </a>
+            </Link>
             <Link href="/saved" className={baseLink}>
               Saved
             </Link>
