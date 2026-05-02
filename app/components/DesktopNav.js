@@ -15,8 +15,6 @@ export default function DesktopNav({ stores = [] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const selectedBrand = searchParams.get("brand");
-  const selectedStore = searchParams.get("store");
 
   useEffect(() => {
     setIsMenuOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
@@ -60,10 +58,7 @@ export default function DesktopNav({ stores = [] }) {
       <div className="hidden md:block">
         <MenuPanel isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)}>
           <Column1
-            searchParams={searchParams}
             expandedKey={expandedKey}
-            selectedBrand={selectedBrand}
-            selectedStore={selectedStore}
             onExpand={setExpandedKey}
             onClose={() => setIsMenuOpen(false)}
           />

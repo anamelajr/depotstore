@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { buildFeedUrl } from "../../lib/feed-utils";
+import { buildFreshFeedUrl } from "../../lib/feed-utils";
 
 const SUBCATEGORIES = {
   tops: [
@@ -29,14 +29,6 @@ const HEADINGS = {
   bags:    "Bags & Accessories",
 };
 
-function buildToggleCategoryUrl(searchParams, categoryValue) {
-  const current = searchParams.getAll("category");
-  const next = current.includes(categoryValue)
-    ? current.filter((c) => c !== categoryValue)
-    : [...current, categoryValue];
-  return buildFeedUrl(searchParams, { category: next });
-}
-
 const itemBase =
   "block py-2 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-300 hover:text-zinc-50";
 const itemActive = "text-zinc-50";
@@ -56,7 +48,7 @@ export default function SubcategoryList({ expandKey, searchParams }) {
         return (
           <Link
             key={value}
-            href={buildToggleCategoryUrl(searchParams, value)}
+            href={buildFreshFeedUrl({ category: [value] })}
             className={`${itemBase} ${active ? itemActive : ""}`}
           >
             {active && <span className="-ml-4 mr-1">— </span>}

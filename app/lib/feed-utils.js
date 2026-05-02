@@ -25,6 +25,19 @@ export function buildFeedUrl(current, updates) {
   return `/feed${q ? `?${q}` : ""}`;
 }
 
+export function buildFreshFeedUrl(updates) {
+  const params = new URLSearchParams();
+  Object.entries(updates || {}).forEach(([k, v]) => {
+    if (k === "category") {
+      (Array.isArray(v) ? v : [v]).filter(Boolean).forEach((c) => params.append("category", c));
+    } else if (v != null && v !== "" && v !== ALL_STORES_VALUE) {
+      params.set(k, String(v));
+    }
+  });
+  const q = params.toString();
+  return `/feed${q ? `?${q}` : ""}`;
+}
+
 const BAG_KEYWORDS = [
   "bag", "crossbody", "backpack", "handbag", "tote", "document holder",
   "wallet", "pouchette", "furkin", "purse",
