@@ -35,7 +35,7 @@ export async function POST(request) {
   const { data: rows, error: selErr } = await supabaseAdmin
     .from("products")
     .select("id, handle, store_domain, name, brand, title, category, description")
-    .or("brand.is.null,title.is.null")
+    .or("brand.is.null,title.is.null,category.is.null")
     .order("id", { ascending: false })
     .limit(BATCH_SIZE);
 
@@ -48,6 +48,25 @@ export async function POST(request) {
   let rejected = 0; // Dolce Vita allowlist rejections
 
   for (const row of rows ?? []) {
+    // Category-only fill: brand and title are already populated, only
+    // category is missing. Skip Haiku entirely — assignCategory is
+    // deterministic and code-only. Allowlist gate is N/A here; the
+    // brand passed it on the row's first pass.
+    if (row.brand && row.title) {
+      const newCategory = assignCategory(row) ?? null;
+      if (!newCategory) continue;
+      const { error: rpcErr } = await supabaseAdmin.rpc("enrich_product", {
+        p_handle: row.handle,
+        p_store_domain: row.store_domain,
+        p_brand: row.brand,
+        p_title: row.title,
+        p_category: newCategory,
+      });
+      if (rpcErr) failed++;
+      else succeeded++;
+      continue;
+    }
+
     const t0 = Date.now();
     try {
       const result = await cleanTitle({
@@ -109,7 +128,7 @@ export async function POST(request) {
   const { count: remaining } = await supabaseAdmin
     .from("products")
     .select("*", { count: "exact", head: true })
-    .or("brand.is.null,title.is.null");
+    .or("brand.is.null,title.is.null,category.is.null");
 
   let chained = false;
   if ((remaining ?? 0) > 0 && depth < MAX_DEPTH) {
