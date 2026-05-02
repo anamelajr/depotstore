@@ -105,7 +105,8 @@ export async function GET(request) {
     let priceQuery = supabase
       .from("products")
       .select(selectCols, { count: "exact" })
-      .eq("available", true);
+      .eq("available", true)
+      .eq("hidden", false);
 
     if (store) priceQuery = priceQuery.eq("store_domain", store);
     if (categories.length === 1) priceQuery = priceQuery.eq("category", categories[0]);
@@ -150,6 +151,7 @@ export async function GET(request) {
     .from("products")
     .select(selectCols, { count: "exact" })
     .eq("available", true)
+    .eq("hidden", false)
     .range(from, to);
 
   if (store) query = query.eq("store_domain", store);
