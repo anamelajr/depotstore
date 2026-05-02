@@ -1,6 +1,7 @@
 "use client";
 
 import SubcategoryList from "./SubcategoryList";
+import DesignersPanel from "./DesignersPanel";
 
 export default function Column2({ expandedKey, searchParams, stores = [] }) {
   if (!expandedKey) return <div className="px-8 py-8" />;
@@ -13,6 +14,14 @@ export default function Column2({ expandedKey, searchParams, stores = [] }) {
     );
   }
 
-  // designers + stores wired in Task 7 + 8
+  if (expandedKey === "designers") {
+    return (
+      <div className="border-l border-zinc-900 px-8 py-8">
+        <DesignersPanel />
+      </div>
+    );
+  }
+
+  // stores wired in Task 8
   return <div className="border-l border-zinc-900 px-8 py-8" />;
 }
