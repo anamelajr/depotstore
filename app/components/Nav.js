@@ -1,12 +1,10 @@
 "use client";
 
-import { useRef, useState, useMemo, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import DesignersDropdown from "./DesignersDropdown";
 import DesktopNav from "./DesktopNav";
-import BRANDS from "../brands";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
@@ -44,19 +42,6 @@ const MOBILE_NAV_SECONDARY = [
   { label: "STORES", href: "/stores" },
   { label: "DESIGNERS", href: "/designers" },
 ];
-
-function NavLink({ href, children, active }) {
-  return (
-    <Link
-      href={href}
-      className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${
-        active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
-      }`}
-    >
-      {children}
-    </Link>
-  );
-}
 
 // Builds a /feed URL that toggles a category in/out of the current selection
 function buildToggleCategoryUrl(searchParams, categoryValue) {
@@ -211,94 +196,17 @@ function MobileNav({ isOpen, onClose, onAboutOpen, searchParams }) {
 
 export default function Nav({ onAboutOpen, stores = [] }) {
   const searchParams = useSearchParams();
-  const selectedCategories = searchParams.getAll("category");
-  const selectedBrand = searchParams.get("brand");
-
   const router = useRouter();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [mobileSearchQuery, setMobileSearchQuery] = useState("");
-  const [isDesignersOpen, setIsDesignersOpen] = useState(false);
-  const [designersDropdownTop, setDesignersDropdownTop] = useState(0);
-  const [categoryDropdown, setCategoryDropdown] = useState(null);
-  const [categoryDropdownRect, setCategoryDropdownRect] = useState(null);
   const mobileSearchInputRef = useRef(null);
-  const designersRef = useRef(null);
-  const designersDropdownRef = useRef(null);
-  const navRef = useRef(null);
-  const designersCloseTimeoutRef = useRef(null);
-  const categoryCloseTimeoutRef = useRef(null);
-  const topsRef = useRef(null);
-  const jacketsRef = useRef(null);
-  const bagsRef = useRef(null);
 
   useEffect(() => {
     if (isMobileSearchOpen && mobileSearchInputRef.current) {
       mobileSearchInputRef.current.focus();
     }
   }, [isMobileSearchOpen]);
-
-  const brandsByLetter = useMemo(() => {
-    const sorted = [...BRANDS].sort((a, b) => a.localeCompare(b));
-    const grouped = new Map();
-    for (const brand of sorted) {
-      const letter = (brand[0] || "").toUpperCase();
-      if (!letter.match(/[A-Z]/)) continue;
-      if (!grouped.has(letter)) grouped.set(letter, []);
-      grouped.get(letter).push(brand);
-    }
-    return Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, []);
-
-  const isCategoryActive = (key) => {
-    return selectedCategories.some((c) => c === key || c.startsWith(key + "_") || key.startsWith(c + "_"));
-  };
-
-  const openDesignersDropdown = () => {
-    if (designersCloseTimeoutRef.current) {
-      clearTimeout(designersCloseTimeoutRef.current);
-      designersCloseTimeoutRef.current = null;
-    }
-    if (navRef.current) {
-      const rect = navRef.current.getBoundingClientRect();
-      setDesignersDropdownTop(rect.bottom);
-    }
-    setIsDesignersOpen(true);
-  };
-
-  const scheduleCloseDesignersDropdown = () => {
-    designersCloseTimeoutRef.current = setTimeout(() => setIsDesignersOpen(false), 100);
-  };
-
-  const closeDesignersDropdown = () => {
-    if (designersCloseTimeoutRef.current) {
-      clearTimeout(designersCloseTimeoutRef.current);
-      designersCloseTimeoutRef.current = null;
-    }
-    setIsDesignersOpen(false);
-  };
-
-  const openCategoryDropdown = (key, ref) => {
-    if (categoryCloseTimeoutRef.current) {
-      clearTimeout(categoryCloseTimeoutRef.current);
-      categoryCloseTimeoutRef.current = null;
-    }
-    setCategoryDropdown(key);
-    if (ref?.current) {
-      const rect = ref.current.getBoundingClientRect();
-      setCategoryDropdownRect({ top: rect.bottom + 8, left: rect.left });
-    }
-  };
-
-  const closeCategoryDropdown = () => {
-    if (categoryCloseTimeoutRef.current) clearTimeout(categoryCloseTimeoutRef.current);
-    setCategoryDropdown(null);
-    setCategoryDropdownRect(null);
-  };
-
-  const scheduleCloseCategoryDropdown = () => {
-    categoryCloseTimeoutRef.current = setTimeout(closeCategoryDropdown, 100);
-  };
 
   return (
     <>
