@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import ProductCard from "../components/ProductCard";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
+import DesktopFeedBar from "../components/feed/DesktopFeedBar";
+import DesktopSortMenu from "../components/feed/DesktopSortMenu";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
@@ -32,6 +34,10 @@ export default function FeedClient({ stores = [] }) {
   // Mobile UI state
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+
+  // Desktop UI state (≥ md)
+  const [desktopFilterOpen, setDesktopFilterOpen] = useState(false);
+  const [desktopSortOpen, setDesktopSortOpen] = useState(false);
 
   // Fetch state
   const [products, setProducts] = useState([]);
@@ -234,6 +240,16 @@ export default function FeedClient({ stores = [] }) {
     router.replace(`/feed${q ? `?${q}` : ""}`);
   }, [localCategories, searchParams, router]);
 
+  const openDesktopFilter = useCallback(() => {
+    setDesktopSortOpen(false);
+    setDesktopFilterOpen(true);
+  }, []);
+
+  const toggleDesktopSort = useCallback(() => {
+    setDesktopFilterOpen(false);
+    setDesktopSortOpen((o) => !o);
+  }, []);
+
   const handleClearAll = useCallback(() => {
     setLocalCategories([]);
     setLocalStore(ALL_STORES_VALUE);
@@ -244,6 +260,7 @@ export default function FeedClient({ stores = [] }) {
   const handleSortChange = useCallback((v) => {
     setSelectedSort(v);
     setSortOpen(false);
+    setDesktopSortOpen(false);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("page");
     if (v === "interleaved") params.delete("sort");
@@ -367,6 +384,22 @@ export default function FeedClient({ stores = [] }) {
             </div>
           )}
         </main>
+
+        {/* ── DESKTOP: floating filter/sort bar (≥ md) ── */}
+        <div className="hidden md:block fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
+          <DesktopSortMenu
+            isOpen={desktopSortOpen}
+            onClose={() => setDesktopSortOpen(false)}
+            selectedSort={selectedSort}
+            onSortChange={handleSortChange}
+          />
+          <DesktopFeedBar
+            activeFilterCount={activeFilterCount}
+            sortOpen={desktopSortOpen}
+            onOpenFilters={openDesktopFilter}
+            onToggleSort={toggleDesktopSort}
+          />
+        </div>
       </div>
     </div>
   );
