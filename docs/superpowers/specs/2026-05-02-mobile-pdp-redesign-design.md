@@ -161,10 +161,9 @@ A single `Footer` component used on every page on the site. Replaces the homepag
 
 ## Save behavior
 
-- The PDP renders a Save button; clicking it adds/removes the current `(storeDomain, handle)` pair from the saved list using whatever mechanism `/saved` already uses today.
-- The button reflects saved state with a filled-bookmark icon when saved.
-- No new persistence layer. Whatever `/saved` does today is what the button hands off to.
-- Implementation detail to confirm during implementation: read `/app/saved/page.js` to identify the existing client store/key — the implementation plan will pin this down.
+- v1 scope: visual-only toggle. The PDP Save button toggles a local React state inside `SaveShareRow` — clicking fills the bookmark icon, clicking again unfills it. State does not persist across page navigation or browser sessions.
+- This was an explicit scope decision: `/saved` is currently a "Coming soon" stub (`app/saved/page.js`). Building a real persistence layer (localStorage, DB, or auth-based) is out of scope here and will get its own spec.
+- The button is wired so that when a future Save mechanism lands, only `SaveShareRow.js` needs to change; no other PDP code touches save state.
 
 ## Share behavior
 
@@ -192,7 +191,7 @@ Dividers use `#f4f4f5` (almost invisible) so visual separation is driven by whit
 
 ## Risks / open items
 
-- **`/saved` integration shape** — the implementation plan must read the existing `/saved` page's client store before committing to a Save button binding. If `/saved` uses a different shape than `(storeDomain, handle)`, the Save component will need to match it.
+- **Save persistence is deliberately deferred.** v1 uses an ephemeral toggle inside `SaveShareRow`. A future spec covers real persistence + an updated `/saved` page that lists items.
 - **Store Profile body content** — depending on what columns exist on `stores`, this accordion body may be very thin. If it ends up just being store name + a link, the implementation may collapse it to a simpler footer row instead. Decide during implementation by looking at `stores` row shape.
 - **Web Share API fallback** — clipboard write requires HTTPS; on localhost over HTTP it may fail silently. CLAUDE.md already says verify on Vercel, so this is not blocking.
 - **Image gallery touch behavior** — the existing `ProductGallery` is preserved. If the new visual rhythm exposes an existing bug (e.g. wheel-to-navigate on desktop, scroll restoration), that bug is out of scope here.
