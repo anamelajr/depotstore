@@ -2,33 +2,13 @@
 
 import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import ProductCard from "../components/ProductCard";
-import StoreFilterBar from "../components/StoreFilterBar";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
 import { SORT_OPTIONS } from "../components/MobileSortSheet";
-import { ALL_STORES_VALUE } from "../lib/feed-utils";
+import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 
 const LOAD_SIZE = 30;
-
-const CATEGORY_LABELS = {
-  tops: "Tops",
-  tops_hoodies_sweaters: "Hoodies & Sweaters",
-  tops_shirts_blouses: "Shirts & Blouses",
-  tops_tees: "Tees",
-  tops_knitwear: "Knitwear",
-  bottoms: "Bottoms",
-  dresses_skirts: "Dresses & Skirts",
-  jackets_coats: "Jackets & Coats",
-  jackets: "Jackets",
-  coats: "Coats",
-  footwear: "Footwear",
-  bags_accessories: "Bags & Accessories",
-  bags: "Bags",
-  accessories: "Accessories",
-  sets: "Sets",
-};
 
 const SORT_MAP = { latest: "newest", price_asc: "price_asc", price_desc: "price_desc" };
 
@@ -50,7 +30,6 @@ export default function FeedClient({ stores = [] }) {
   const [localCategories, setLocalCategories] = useState(urlCategories);
   const [localStore, setLocalStore] = useState(selectedStore);
   const [selectedSort, setSelectedSort] = useState(urlSort);
-  const [inputValue, setInputValue] = useState(searchQuery);
 
   // Mobile UI state
   const [filterOpen, setFilterOpen] = useState(false);
@@ -149,7 +128,6 @@ export default function FeedClient({ stores = [] }) {
   }, [searchParams]);
 
   useEffect(() => { setLocalStore(selectedStore); }, [selectedStore]);
-  useEffect(() => { setInputValue(searchQuery); }, [searchQuery]);
   useEffect(() => { setSelectedSort(urlSort); }, [urlSort]);
 
   // ── Filter key — changes whenever filters/sort/search change ──
@@ -238,26 +216,10 @@ export default function FeedClient({ stores = [] }) {
   }, [loadMoreOffset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── URL builders & handlers ──
-  const buildFeedUrl = useCallback((updates) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("page");
-    Object.entries(updates || {}).forEach(([k, v]) => {
-      if (k === "category") {
-        params.delete("category");
-        if (Array.isArray(v)) v.forEach((cat) => params.append("category", cat));
-      } else {
-        if (v == null || v === "" || v === ALL_STORES_VALUE) params.delete(k);
-        else params.set(k, String(v));
-      }
-    });
-    const q = params.toString();
-    return `/feed${q ? `?${q}` : ""}`;
-  }, [searchParams]);
-
   const handleStoreChange = useCallback((v) => {
     setLocalStore(v);
-    router.push(buildFeedUrl({ store: v }));
-  }, [router, buildFeedUrl]);
+    router.push(buildFeedUrl(searchParams, { store: v }));
+  }, [router, searchParams]);
 
   const handleToggleCategory = useCallback((cat) => {
     const next = localCategories.includes(cat)
@@ -278,16 +240,6 @@ export default function FeedClient({ stores = [] }) {
     setFilterOpen(false);
     router.replace("/feed");
   }, [router]);
-
-  const handleSearchSubmit = useCallback((e) => {
-    e.preventDefault();
-    const params = new URLSearchParams();
-    if (localStore && localStore !== ALL_STORES_VALUE) params.set("store", localStore);
-    if (inputValue.trim()) params.set("search", inputValue.trim());
-    if (selectedSort !== "latest") params.set("sort", selectedSort);
-    const q = params.toString();
-    router.push(`/feed${q ? `?${q}` : ""}`);
-  }, [inputValue, localStore, selectedSort, router]);
 
   const handleSortChange = useCallback((v) => {
     setSelectedSort(v);
@@ -311,60 +263,6 @@ export default function FeedClient({ stores = [] }) {
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-hidden">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
-
-        {/* ── DESKTOP HEADER (md and above) ── */}
-        <header className="sticky z-10 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur hidden md:block" style={{ top: "var(--nav-height)", marginTop: "-24px" }}>
-          <div className="mx-auto max-w-7xl space-y-3 px-4 pt-0 pb-4">
-            <div className="flex items-start justify-between gap-6">
-              <div className="min-w-0 flex-1 space-y-1">
-                <h1 className="font-serif text-2xl font-semibold tracking-tight text-zinc-50 sm:text-3xl" style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}>
-                  Dépôt
-                </h1>
-                <form onSubmit={handleSearchSubmit} className="block">
-                  <input
-                    name="search"
-                    type="search"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Search..."
-                    className="w-full border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 placeholder:text-zinc-500 outline-none"
-                  />
-                </form>
-              </div>
-              <Link
-                href="/"
-                className="shrink-0 font-mono text-[11px] uppercase tracking-widest text-zinc-50 transition-colors hover:text-zinc-300"
-              >
-                ← BACK TO HOME
-              </Link>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-              <StoreFilterBar
-                options={storeOptions}
-                selectedValue={localStore}
-                onChange={handleStoreChange}
-              />
-            </div>
-            {localCategories.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-                  CATEGORY:
-                </span>
-                {localCategories.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onPointerDown={() => handleToggleCategory(cat)}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-600 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-50 whitespace-nowrap active:bg-zinc-800"
-                  >
-                    <span>{CATEGORY_LABELS[cat] ?? cat}</span>
-                    <span className="text-zinc-400 leading-none text-[14px] pl-1">×</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </header>
 
         {/* ── MOBILE: sticky Refine / Sort (below md) ── */}
         <header
@@ -415,7 +313,7 @@ export default function FeedClient({ stores = [] }) {
           onSortChange={handleSortChange}
         />
 
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-32">
+        <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-8">
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">

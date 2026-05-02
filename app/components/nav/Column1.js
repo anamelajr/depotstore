@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { buildFeedUrl } from "../../lib/feed-utils";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
@@ -19,12 +20,7 @@ function buildToggleCategoryUrl(searchParams, categoryValue) {
   const next = current.includes(categoryValue)
     ? current.filter((c) => c !== categoryValue)
     : [...current, categoryValue];
-  const params = new URLSearchParams();
-  next.forEach((c) => params.append("category", c));
-  const store = searchParams.get("store");
-  if (store) params.set("store", store);
-  const q = params.toString();
-  return `/feed${q ? `?${q}` : ""}`;
+  return buildFeedUrl(searchParams, { category: next });
 }
 
 function isCategoryActive(selectedCategories, item) {
