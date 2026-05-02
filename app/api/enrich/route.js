@@ -34,7 +34,7 @@ export async function POST(request) {
 
   const { data: rows, error: selErr } = await supabaseAdmin
     .from("products")
-    .select("id, handle, store_domain, name, brand, title, category")
+    .select("id, handle, store_domain, name, brand, title, category, description")
     .or("brand.is.null,title.is.null")
     .order("id", { ascending: false })
     .limit(BATCH_SIZE);
@@ -50,7 +50,10 @@ export async function POST(request) {
   for (const row of rows ?? []) {
     const t0 = Date.now();
     try {
-      const result = await cleanTitle({ name: row.name });
+      const result = await cleanTitle({
+        name: row.name,
+        rawDescription: row.description,
+      });
       if (result) {
         const { brand: newBrand, title: newTitle } = result;
         // Allowlist gate for filtered stores. Sync passed this row through
