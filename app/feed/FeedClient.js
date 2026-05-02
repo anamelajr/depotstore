@@ -116,6 +116,30 @@ export default function FeedClient({ stores = [] }) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Close ALL filter/sort UI on either breakpoint crossing.
+  //
+  // Desktop → mobile: closes the desktop panel + sort dropdown so a stuck
+  // body { overflow: hidden } can't happen.
+  //
+  // Mobile → desktop: closes the mobile drawer/sheet so they can't persist
+  // mounted at z-9998/9999 over the new desktop layout (they're not gated by
+  // a Tailwind breakpoint; their visibility is purely state-driven). Without
+  // this, a tablet user opening Refine in portrait and rotating to landscape
+  // would see the mobile drawer pinned over the desktop bar with body scroll
+  // locked.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 767px)");
+    const handler = () => {
+      setDesktopFilterOpen(false);
+      setDesktopSortOpen(false);
+      setFilterOpen(false);
+      setSortOpen(false);
+    };
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
   // Sync local state when URL changes externally
   const prevUrlCatsRef = useRef(JSON.stringify(urlCategories));
   useEffect(() => {
@@ -331,7 +355,7 @@ export default function FeedClient({ stores = [] }) {
           onSortChange={handleSortChange}
         />
 
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pt-8">
+        <main className="mx-auto max-w-7xl px-4 pb-24 md:pb-32 pt-3 md:pt-8">
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
