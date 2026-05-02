@@ -146,7 +146,7 @@ try {
                 Paris. Archive. One feed.
               </p>
             </div>
-            <div className="w-full max-w-sm">
+            <div id="newsletter" className="w-full max-w-sm scroll-mt-[80px]">
               <NewsletterForm />
             </div>
           </div>
