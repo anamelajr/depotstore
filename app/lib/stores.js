@@ -26,7 +26,7 @@ async function fetchExistingEditorialByHandle(storeDomain) {
 
 // Normalizes brand strings for reliable comparison
 // Handles accents, punctuation, slashes, spacing differences
-function normalizeBrand(value) {
+export function normalizeBrand(value) {
   if (!value || typeof value !== "string") return null;
 
   const ALIASES = {
@@ -74,8 +74,8 @@ function titleContainsAllowedBrand(rawTitle) {
   return false;
 }
 
-const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
-const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
+export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
+export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
 const FALLBACK_STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
