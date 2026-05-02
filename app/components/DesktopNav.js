@@ -5,6 +5,7 @@ import { useSearchParams, usePathname } from "next/navigation";
 import TopBar from "./nav/TopBar";
 import MenuPanel from "./nav/MenuPanel";
 import Column1 from "./nav/Column1";
+import Column2 from "./nav/Column2";
 
 export default function DesktopNav({ stores = [] }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -46,8 +47,11 @@ export default function DesktopNav({ stores = [] }) {
             onExpand={setExpandedKey}
             onClose={() => setIsMenuOpen(false)}
           />
-          {/* Column 2 wired in Task 6 */}
-          <div />
+          <Column2
+            expandedKey={expandedKey}
+            searchParams={searchParams}
+            stores={stores}
+          />
         </MenuPanel>
       </div>
     </>
