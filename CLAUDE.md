@@ -47,7 +47,9 @@ Do not change these without explicit instruction.
 - **Price is stored as TEXT** (`'€29.99'`). Never assume numeric ordering.
 - **`FALLBACK_STORES` in `stores.js` is a safety net.** Do not delete it.
 - **`BackToFeedLink` enables filter-aware back navigation.** Do not delete it.
-- **`nav-height` is `50px` in `globals.css`** — must match `h-[50px]` in nav.
+- **`nav-height` is `56px` in `globals.css`** — must match `h-[56px]` on the
+  desktop nav. Mobile nav stays at `h-[50px]` (the CSS variable is consumed
+  only in desktop sticky-offset calculations).
 - **Category URL slugs are translated to DB display values in
   `app/api/products/route.js`.** Update that mapping if categories or slugs
   change.
