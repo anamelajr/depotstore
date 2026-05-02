@@ -3,6 +3,28 @@ import BRANDS from "../brands";
 export const ALL_STORES_VALUE = "ALL";
 export const PAGE_SIZE = 42;
 
+export function buildFeedUrl(current, updates) {
+  const seed =
+    current == null
+      ? ""
+      : typeof current === "string"
+      ? current
+      : current.toString();
+  const params = new URLSearchParams(seed);
+  params.delete("page");
+  Object.entries(updates || {}).forEach(([k, v]) => {
+    if (k === "category") {
+      params.delete("category");
+      if (Array.isArray(v)) v.forEach((cat) => params.append("category", cat));
+    } else {
+      if (v == null || v === "" || v === ALL_STORES_VALUE) params.delete(k);
+      else params.set(k, String(v));
+    }
+  });
+  const q = params.toString();
+  return `/feed${q ? `?${q}` : ""}`;
+}
+
 const BAG_KEYWORDS = [
   "bag", "crossbody", "backpack", "handbag", "tote", "document holder",
   "wallet", "pouchette", "furkin", "purse",

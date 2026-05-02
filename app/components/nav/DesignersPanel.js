@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import BRANDS from "../../brands";
+import { buildFeedUrl } from "../../lib/feed-utils";
 
 const TOP_DESIGNERS = [
   "Margiela",
@@ -26,7 +27,7 @@ const labelStyle =
 const letterBase =
   "font-mono text-[11px] uppercase tracking-widest";
 
-export default function DesignersPanel() {
+export default function DesignersPanel({ searchParams }) {
   const lettersWithBrands = useMemo(() => {
     const set = new Set();
     for (const brand of BRANDS) {
@@ -43,7 +44,7 @@ export default function DesignersPanel() {
         {TOP_DESIGNERS.map((brand) => (
           <Link
             key={brand}
-            href={`/feed?brand=${encodeURIComponent(brand)}`}
+            href={buildFeedUrl(searchParams, { brand })}
             className={itemBase}
           >
             {brand}

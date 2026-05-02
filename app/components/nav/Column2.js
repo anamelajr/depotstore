@@ -18,7 +18,7 @@ export default function Column2({ expandedKey, searchParams, stores = [] }) {
   if (expandedKey === "designers") {
     return (
       <div className="border-l border-zinc-900 px-8 py-8">
-        <DesignersPanel />
+        <DesignersPanel searchParams={searchParams} />
       </div>
     );
   }
@@ -26,7 +26,7 @@ export default function Column2({ expandedKey, searchParams, stores = [] }) {
   if (expandedKey === "stores") {
     return (
       <div className="border-l border-zinc-900 px-8 py-8">
-        <StoresPanel stores={stores} />
+        <StoresPanel stores={stores} searchParams={searchParams} />
       </div>
     );
   }
