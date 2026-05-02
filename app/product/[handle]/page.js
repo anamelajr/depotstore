@@ -104,7 +104,7 @@ export default async function ProductPage({ params, searchParams }) {
     rawDescription,
     tags,
     price,
-    storeName: storeDomain,
+    storeName,
   };
 
   let description = dbRow?.editorial_description || null;
