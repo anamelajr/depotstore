@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Nav from "./Nav";
 
-export default function LayoutClient({ children }) {
+export default function LayoutClient({ children, stores = [] }) {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   return (
     <>
-      <Nav onAboutOpen={() => setIsAboutOpen(true)} />
+      <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
       {children}
       {isAboutOpen && (
         <div
