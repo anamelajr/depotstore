@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import LayoutClient from "./components/LayoutClient";
+import Footer from "./components/Footer";
 import { getActiveStores } from "./lib/stores.js";
 import "./globals.css";
 
@@ -36,6 +37,7 @@ export default async function RootLayout({ children }) {
         <Suspense fallback={null}>
           <LayoutClient stores={stores}>{children}</LayoutClient>
         </Suspense>
+        <Footer />
       </body>
       <Analytics />
     </html>
