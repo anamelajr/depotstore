@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import DesignersDropdown from "./DesignersDropdown";
+import DesktopNav from "./DesktopNav";
 import BRANDS from "../brands";
 
 const CONTACT_EMAIL = "hello@depot.paris";
@@ -301,11 +302,10 @@ export default function Nav({ onAboutOpen, stores = [] }) {
 
   return (
     <>
-      <nav ref={navRef} className="sticky top-0 z-50 flex h-[50px] items-center border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
+      {/* Mobile nav */}
+      <nav className="sticky top-0 z-50 flex h-[50px] items-center border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur md:hidden">
         <div className="mx-auto flex w-full max-w-7xl items-center px-4">
-
-          {/* Mobile: logo + search + hamburger */}
-          <div className="flex md:hidden items-center justify-between w-full">
+          <div className="flex items-center justify-between w-full">
             {isMobileSearchOpen ? (
               <div className="flex items-center w-full h-[50px] px-5 gap-3">
                 <input
@@ -325,7 +325,7 @@ export default function Nav({ onAboutOpen, stores = [] }) {
                   }}
                   placeholder="Search archive..."
                   className="font-mono tracking-widest uppercase bg-transparent text-zinc-50 placeholder-zinc-600 outline-none flex-1 origin-left"
-style={{ fontSize: '16px', transform: 'scale(0.6875)', width: '145%' }}
+                  style={{ fontSize: '16px', transform: 'scale(0.6875)', width: '145%' }}
                 />
                 <button
                   onClick={() => {
@@ -368,144 +368,11 @@ style={{ fontSize: '16px', transform: 'scale(0.6875)', width: '145%' }}
               </>
             )}
           </div>
-
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-5 overflow-x-auto whitespace-nowrap font-mono text-[11px] uppercase tracking-widest w-full">
-            <div
-              className="relative"
-              onMouseEnter={() => openCategoryDropdown("tops", topsRef)}
-              onMouseLeave={scheduleCloseCategoryDropdown}
-            >
-              <Link
-                ref={topsRef}
-                href={buildToggleCategoryUrl(searchParams, "tops")}
-                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("tops") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-              >
-                TOPS
-              </Link>
-            </div>
-
-            <Link
-              href={buildToggleCategoryUrl(searchParams, "bottoms")}
-              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("bottoms") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-            >
-              BOTTOMS
-            </Link>
-
-            <Link
-              href={buildToggleCategoryUrl(searchParams, "dresses_skirts")}
-              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("dresses_skirts") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-            >
-              DRESSES & SKIRTS
-            </Link>
-
-            <div
-              className="relative"
-              onMouseEnter={() => openCategoryDropdown("jackets", jacketsRef)}
-              onMouseLeave={scheduleCloseCategoryDropdown}
-            >
-              <Link
-                ref={jacketsRef}
-                href={buildToggleCategoryUrl(searchParams, "jackets_coats")}
-                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("jackets_coats") || isCategoryActive("jackets") || isCategoryActive("coats") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-              >
-                JACKETS & COATS
-              </Link>
-            </div>
-
-            <Link
-              href={buildToggleCategoryUrl(searchParams, "footwear")}
-              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("footwear") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-            >
-              FOOTWEAR
-            </Link>
-
-            <div
-              className="relative"
-              onMouseEnter={() => openCategoryDropdown("bags", bagsRef)}
-              onMouseLeave={scheduleCloseCategoryDropdown}
-            >
-              <Link
-                ref={bagsRef}
-                href={buildToggleCategoryUrl(searchParams, "bags_accessories")}
-                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("bags_accessories") || isCategoryActive("bags") || isCategoryActive("accessories") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-              >
-                BAGS & ACCESSORIES
-              </Link>
-            </div>
-
-            <Link
-              href={buildToggleCategoryUrl(searchParams, "sets")}
-              className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${isCategoryActive("sets") ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-            >
-              SETS
-            </Link>
-
-            <Link href="/stores" className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
-              STORES
-            </Link>
-
-            <div
-              ref={designersRef}
-              className="relative"
-              onMouseEnter={openDesignersDropdown}
-              onMouseLeave={scheduleCloseDesignersDropdown}
-            >
-              <Link
-                href="/designers"
-                className={`font-mono text-[11px] uppercase tracking-widest transition-colors ${selectedBrand ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-              >
-                DESIGNERS
-              </Link>
-            </div>
-
-            <Link href="/about" className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
-              ABOUT
-            </Link>
-
-            <a href={`mailto:${CONTACT_EMAIL}`} className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50">
-              CONTACT
-            </a>
-          </div>
         </div>
-
-        {/* Designers dropdown */}
-        {isDesignersOpen && typeof document !== "undefined" && createPortal(
-          <div ref={designersDropdownRef} onMouseEnter={openDesignersDropdown} onMouseLeave={closeDesignersDropdown}>
-            <DesignersDropdown isOpen={isDesignersOpen} brandsByLetter={brandsByLetter} top={designersDropdownTop} />
-          </div>,
-          document.body
-        )}
-
-        {/* Category dropdown */}
-        {categoryDropdown && categoryDropdownRect && typeof document !== "undefined" && (() => {
-          const items = CATEGORY_ITEMS[categoryDropdown] || [];
-          return createPortal(
-            <div
-              className="fixed z-[9999] min-w-[220px] border border-zinc-800 bg-[#0a0a0a] p-2 font-mono text-[11px] uppercase tracking-widest shadow-xl"
-              style={{ top: categoryDropdownRect.top, left: categoryDropdownRect.left }}
-              onMouseEnter={() => {
-                if (categoryCloseTimeoutRef.current) {
-                  clearTimeout(categoryCloseTimeoutRef.current);
-                  categoryCloseTimeoutRef.current = null;
-                }
-              }}
-              onMouseLeave={closeCategoryDropdown}
-            >
-              {items.map(([value, label]) => (
-                <Link
-                  key={value}
-                  href={buildToggleCategoryUrl(searchParams, value)}
-                  className={`block w-full px-2 py-1 text-left transition-colors ${selectedCategories.includes(value) ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"}`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </div>,
-            document.body
-          );
-        })()}
       </nav>
+
+      {/* Desktop nav */}
+      <DesktopNav stores={stores} />
 
       {/* Mobile overlay */}
       {typeof document !== "undefined" && createPortal(
