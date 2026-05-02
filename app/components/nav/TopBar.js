@@ -62,9 +62,9 @@ export default function TopBar({
       </div>
 
       {/* Center */}
-      <a href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-50">
+      <Link href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-50">
         DÉPÔT
-      </a>
+      </Link>
 
       {/* Right */}
       <div className="flex flex-1 items-center justify-end gap-6">
