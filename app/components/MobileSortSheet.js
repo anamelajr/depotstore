@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-
-export const SORT_OPTIONS = [
-  { value: "latest", label: "Latest arrivals" },
-  { value: "price_asc", label: "Price: Low to high" },
-  { value: "price_desc", label: "Price: High to low" },
-];
+import { SORT_OPTIONS } from "../lib/sort-options";
 
 export default function MobileSortSheet({ isOpen, onClose, selectedSort, onSortChange }) {
   useEffect(() => {

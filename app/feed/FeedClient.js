@@ -5,12 +5,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import ProductCard from "../components/ProductCard";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
-import { SORT_OPTIONS } from "../components/MobileSortSheet";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
+import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
 const LOAD_SIZE = 30;
-
-const SORT_MAP = { latest: "newest", price_asc: "price_asc", price_desc: "price_desc" };
 
 export default function FeedClient({ stores = [] }) {
   const storeOptions = [
@@ -24,7 +22,7 @@ export default function FeedClient({ stores = [] }) {
   const searchQuery = searchParams.get("search") || "";
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const urlCategories = searchParams.getAll("category");
-  const urlSort = searchParams.get("sort") || "latest";
+  const urlSort = searchParams.get("sort") || "interleaved";
 
   // Local state for instant UI feedback
   const [localCategories, setLocalCategories] = useState(urlCategories);
@@ -154,7 +152,8 @@ export default function FeedClient({ stores = [] }) {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
-    if (urlSort && urlSort !== "latest") params.set("sort", SORT_MAP[urlSort] || "newest");
+    const apiSort = SORT_MAP[urlSort];
+    if (apiSort) params.set("sort", apiSort);
 
     fetch(`/api/products?${params}`, { signal: controller.signal })
       .then((res) => {
@@ -194,7 +193,8 @@ export default function FeedClient({ stores = [] }) {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
-    if (urlSort && urlSort !== "latest") params.set("sort", SORT_MAP[urlSort] || "newest");
+    const apiSort = SORT_MAP[urlSort];
+    if (apiSort) params.set("sort", apiSort);
 
     fetch(`/api/products?${params}`, { signal: controller.signal })
       .then((res) => {
@@ -246,7 +246,7 @@ export default function FeedClient({ stores = [] }) {
     setSortOpen(false);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("page");
-    if (v === "latest") params.delete("sort");
+    if (v === "interleaved") params.delete("sort");
     else params.set("sort", v);
     const q = params.toString();
     router.replace(`/feed${q ? `?${q}` : ""}`);
@@ -290,7 +290,7 @@ export default function FeedClient({ stores = [] }) {
               onPointerDown={() => setSortOpen(true)}
               className="flex h-full flex-1 items-center justify-center gap-2 px-4 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300 active:bg-zinc-900/80"
             >
-              {selectedSort !== "latest" ? activeSortLabel : "Sort"}
+              {selectedSort !== "interleaved" ? activeSortLabel : "Sort"}
             </button>
           </div>
         </header>
