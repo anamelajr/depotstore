@@ -4,15 +4,23 @@ import { useEffect, useState } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import TopBar from "./nav/TopBar";
 import MenuPanel from "./nav/MenuPanel";
+import Column1 from "./nav/Column1";
 
 export default function DesktopNav({ stores = [] }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [expandedKey, setExpandedKey] = useState(null);
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const selectedBrand = searchParams.get("brand");
 
   useEffect(() => {
     setIsMenuOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
+    setExpandedKey(null);
   }, [searchParams, pathname]);
+
+  useEffect(() => {
+    if (!isMenuOpen) setExpandedKey(null); // eslint-disable-line react-hooks/set-state-in-effect
+  }, [isMenuOpen]);
 
   return (
     <>
@@ -29,8 +37,14 @@ export default function DesktopNav({ stores = [] }) {
 
       <div className="hidden md:block">
         <MenuPanel isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)}>
-          {/* Columns wired in Task 5+6+7+8 */}
-          <div />
+          <Column1
+            searchParams={searchParams}
+            expandedKey={expandedKey}
+            selectedBrand={selectedBrand}
+            onExpand={setExpandedKey}
+            onClose={() => setIsMenuOpen(false)}
+          />
+          {/* Column 2 wired in Task 6 */}
           <div />
         </MenuPanel>
       </div>
