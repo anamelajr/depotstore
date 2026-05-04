@@ -28,6 +28,7 @@ export async function GET(request) {
   // Map slugs to DB display names and deduplicate
   const categories = [...new Set(categorySlugs.map((s) => CATEGORY_SLUG_TO_DB[s] || s))];
   const search = searchParams.get("search");
+  const brand = searchParams.get("brand");
   const sort = searchParams.get("sort");
   const offset = (page - 1) * limit;
 
@@ -41,6 +42,7 @@ export async function GET(request) {
         p_store: store || null,
         p_category: categoryDbParam,
         p_search: search || null,
+        p_brand: brand || null,
         p_limit: limit,
         p_offset: offset,
       }),
@@ -48,6 +50,7 @@ export async function GET(request) {
         p_store: store || null,
         p_category: categoryDbParam,
         p_search: search || null,
+        p_brand: brand || null,
       }),
     ]);
 
@@ -92,6 +95,7 @@ export async function GET(request) {
     if (store) priceQuery = priceQuery.eq("store_domain", store);
     if (categories.length === 1) priceQuery = priceQuery.eq("category", categories[0]);
     else if (categories.length > 1) priceQuery = priceQuery.in("category", categories);
+    if (brand) priceQuery = priceQuery.ilike("brand", `%${brand}%`);
     priceQuery = applySearchFilter(priceQuery, search);
 
     const { data, count, error } = await priceQuery;
@@ -138,6 +142,7 @@ export async function GET(request) {
   if (store) query = query.eq("store_domain", store);
   if (categories.length === 1) query = query.eq("category", categories[0]);
   else if (categories.length > 1) query = query.in("category", categories);
+  if (brand) query = query.ilike("brand", `%${brand}%`);
   query = applySearchFilter(query, search);
 
   if (sort === "oldest") {

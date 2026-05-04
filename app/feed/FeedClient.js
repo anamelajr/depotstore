@@ -26,6 +26,7 @@ export default function FeedClient({ stores = [] }) {
   const selectedStore = searchParams.get("store") || ALL_STORES_VALUE;
   const urlCategories = searchParams.getAll("category");
   const urlSort = searchParams.get("sort") || "interleaved";
+  const selectedBrand = searchParams.get("brand") || "";
 
   // Local state for instant UI feedback
   const [localCategories, setLocalCategories] = useState(urlCategories);
@@ -161,7 +162,7 @@ export default function FeedClient({ stores = [] }) {
 
   // ── Filter key — changes whenever filters/sort/search change ──
   const categoriesKey = urlCategories.join(",");
-  const filterKey = `${selectedStore}|${categoriesKey}|${searchQuery}|${urlSort}`;
+  const filterKey = `${selectedStore}|${categoriesKey}|${searchQuery}|${urlSort}|${selectedBrand}`;
 
   // ── Initial / reset fetch ──
   // Runs on mount and whenever filterKey changes.
@@ -183,6 +184,7 @@ export default function FeedClient({ stores = [] }) {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
+    if (selectedBrand) params.set("brand", selectedBrand);
     const apiSort = SORT_MAP[urlSort];
     if (apiSort) params.set("sort", apiSort);
 
@@ -224,6 +226,7 @@ export default function FeedClient({ stores = [] }) {
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);
     if (searchQuery) params.set("search", searchQuery);
+    if (selectedBrand) params.set("brand", selectedBrand);
     const apiSort = SORT_MAP[urlSort];
     if (apiSort) params.set("sort", apiSort);
 
@@ -298,7 +301,7 @@ export default function FeedClient({ stores = [] }) {
     setLoadMoreOffset(products.length);
   }, [products.length]);
 
-  const activeFilterCount = localCategories.length + (localStore !== ALL_STORES_VALUE ? 1 : 0);
+  const activeFilterCount = localCategories.length + (localStore !== ALL_STORES_VALUE ? 1 : 0) + (selectedBrand ? 1 : 0);
   const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
   const hasMore = !loading && products.length < total;
 
