@@ -3,41 +3,26 @@
 import { useRef, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { buildFreshFeedUrl } from "../lib/feed-utils";
+import { SUBCATEGORIES_BY_SHORTKEY, NAV_TOP_LEVEL } from "../lib/categories.js";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import DesktopNav from "./DesktopNav";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
-const CATEGORY_ITEMS = {
-  tops: [
-    ["tops", "All Tops"],
-    ["tops_hoodies_sweaters", "Hoodies & Sweaters"],
-    ["tops_shirts_blouses", "Shirts & Blouses"],
-    ["tops_tees", "Tees"],
-    ["tops_knitwear", "Knitwear"],
-  ],
-  jackets: [
-    ["jackets_coats", "All Jackets & Coats"],
-    ["jackets", "Jackets"],
-    ["coats", "Coats"],
-  ],
-  bags: [
-    ["bags_accessories", "All Bags & Accessories"],
-    ["bags", "Bags"],
-    ["accessories", "Accessories"],
-  ],
-};
+// Sub-menus keyed by shortKey (tops/jackets/bags). Mobile drawer reads
+// .items only — the heading isn't rendered here.
+const CATEGORY_ITEMS = Object.fromEntries(
+  Object.entries(SUBCATEGORIES_BY_SHORTKEY).map(([k, v]) => [k, v.items]),
+);
 
-const MOBILE_NAV_ITEMS = [
-  { label: "TOPS", href: "/feed?category=tops", key: "tops" },
-  { label: "BOTTOMS", href: "/feed?category=bottoms", key: "bottoms" },
-  { label: "DRESSES & SKIRTS", href: "/feed?category=dresses_skirts", key: "dresses_skirts" },
-  { label: "JACKETS & COATS", href: "/feed?category=jackets_coats", key: "jackets_coats" },
-  { label: "FOOTWEAR", href: "/feed?category=footwear", key: "footwear" },
-  { label: "BAGS & ACCESSORIES", href: "/feed?category=bags_accessories", key: "bags_accessories" },
-  { label: "SETS", href: "/feed?category=sets", key: "sets" },
-];
+// Top-level mobile primary list. Labels are uppercased here for the
+// drawer's typography; preserves existing visual output exactly.
+const MOBILE_NAV_ITEMS = NAV_TOP_LEVEL.map((c) => ({
+  label: c.label.toUpperCase(),
+  href: `/feed?category=${c.slug}`,
+  key: c.slug,
+}));
 
 const MOBILE_NAV_SECONDARY = [
   { label: "STORES", href: "/stores" },

@@ -1,4 +1,5 @@
 import { supabase } from "../../lib/supabase.js";
+import { CATEGORY_SLUG_TO_DB } from "../../lib/categories.js";
 
 export const dynamic = "force-dynamic";
 
@@ -16,26 +17,6 @@ function applySearchFilter(query, search) {
   }
   return query;
 }
-
-// Map URL-safe category slugs to the display-name strings stored in the DB.
-// Subcategory slugs (e.g. tops_tees) map to their parent category.
-const CATEGORY_SLUG_TO_DB = {
-  tops: "Tops",
-  tops_hoodies_sweaters: "Tops",
-  tops_shirts_blouses: "Tops",
-  tops_tees: "Tops",
-  tops_knitwear: "Tops",
-  bottoms: "Bottoms",
-  dresses_skirts: "Dresses & Skirts",
-  jackets_coats: "Jackets & Coats",
-  jackets: "Jackets & Coats",
-  coats: "Jackets & Coats",
-  footwear: "Footwear",
-  bags_accessories: "Bags & Accessories",
-  bags: "Bags & Accessories",
-  accessories: "Bags & Accessories",
-  sets: "Sets",
-};
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);

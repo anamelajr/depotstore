@@ -2,57 +2,17 @@
 
 import { useEffect } from "react";
 import { ALL_STORES_VALUE } from "../lib/feed-utils";
+import { FILTER_GROUPS } from "../lib/categories.js";
 
-const CATEGORY_LABELS = {
-  tops: "Tops",
-  tops_hoodies_sweaters: "Hoodies & Sweaters",
-  tops_shirts_blouses: "Shirts & Blouses",
-  tops_tees: "Tees",
-  tops_knitwear: "Knitwear",
-  bottoms: "Bottoms",
-  dresses_skirts: "Dresses & Skirts",
-  jackets_coats: "Jackets & Coats",
-  footwear: "Footwear",
-  bags_accessories: "Bags & Accessories",
-  sets: "Sets",
-};
-
-const CATEGORY_GROUPS = [
-  {
-    label: "Tops",
-    items: [
-      ["tops", "All Tops"],
-      ["tops_hoodies_sweaters", "Hoodies & Sweaters"],
-      ["tops_shirts_blouses", "Shirts & Blouses"],
-      ["tops_tees", "Tees"],
-      ["tops_knitwear", "Knitwear"],
-    ],
-  },
-  {
-    label: "Bottoms",
-    items: [["bottoms", "Bottoms"]],
-  },
-  {
-    label: "Dresses & Skirts",
-    items: [["dresses_skirts", "Dresses & Skirts"]],
-  },
-  {
-    label: "Jackets & Coats",
-    items: [["jackets_coats", "All Jackets & Coats"]],
-  },
-  {
-    label: "Footwear",
-    items: [["footwear", "Footwear"]],
-  },
-  {
-    label: "Bags & Accessories",
-    items: [["bags_accessories", "All Bags & Accessories"]],
-  },
-  {
-    label: "Sets",
-    items: [["sets", "Sets"]],
-  },
-];
+// Mobile renders each category group as a row of chips. Leaves render as a
+// single chip with the parent's full label ("Bottoms"); groups render their
+// children including the synthesized "All <Label>" entry first.
+const CATEGORY_GROUPS = FILTER_GROUPS.map((g) => ({
+  label: g.label,
+  items: g.children
+    ? g.children.map((c) => [c.value, c.label])
+    : [[g.value, g.label]],
+}));
 
 export default function MobileFilterDrawer({
   isOpen,
