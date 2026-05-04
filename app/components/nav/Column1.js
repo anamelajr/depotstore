@@ -2,18 +2,17 @@
 
 import Link from "next/link";
 import { buildFreshFeedUrl } from "../../lib/feed-utils";
+import { NAV_TOP_LEVEL } from "../../lib/categories.js";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
-const CATEGORY_ITEMS = [
-  { key: "tops",            label: "Tops",                 expandable: true  },
-  { key: "bottoms",         label: "Bottoms",              expandable: false },
-  { key: "dresses_skirts",  label: "Dresses & Skirts",     expandable: false },
-  { key: "jackets_coats",   label: "Jackets & Coats",      expandable: true, expandKey: "jackets", aliases: ["jackets", "coats"] },
-  { key: "footwear",        label: "Footwear",             expandable: false },
-  { key: "bags_accessories",label: "Bags & Accessories",   expandable: true, expandKey: "bags", aliases: ["bags", "accessories"] },
-  { key: "sets",            label: "Sets",                 expandable: false },
-];
+const CATEGORY_ITEMS = NAV_TOP_LEVEL.map((c) => ({
+  key: c.slug,
+  label: c.label,
+  expandable: c.expandable,
+  expandKey: c.shortKey,
+  aliases: c.childSlugs,
+}));
 
 const itemBase =
   "block py-2 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-300 hover:text-zinc-50";
