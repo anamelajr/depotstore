@@ -24,7 +24,7 @@ export default function MenuPanel({ isOpen, onClose, children }) {
 
   return (
     <div
-      className="fixed inset-x-0 top-[var(--nav-height)] bottom-0 z-[1000] bg-[#0a0a0a] text-zinc-50 overflow-y-auto motion-safe:[animation:navMenuEnter_150ms_ease-out]"
+      className="fixed inset-x-0 top-[var(--nav-height)] bottom-0 z-[1100] bg-[#0a0a0a] text-zinc-50 overflow-y-auto motion-safe:[animation:navMenuEnter_150ms_ease-out]"
     >
       <div className="mx-auto grid w-full max-w-7xl grid-cols-[320px_1fr]">
         {children}
