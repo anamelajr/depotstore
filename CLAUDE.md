@@ -1,88 +1,134 @@
-markdown# CLAUDE.md
+# CLAUDE.md
 
 ## What this app is
 
 **Dépôt** — a curated Paris archive fashion discovery platform. Partner stores
 sync Shopify inventory nightly into Supabase. Users browse a unified feed
-filtered by store, brand, category, price, and search. Editorial identity is
-the product's differentiator.
+filtered by store, category, price, and search.
+
+## Before editing
+
+- **Read relevant files end-to-end before changing them.** Do not infer
+  architecture from filenames or function names. The same concept (category
+  taxonomy, sort options, filter logic) often lives in several files with
+  different shapes.
+- **Touching any query, filter, or sort?** Check all three product-read
+  surfaces in parallel: `/api/products/route.js` (REST handler), the
+  `get_interleaved_products` / `count_interleaved_products` RPCs (SQL, DB-only),
+  and direct Supabase reads in components (`MoreFromStore.js`, PDP, homepage).
+  A change in one almost always needs a parallel change in the others.
 
 ## Core architecture
 
 - **Next.js App Router** (no TypeScript)
 - **Tailwind CSS v4** — uses `@tailwindcss/postcss`, not `tailwind.config.js`
-- **Supabase** (Frankfurt, PostgreSQL) — primary data store and only cache layer
-- **Shopify `/products.json`** — nightly product source per store
-- **Claude API** — title/brand extraction (`cleanTitle.js`), descriptions (`generateDescription.js`)
+- **Supabase** (Frankfurt, PostgreSQL) — primary data store, only cache layer
+- **Shopify `/products.json`** — nightly source per store
+- **Claude API** — `cleanTitle.js` (from `/api/enrich`), `generateDescription.js` (from PDP)
+- **Vercel `waitUntil`** — fans out cron → enrich and self-chains enrich
 - **Beehiiv** — newsletter via `/api/subscribe`
-- **Redis is currently removed. Do not re-add it without an explicit architecture decision.**
 
 ## Key flows
 
-**Nightly sync** — cron hits `/api/cron`, pulls Shopify inventory, normalises
-and upserts into Supabase. Editorial fields (brand, title, category) only write
-if currently NULL — sync fields always overwrite.
-
-**Feed** — `FeedClient.js` manages URL-driven filter/sort state, load-more
-pagination, and back-navigation restore via `/api/products`. Default sort uses
-`get_interleaved_products` RPC. Price sort fetches all matching rows and sorts
-in JS.
-
-**Product detail** — fetches live from Shopify at request time.
+- **Sync** (`/api/cron`): pull Shopify, normalise, upsert sync fields.
+  Editorial fields (`brand`, `title`, `category`) stay NULL. Triggers
+  `/api/enrich` via `waitUntil`.
+- **Enrich** (`/api/enrich`): batches of 150 NULL-editorial rows, Haiku
+  paced at 1.2 s/call (50 RPM Tier 1 ceiling), writes via the
+  `enrich_product` RPC's `COALESCE`. Self-chains up to 30 hops. Auth:
+  `Bearer $CRON_SECRET`.
+- **Feed** (`FeedClient.js` + `/api/products`): URL-driven filters/sort,
+  load-more, back-nav scroll restore. Default sort = `get_interleaved_products`.
+  Price sort fetches all matching rows and sorts in JS.
+- **PDP**: Shopify live fetch + Supabase brand/title/store + on-demand
+  description (cached back to the row).
 
 ## Non-negotiable invariants
 
-Do not change these without explicit instruction.
-
-- **Redis is currently removed.** Do not import or reference Upstash anywhere.
-- **Editorial fields only write if NULL.** Never overwrite a populated brand,
-  title, or category via the cron upsert.
-- **`cleanTitle.js` returns `null` on failure**, never `rawTitle`. A failed
-  Haiku call must not write a bad title to the DB.
-- **`stores.js` parse block must write `null` on `cleanTitle` failure**,
-  never `rawTitle`.
-- **`get_interleaved_products` RPC must return the `name` column.** Do not
-  recreate it without `name` — `ProductCard` falls back to it when `title`
-  is null.
+- **Redis/Upstash stays gone.** Do not import or reference it.
+- **Editorial fields write only if NULL.** Enforced in cron's Step-2 editorial
+  upsert and the `enrich_product` RPC's `COALESCE`. Replacing the RPC with a
+  plain `UPDATE` reintroduces the editorial-clobber race.
+- **`cleanTitle.js` returns `null` or `{ brand, title }`** — never echoes raw
+  input. A failed Haiku call must not write a placeholder.
+- **`enrich_product` RPC is not in git.** Rebuild via:
+  ```sql
+  CREATE OR REPLACE FUNCTION enrich_product(
+    p_handle TEXT, p_store_domain TEXT,
+    p_brand TEXT, p_title TEXT, p_category TEXT
+  ) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER
+  SET search_path = public AS $$
+  BEGIN
+    UPDATE products SET
+      brand    = COALESCE(brand,    p_brand),
+      title    = COALESCE(title,    p_title),
+      category = COALESCE(category, p_category)
+    WHERE handle = p_handle AND store_domain = p_store_domain;
+  END;
+  $$;
+  ```
+- **`hidden = false` must accompany every `available = true` read.** Editorial
+  hide flag, never overwritten by cron. Currently filtered in `/api/products`
+  and the interleaved RPCs. **Missing in `MoreFromStore.js`.**
+- **`get_interleaved_products` RPC must return the `name` column.**
+  `ProductCard` falls back to it when `title` is null.
 - **Price is stored as TEXT** (`'€29.99'`). Never assume numeric ordering.
-- **`FALLBACK_STORES` in `stores.js` is a safety net.** Do not delete it.
-- **`BackToFeedLink` enables filter-aware back navigation.** Do not delete it.
-- **`nav-height` is `56px` in `globals.css`** — must match `h-[56px]` on the
-  desktop nav. Mobile nav stays at `h-[50px]` (the CSS variable is consumed
-  only in desktop sticky-offset calculations).
-- **Category URL slugs are translated to DB display values in
-  `app/api/products/route.js`.** Update that mapping if categories or slugs
-  change.
+- **`FALLBACK_STORES` in `stores.js`** is the safety net used when Supabase is
+  unreachable. Do not delete it.
+- **`maxDuration = 300`** on `/api/cron` and `/api/enrich`. Reducing it breaks
+  the enrich drain.
+- **Category slugs → DB display strings** live in `CATEGORY_SLUG_TO_DB`
+  (`app/api/products/route.js`). Sort UI options live in `app/lib/sort-options.js`
+  (`SORT_OPTIONS` + `SORT_MAP`). Don't duplicate either.
 
-## Known sharp edges
+## Sharp edges
 
 - **dot COMME** uses `/collections/paris/products.json`, not `/products.json`.
-- **`backfillTitles.mjs`** has hardcoded store arrays not
-  connected to the `stores` table. Update them manually when adding stores.
-- **Treat Vercel as the source of truth for behavioural verification.**
-  Localhost may mislead on hydration and UI issues.
-- **`stores` table is source of truth for active stores.** Toggle with
-  `UPDATE stores SET active = false` — never hardcode visibility in components.
+- **`stores` table is source of truth for active stores.** Never hardcode
+  visibility in components. `backfillTitles.mjs` still has hardcoded arrays —
+  update manually when adding stores.
+- **Tier 1 Haiku is 50 RPM.** Every `cleanTitle` invocation must respect this.
+- **Brand filter is UI-only.** `DesignersPanel` writes `?brand=X` URLs that
+  `/api/products` ignores. Wire it through or remove the panel.
+- **Category taxonomy is duplicated in ~7 files.** Refactor before adding the
+  8th. (api/products, lib/feed-utils, feed/DesktopFilterPanel,
+  MobileFilterDrawer, nav/Column1, nav/SubcategoryList, Nav.js mobile.)
+- **`MoreFromStore` queries Supabase directly** to dodge `NEXT_PUBLIC_BASE_URL`
+  ambiguity on preview. Don't "consolidate" it back to HTTP. (Homepage
+  Today's Edit still uses the bad pattern.)
+- **Two URL builders:** `buildFeedUrl` merges with current URL (feed),
+  `buildFreshFeedUrl` discards it (nav menu). Picking the wrong one causes
+  filter-preservation bugs.
+- **Nav heights are coupled.** `--nav-height: 56px` must match `h-[56px]` on
+  desktop nav; mobile nav stays `h-[50px]`.
+- **`BackToFeedLink`** powers desktop-PDP filter-aware back navigation. Keep it.
+- **Verify on Vercel.** Localhost can mislead on hydration, UI, and preview-only
+  env vars.
 
 ## Workflow
 
 - Prefer minimal diffs. Do not refactor unrelated code in the same change.
-- Verify all changes on Vercel before considering a task done.
-- Dropping and recreating an RPC loses dependent query logic — confirm the full
-  column list before recreating.
-- When adding a store: INSERT into `stores` table, then update hardcoded arrays
-  in `scripts/backfillTitles.mjs` manually.
-- Straightforward changes: push to `main`. Risky or multi-file changes: branch,
-  verify Vercel preview, then merge.
+- **Do not push directly to `main`.** Branch + Vercel preview for every change.
+  Merge only after explicit user instruction.
+- Dropping and recreating an RPC loses dependent query logic — confirm the
+  full column list first.
+- When adding a store: `INSERT` into `stores`, then update
+  `scripts/backfillTitles.mjs` arrays manually.
 
 ## Environment variables
+
+```
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
-NEXT_PUBLIC_BASE_URL          # defaults to http://localhost:3000
-CRON_SECRET                   # bearer token for /api/cron
+NEXT_PUBLIC_BASE_URL                # defaults to http://localhost:3000
+CRON_SECRET                         # bearer for /api/cron and /api/enrich
+ANTHROPIC_API_KEY                   # cleanTitle + generateDescription
+VERCEL_AUTOMATION_BYPASS_SECRET     # auto-injected; lets cron self-fetch
+                                    # bypass Vercel SSO on preview deploys
 BEEHIIV_PUBLICATION_ID
 BEEHIIV_API_KEY
+```
 
 ## Commands
 
