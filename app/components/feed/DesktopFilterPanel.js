@@ -2,44 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ALL_STORES_VALUE } from "../../lib/feed-utils";
-
-// Grouped category hierarchy. Groups with `children` are collapsible;
-// groups without are direct filter buttons.
-const CATEGORY_GROUPS = [
-  {
-    value: "tops",
-    label: "Tops",
-    children: [
-      { value: "tops",                  label: "All Tops"          },
-      { value: "tops_hoodies_sweaters", label: "Hoodies & Sweaters" },
-      { value: "tops_shirts_blouses",   label: "Shirts & Blouses"   },
-      { value: "tops_tees",             label: "Tees"               },
-      { value: "tops_knitwear",         label: "Knitwear"           },
-    ],
-  },
-  { value: "bottoms",        label: "Bottoms"          },
-  { value: "dresses_skirts", label: "Dresses & Skirts" },
-  {
-    value: "jackets_coats",
-    label: "Jackets & Coats",
-    children: [
-      { value: "jackets_coats", label: "All Jackets & Coats" },
-      { value: "jackets",       label: "Jackets"              },
-      { value: "coats",         label: "Coats"                },
-    ],
-  },
-  { value: "footwear", label: "Footwear" },
-  {
-    value: "bags_accessories",
-    label: "Bags & Accessories",
-    children: [
-      { value: "bags_accessories", label: "All Bags & Accessories" },
-      { value: "bags",             label: "Bags"                   },
-      { value: "accessories",      label: "Accessories"            },
-    ],
-  },
-  { value: "sets", label: "Sets" },
-];
+import { FILTER_GROUPS as CATEGORY_GROUPS } from "../../lib/categories.js";
 
 export default function DesktopFilterPanel({
   isOpen,
