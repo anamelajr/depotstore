@@ -337,10 +337,14 @@ export async function fetchStoreProducts(store) {
     const url = `${base}?limit=250&page=${page}&country=FR`;
     const res = await fetch(url);
     if (!res.ok) {
-      console.error(
-        `Failed fetching ${store.domain} page ${page}: ${res.status} ${res.statusText}`
+      // Throw rather than break: returning truncated data would let the
+      // cron's per-fulfilled-store stale delete wipe rows on pages beyond
+      // the failure. Reject the per-store promise instead so allSettled
+      // routes this through the same skip-cleanup path as a URL-length
+      // SELECT failure.
+      throw new Error(
+        `Shopify fetch failed for ${store.domain} page ${page}: ${res.status} ${res.statusText}`
       );
-      break;
     }
     const data = await res.json();
     const batch = Array.isArray(data?.products) ? data.products : [];
