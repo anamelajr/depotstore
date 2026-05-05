@@ -35,6 +35,7 @@ export async function POST(request) {
   const { data: rows, error: selErr } = await supabaseAdmin
     .from("products")
     .select("id, handle, store_domain, name, brand, title, category, description")
+    .eq("available", true)
     .or("brand.is.null,title.is.null,category.is.null")
     .order("id", { ascending: false })
     .limit(BATCH_SIZE);
@@ -128,6 +129,7 @@ export async function POST(request) {
   const { count: remaining } = await supabaseAdmin
     .from("products")
     .select("*", { count: "exact", head: true })
+    .eq("available", true)
     .or("brand.is.null,title.is.null,category.is.null");
 
   let chained = false;
