@@ -30,6 +30,7 @@ async function nullCount() {
     .from("products")
     .select("*", { count: "exact", head: true })
     .eq("available", true)
+    .lt("enrich_attempts", 3)
     .or("brand.is.null,title.is.null,category.is.null");
   return count ?? 0;
 }

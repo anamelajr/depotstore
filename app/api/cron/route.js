@@ -55,6 +55,26 @@ export async function GET(request) {
       let upserted = 0;
       for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
         const batch = syncRows.slice(i, i + BATCH_SIZE);
+        const handles = batch.map((r) => r.handle);
+
+        // Pre-upsert state for sync-reset detection. Captures name/description
+        // before the upsert overwrites them, so we can spot rows whose Shopify
+        // listing changed since the last sync and reset their enrich budget.
+        const { data: preUpsert, error: preError } = await supabaseAdmin
+          .from("products")
+          .select("handle, name, description")
+          .eq("store_domain", store.domain)
+          .in("handle", handles);
+
+        if (preError) {
+          throw new Error(
+            `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
+          );
+        }
+
+        const preMap = Object.fromEntries(
+          (preUpsert || []).map((r) => [r.handle, r])
+        );
 
         // Step 1: Always upsert sync fields
         const { error } = await supabaseAdmin
@@ -67,8 +87,33 @@ export async function GET(request) {
           );
         }
 
+        // Reset enrich_attempts for rows whose name or description changed.
+        // These rows may have been capped at MAX_ENRICH_ATTEMPTS under the old
+        // content — the new content deserves a fresh budget.
+        const resetHandles = [];
+        for (const row of batch) {
+          const prev = preMap[row.handle];
+          if (!prev) continue; // new row — counter starts at 0 anyway
+          if (prev.name !== row.name || prev.description !== row.description) {
+            resetHandles.push(row.handle);
+          }
+        }
+
+        if (resetHandles.length > 0) {
+          const { error: resetError } = await supabaseAdmin
+            .from("products")
+            .update({ enrich_attempts: 0 })
+            .eq("store_domain", store.domain)
+            .in("handle", resetHandles);
+
+          if (resetError) {
+            throw new Error(
+              `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
+            );
+          }
+        }
+
         // Step 2: Editorial fields — only write where currently NULL in DB
-        const handles = batch.map((r) => r.handle);
         const { data: existing } = await supabaseAdmin
           .from("products")
           .select("handle, brand, title, category")

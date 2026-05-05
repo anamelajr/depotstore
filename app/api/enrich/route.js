@@ -14,6 +14,7 @@ export const maxDuration = 300;
 const BATCH_SIZE = 150;
 const CYCLE_MS = 1200; // 50 RPM = one call every 1.2 s, measured from start
 const MAX_DEPTH = 30;
+const MAX_ENRICH_ATTEMPTS = 3;
 // 150 × 1.2 s = 180 s baseline. Vercel maxDuration is 300 s. The ~120 s
 // headroom absorbs Haiku-call latency that exceeds the 1.2 s sleep budget.
 // If a batch is killed before reaching the final waitUntil, the chain breaks
@@ -21,6 +22,21 @@ const MAX_DEPTH = 30;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function incrementAttempts(row) {
+  const { error } = await supabaseAdmin.rpc("increment_enrich_attempts", {
+    p_handle: row.handle,
+    p_store_domain: row.store_domain,
+  });
+  if (error) {
+    console.error(
+      `incrementAttempts failed for ${row.store_domain}/${row.handle}:`,
+      error.message
+    );
+    return false;
+  }
+  return true;
 }
 
 export async function POST(request) {
@@ -36,6 +52,7 @@ export async function POST(request) {
     .from("products")
     .select("id, handle, store_domain, name, brand, title, category, description")
     .eq("available", true)
+    .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null")
     .order("id", { ascending: false })
     .limit(BATCH_SIZE);
@@ -47,6 +64,12 @@ export async function POST(request) {
   let succeeded = 0;
   let failed = 0;
   let rejected = 0; // Dolce Vita allowlist rejections
+  let attemptIncrementFailures = 0;
+
+  async function tally(row) {
+    const ok = await incrementAttempts(row);
+    if (!ok) attemptIncrementFailures++;
+  }
 
   for (const row of rows ?? []) {
     // Category-only fill: brand and title are already populated, only
@@ -55,7 +78,11 @@ export async function POST(request) {
     // brand passed it on the row's first pass.
     if (row.brand && row.title) {
       const newCategory = assignCategory(row) ?? null;
-      if (!newCategory) continue;
+      if (!newCategory) {
+        failed++;
+        await tally(row);
+        continue;
+      }
       const { error: rpcErr } = await supabaseAdmin.rpc("enrich_product", {
         p_handle: row.handle,
         p_store_domain: row.store_domain,
@@ -63,8 +90,12 @@ export async function POST(request) {
         p_title: row.title,
         p_category: newCategory,
       });
-      if (rpcErr) failed++;
-      else succeeded++;
+      if (rpcErr) {
+        failed++;
+        await tally(row);
+      } else {
+        succeeded++;
+      }
       continue;
     }
 
@@ -114,13 +145,19 @@ export async function POST(request) {
           p_title: newTitle,
           p_category: newCategory,
         });
-        if (rpcErr) failed++;
-        else succeeded++;
+        if (rpcErr) {
+          failed++;
+          await tally(row);
+        } else {
+          succeeded++;
+        }
       } else {
         failed++;
+        await tally(row);
       }
     } catch {
       failed++;
+      await tally(row);
     }
     const elapsed = Date.now() - t0;
     await sleep(Math.max(0, CYCLE_MS - elapsed));
@@ -130,6 +167,7 @@ export async function POST(request) {
     .from("products")
     .select("*", { count: "exact", head: true })
     .eq("available", true)
+    .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null");
 
   let chained = false;
@@ -154,6 +192,7 @@ export async function POST(request) {
     succeeded,
     failed,
     rejected,
+    attemptIncrementFailures,
     remaining: remaining ?? 0,
     depth,
     chained,
