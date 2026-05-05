@@ -190,10 +190,12 @@ export async function GET(request) {
     })
   );
 
+  const successfulDomains = [];
   for (const r of results) {
     if (r.status === "fulfilled") {
       summary.stores[r.value.store] = r.value.count;
       summary.totalUpserted += r.value.count;
+      successfulDomains.push(r.value.store);
     } else {
       const msg = r.reason?.message ?? String(r.reason);
       summary.errors.push(msg);
@@ -201,15 +203,27 @@ export async function GET(request) {
     }
   }
 
-  // Remove stale products that were not refreshed in this sync run
-  const { error: deleteError, count: deletedCount } = await supabaseAdmin
-    .from("products")
-    .delete({ count: "exact" })
-    .lt("synced_at", syncStart);
+  // Remove stale products only for stores whose sync fulfilled. A store
+  // whose promise rejected never refreshed `synced_at` for any of its rows,
+  // so a global delete would wipe its last-known-good inventory based on
+  // the previous run. This was the second half of the 2026-05-05 incident
+  // that lost lobscur.com and dolcevitahub.com (15,751 rows).
+  if (successfulDomains.length === 0) {
+    summary.deleted = 0;
+    summary.errors.push(
+      "Stale cleanup skipped — no store sync fulfilled this run"
+    );
+  } else {
+    const { error: deleteError, count: deletedCount } = await supabaseAdmin
+      .from("products")
+      .delete({ count: "exact" })
+      .in("store_domain", successfulDomains)
+      .lt("synced_at", syncStart);
 
-  summary.deleted = deletedCount ?? 0;
-  if (deleteError) {
-    summary.errors.push(`Stale cleanup failed: ${deleteError.message}`);
+    summary.deleted = deletedCount ?? 0;
+    if (deleteError) {
+      summary.errors.push(`Stale cleanup failed: ${deleteError.message}`);
+    }
   }
 
   const enrichUrl = `${new URL(request.url).origin}/api/enrich?depth=0`;
