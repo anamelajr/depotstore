@@ -1,0 +1,31 @@
+name: Sync Shopify
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Hit /api/cron
+        env:
+          CRON_URL: ${{ vars.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_URL (variable) and CRON_SECRET (secret) must be set in repo settings"
+            exit 1
+          fi
+          status=$(curl -sS --max-time 310 \
+            -o /tmp/cron.json \
+            -w "%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$CRON_URL")
+          echo "HTTP $status"
+          cat /tmp/cron.json || true
+          echo
+          [ "$status" = "200" ]
