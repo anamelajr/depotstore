@@ -67,6 +67,22 @@ filtered by store, category, price, and search.
   END;
   $$;
   ```
+- **`increment_enrich_attempts` RPC is not in git.** Rebuild via:
+  ```sql
+  CREATE OR REPLACE FUNCTION increment_enrich_attempts(
+    p_handle TEXT,
+    p_store_domain TEXT
+  ) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER
+  SET search_path = public AS $$
+  BEGIN
+    UPDATE products
+    SET enrich_attempts = enrich_attempts + 1
+    WHERE handle = p_handle AND store_domain = p_store_domain;
+  END;
+  $$;
+  ```
+  Also requires the `enrich_attempts INT NOT NULL DEFAULT 0` column on `products`
+  (`ALTER TABLE products ADD COLUMN enrich_attempts INT NOT NULL DEFAULT 0;`).
 - **`hidden = false` must accompany every `available = true` read.** Editorial
   hide flag, never overwritten by cron. Currently filtered in `/api/products`
   and the interleaved RPCs. **Missing in `MoreFromStore.js`.**
