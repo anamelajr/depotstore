@@ -29,7 +29,8 @@ async function nullCount() {
   const { count } = await supabase
     .from("products")
     .select("*", { count: "exact", head: true })
-    .or("brand.is.null,title.is.null");
+    .eq("available", true)
+    .or("brand.is.null,title.is.null,category.is.null");
   return count ?? 0;
 }
 
