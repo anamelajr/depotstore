@@ -347,7 +347,16 @@ export async function fetchStoreProducts(store) {
       );
     }
     const data = await res.json();
-    const batch = Array.isArray(data?.products) ? data.products : [];
+    // A missing or non-array `products` field on a 200 response (e.g. a
+    // Shopify maintenance payload) must throw, not silently break. Silently
+    // breaking would return a truncated product list, and the cron's scoped
+    // stale delete would then wipe all rows beyond the last fetched page.
+    if (!Array.isArray(data?.products)) {
+      throw new Error(
+        `Shopify returned unexpected page shape for ${store.domain} page ${page}`
+      );
+    }
+    const batch = data.products;
     if (batch.length === 0) break;
     allProducts.push(...batch);
     if (batch.length < 250) break;
