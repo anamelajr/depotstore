@@ -1,6 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
+import { chunkArray } from "../../lib/chunk.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -52,6 +53,10 @@ export async function GET(request) {
       );
 
       const BATCH_SIZE = 500;
+      // Cap for `.in("handle", chunk)` SELECTs. PostgREST's URL limit is
+      // ~16 KB; lobscur handles can be 126 chars, so 100 × 126 ≈ 12.6 KB
+      // leaves enough headroom for the rest of the URL.
+      const HANDLE_CHUNK = 100;
       let upserted = 0;
       for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
         const batch = syncRows.slice(i, i + BATCH_SIZE);
@@ -60,20 +65,26 @@ export async function GET(request) {
         // Pre-upsert state for sync-reset detection. Captures name/description
         // before the upsert overwrites them, so we can spot rows whose Shopify
         // listing changed since the last sync and reset their enrich budget.
-        const { data: preUpsert, error: preError } = await supabaseAdmin
-          .from("products")
-          .select("handle, name, description")
-          .eq("store_domain", store.domain)
-          .in("handle", handles);
+        // Chunked so the URL stays under PostgREST's length limit on stores
+        // with long handles (lobscur averages 76 chars/handle).
+        const preUpsert = [];
+        for (const handleChunk of chunkArray(handles, HANDLE_CHUNK)) {
+          const { data, error: preError } = await supabaseAdmin
+            .from("products")
+            .select("handle, name, description")
+            .eq("store_domain", store.domain)
+            .in("handle", handleChunk);
 
-        if (preError) {
-          throw new Error(
-            `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
-          );
+          if (preError) {
+            throw new Error(
+              `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
+            );
+          }
+          if (data) preUpsert.push(...data);
         }
 
         const preMap = Object.fromEntries(
-          (preUpsert || []).map((r) => [r.handle, r])
+          preUpsert.map((r) => [r.handle, r])
         );
 
         // Step 1: Always upsert sync fields
