@@ -337,13 +337,26 @@ export async function fetchStoreProducts(store) {
     const url = `${base}?limit=250&page=${page}&country=FR`;
     const res = await fetch(url);
     if (!res.ok) {
-      console.error(
-        `Failed fetching ${store.domain} page ${page}: ${res.status} ${res.statusText}`
+      // Throw rather than break: returning truncated data would let the
+      // cron's per-fulfilled-store stale delete wipe rows on pages beyond
+      // the failure. Reject the per-store promise instead so allSettled
+      // routes this through the same skip-cleanup path as a URL-length
+      // SELECT failure.
+      throw new Error(
+        `Shopify fetch failed for ${store.domain} page ${page}: ${res.status} ${res.statusText}`
       );
-      break;
     }
     const data = await res.json();
-    const batch = Array.isArray(data?.products) ? data.products : [];
+    // A missing or non-array `products` field on a 200 response (e.g. a
+    // Shopify maintenance payload) must throw, not silently break. Silently
+    // breaking would return a truncated product list, and the cron's scoped
+    // stale delete would then wipe all rows beyond the last fetched page.
+    if (!Array.isArray(data?.products)) {
+      throw new Error(
+        `Shopify returned unexpected page shape for ${store.domain} page ${page}`
+      );
+    }
+    const batch = data.products;
     if (batch.length === 0) break;
     allProducts.push(...batch);
     if (batch.length < 250) break;

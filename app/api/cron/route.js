@@ -1,6 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
+import { chunkArray } from "../../lib/chunk.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -52,6 +53,10 @@ export async function GET(request) {
       );
 
       const BATCH_SIZE = 500;
+      // Cap for `.in("handle", chunk)` SELECTs. PostgREST's URL limit is
+      // ~16 KB; lobscur handles can be 126 chars, so 100 × 126 ≈ 12.6 KB
+      // leaves enough headroom for the rest of the URL.
+      const HANDLE_CHUNK = 100;
       let upserted = 0;
       for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
         const batch = syncRows.slice(i, i + BATCH_SIZE);
@@ -60,20 +65,26 @@ export async function GET(request) {
         // Pre-upsert state for sync-reset detection. Captures name/description
         // before the upsert overwrites them, so we can spot rows whose Shopify
         // listing changed since the last sync and reset their enrich budget.
-        const { data: preUpsert, error: preError } = await supabaseAdmin
-          .from("products")
-          .select("handle, name, description")
-          .eq("store_domain", store.domain)
-          .in("handle", handles);
+        // Chunked so the URL stays under PostgREST's length limit on stores
+        // with long handles (lobscur averages 76 chars/handle).
+        const preUpsert = [];
+        for (const handleChunk of chunkArray(handles, HANDLE_CHUNK)) {
+          const { data, error: preError } = await supabaseAdmin
+            .from("products")
+            .select("handle, name, description")
+            .eq("store_domain", store.domain)
+            .in("handle", handleChunk);
 
-        if (preError) {
-          throw new Error(
-            `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
-          );
+          if (preError) {
+            throw new Error(
+              `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
+            );
+          }
+          if (data) preUpsert.push(...data);
         }
 
         const preMap = Object.fromEntries(
-          (preUpsert || []).map((r) => [r.handle, r])
+          preUpsert.map((r) => [r.handle, r])
         );
 
         // Step 1: Always upsert sync fields
@@ -100,28 +111,44 @@ export async function GET(request) {
         }
 
         if (resetHandles.length > 0) {
-          const { error: resetError } = await supabaseAdmin
-            .from("products")
-            .update({ enrich_attempts: 0 })
-            .eq("store_domain", store.domain)
-            .in("handle", resetHandles);
+          for (const handleChunk of chunkArray(resetHandles, HANDLE_CHUNK)) {
+            const { error: resetError } = await supabaseAdmin
+              .from("products")
+              .update({ enrich_attempts: 0 })
+              .eq("store_domain", store.domain)
+              .in("handle", handleChunk);
 
-          if (resetError) {
-            throw new Error(
-              `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
-            );
+            if (resetError) {
+              throw new Error(
+                `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
+              );
+            }
           }
         }
 
-        // Step 2: Editorial fields — only write where currently NULL in DB
-        const { data: existing } = await supabaseAdmin
-          .from("products")
-          .select("handle, brand, title, category")
-          .eq("store_domain", store.domain)
-          .in("handle", handles);
+        // Step 2: Editorial fields — only write where currently NULL in DB.
+        // Chunked for the same URL-length reason as the pre-upsert SELECT.
+        // The original block destructured only `data` and silently swallowed
+        // any error; we now surface it so a future regression can't quietly
+        // produce an empty editMap and re-classify curated rows as NULL.
+        const existing = [];
+        for (const handleChunk of chunkArray(handles, HANDLE_CHUNK)) {
+          const { data, error: existError } = await supabaseAdmin
+            .from("products")
+            .select("handle, brand, title, category")
+            .eq("store_domain", store.domain)
+            .in("handle", handleChunk);
+
+          if (existError) {
+            throw new Error(
+              `Editorial state fetch failed for ${store.domain}: ${existError.message}`
+            );
+          }
+          if (data) existing.push(...data);
+        }
 
         const editMap = Object.fromEntries(
-          (existing || []).map((r) => [r.handle, r])
+          existing.map((r) => [r.handle, r])
         );
 
         const editorialRows = [];
@@ -165,10 +192,15 @@ export async function GET(request) {
     })
   );
 
+  const successfulDomains = [];
   for (const r of results) {
     if (r.status === "fulfilled") {
       summary.stores[r.value.store] = r.value.count;
       summary.totalUpserted += r.value.count;
+      // Only eligible for stale cleanup if rows were actually upserted.
+      // A count of 0 means the store returned empty — treat it as failed
+      // so we don't delete its last-known-good inventory.
+      if (r.value.count > 0) successfulDomains.push(r.value.store);
     } else {
       const msg = r.reason?.message ?? String(r.reason);
       summary.errors.push(msg);
@@ -176,15 +208,27 @@ export async function GET(request) {
     }
   }
 
-  // Remove stale products that were not refreshed in this sync run
-  const { error: deleteError, count: deletedCount } = await supabaseAdmin
-    .from("products")
-    .delete({ count: "exact" })
-    .lt("synced_at", syncStart);
+  // Remove stale products only for stores whose sync fulfilled. A store
+  // whose promise rejected never refreshed `synced_at` for any of its rows,
+  // so a global delete would wipe its last-known-good inventory based on
+  // the previous run. This was the second half of the 2026-05-05 incident
+  // that lost lobscur.com and dolcevitahub.com (15,751 rows).
+  if (successfulDomains.length === 0) {
+    summary.deleted = 0;
+    summary.errors.push(
+      "Stale cleanup skipped — no store sync fulfilled this run"
+    );
+  } else {
+    const { error: deleteError, count: deletedCount } = await supabaseAdmin
+      .from("products")
+      .delete({ count: "exact" })
+      .in("store_domain", successfulDomains)
+      .lt("synced_at", syncStart);
 
-  summary.deleted = deletedCount ?? 0;
-  if (deleteError) {
-    summary.errors.push(`Stale cleanup failed: ${deleteError.message}`);
+    summary.deleted = deletedCount ?? 0;
+    if (deleteError) {
+      summary.errors.push(`Stale cleanup failed: ${deleteError.message}`);
+    }
   }
 
   const enrichUrl = `${new URL(request.url).origin}/api/enrich?depth=0`;
