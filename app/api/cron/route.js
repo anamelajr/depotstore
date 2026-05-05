@@ -124,15 +124,29 @@ export async function GET(request) {
           }
         }
 
-        // Step 2: Editorial fields — only write where currently NULL in DB
-        const { data: existing } = await supabaseAdmin
-          .from("products")
-          .select("handle, brand, title, category")
-          .eq("store_domain", store.domain)
-          .in("handle", handles);
+        // Step 2: Editorial fields — only write where currently NULL in DB.
+        // Chunked for the same URL-length reason as the pre-upsert SELECT.
+        // The original block destructured only `data` and silently swallowed
+        // any error; we now surface it so a future regression can't quietly
+        // produce an empty editMap and re-classify curated rows as NULL.
+        const existing = [];
+        for (const handleChunk of chunkArray(handles, HANDLE_CHUNK)) {
+          const { data, error: existError } = await supabaseAdmin
+            .from("products")
+            .select("handle, brand, title, category")
+            .eq("store_domain", store.domain)
+            .in("handle", handleChunk);
+
+          if (existError) {
+            throw new Error(
+              `Editorial state fetch failed for ${store.domain}: ${existError.message}`
+            );
+          }
+          if (data) existing.push(...data);
+        }
 
         const editMap = Object.fromEntries(
-          (existing || []).map((r) => [r.handle, r])
+          existing.map((r) => [r.handle, r])
         );
 
         const editorialRows = [];
