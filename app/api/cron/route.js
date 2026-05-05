@@ -111,16 +111,18 @@ export async function GET(request) {
         }
 
         if (resetHandles.length > 0) {
-          const { error: resetError } = await supabaseAdmin
-            .from("products")
-            .update({ enrich_attempts: 0 })
-            .eq("store_domain", store.domain)
-            .in("handle", resetHandles);
+          for (const handleChunk of chunkArray(resetHandles, HANDLE_CHUNK)) {
+            const { error: resetError } = await supabaseAdmin
+              .from("products")
+              .update({ enrich_attempts: 0 })
+              .eq("store_domain", store.domain)
+              .in("handle", handleChunk);
 
-          if (resetError) {
-            throw new Error(
-              `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
-            );
+            if (resetError) {
+              throw new Error(
+                `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
+              );
+            }
           }
         }
 
@@ -195,7 +197,10 @@ export async function GET(request) {
     if (r.status === "fulfilled") {
       summary.stores[r.value.store] = r.value.count;
       summary.totalUpserted += r.value.count;
-      successfulDomains.push(r.value.store);
+      // Only eligible for stale cleanup if rows were actually upserted.
+      // A count of 0 means the store returned empty — treat it as failed
+      // so we don't delete its last-known-good inventory.
+      if (r.value.count > 0) successfulDomains.push(r.value.store);
     } else {
       const msg = r.reason?.message ?? String(r.reason);
       summary.errors.push(msg);
