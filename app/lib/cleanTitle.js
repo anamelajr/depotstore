@@ -15,7 +15,7 @@ export async function cleanTitle(product) {
       },
       body: JSON.stringify({
         model: "gpt-5.4-mini",
-        max_tokens: 60,
+        max_completion_tokens: 60,
         messages: [
           {
             role: "user",
