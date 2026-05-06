@@ -17,7 +17,7 @@ export async function generateDescription(product) {
       },
       body: JSON.stringify({
         model: "gpt-5.4-mini",
-        max_tokens: 150,
+        max_completion_tokens: 150,
         messages: [
           {
             role: "user",
