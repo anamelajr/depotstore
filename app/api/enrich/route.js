@@ -11,17 +11,19 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const BATCH_SIZE = 150;
+const BATCH_SIZE = 80;
 const CYCLE_MS = 300; // 200 RPM = one call every 300 ms, measured from start
 const MAX_DEPTH = 30;
 const MAX_ENRICH_ATTEMPTS = 3;
-// 150 × 300 ms = 45 s baseline. Vercel maxDuration is 300 s. The ~255 s
-// headroom absorbs gpt-5.4-mini call latency that exceeds the 300 ms sleep
-// budget. If a batch is killed before reaching the final waitUntil, the
-// chain breaks and only the next hourly cron resumes drain — keeping
-// headroom matters. Pacing is set well under the OpenAI key's 500 RPM /
-// 200k TPM limits: 200 RPM and ~140k TPM at ~700 tok/call leave room for
-// chain-overlap variance and prompt-size spikes.
+// Batch size is bounded by Vercel maxDuration (300 s), not by the LLM
+// rate limits. With realistic gpt-5.4-mini latency around 1.5–2 s/call
+// (sleep is no longer the floor at 300 ms), 80 × 2 s ≈ 160 s leaves
+// comfortable headroom. Earlier BATCH_SIZE = 150 hit 150 × 2 s = 300 s
+// timeouts that killed the function before it could dispatch the next
+// chain hop, breaking the drain. cleanTitle.js caps each call at 8 s
+// via AbortController so a single pathological request can't blow the
+// whole batch's budget. Provider headroom (200 RPM, ~140k TPM at
+// ~700 tok/call) sits well under the key's 500 RPM / 200k TPM ceilings.
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
