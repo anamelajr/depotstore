@@ -166,7 +166,7 @@ async function main() {
 
     const { data, error } = await supabaseAdmin
       .from("products")
-      .select("id, handle, store_domain, name, title, brand, category")
+      .select("id, handle, store_domain, name, title, brand, category, description, editorial_description")
       .order("id", { ascending: true })
       .range(from, from + rangeSize - 1);
 
@@ -184,6 +184,8 @@ async function main() {
           name: row.name,
           title: row.title,
           brand: row.brand,
+          description: row.description,
+          editorial_description: row.editorial_description,
         })
       );
 

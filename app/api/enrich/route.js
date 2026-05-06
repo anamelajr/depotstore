@@ -50,7 +50,7 @@ export async function POST(request) {
 
   const { data: rows, error: selErr } = await supabaseAdmin
     .from("products")
-    .select("id, handle, store_domain, name, brand, title, category, description")
+    .select("id, handle, store_domain, name, brand, title, category, description, editorial_description")
     .eq("available", true)
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null")
