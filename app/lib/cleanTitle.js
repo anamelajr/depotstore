@@ -7,15 +7,14 @@ export async function cleanTitle(product) {
   const description = product?.rawDescription ?? "";
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: "gpt-5.4-mini",
         max_tokens: 60,
         messages: [
           {
@@ -67,7 +66,7 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
 
     if (!res.ok) return null;
     const data = await res.json();
-    const cleaned = data?.content?.[0]?.text?.trim();
+    const cleaned = data?.choices?.[0]?.message?.content?.trim();
 
     if (cleaned) {
       try {
