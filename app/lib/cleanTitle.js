@@ -6,6 +6,14 @@ export async function cleanTitle(product) {
   const tags = Array.isArray(product?.tags) ? product.tags.join(", ") : "";
   const description = product?.rawDescription ?? "";
 
+  // Per-call AbortController. Without this, a single hung OpenAI request
+  // can run for the full Vercel maxDuration (300 s), eating the entire
+  // batch budget and breaking the enrich chain by killing the function
+  // before it can dispatch the next hop. 8 s is generous vs typical
+  // gpt-5.4-mini latency (~1–2 s) and short enough that pathological
+  // calls don't dominate batch wall time.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -13,6 +21,7 @@ export async function cleanTitle(product) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: "gpt-5.4-mini",
         max_completion_tokens: 60,
@@ -112,6 +121,10 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
 
     return null;
   } catch {
+    // AbortError from the timeout lands here too, returning null so
+    // the row counts as a normal failure and increments enrich_attempts.
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

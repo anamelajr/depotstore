@@ -36,12 +36,14 @@ filtered by store, category, brand, price, and search.
   Editorial fields (`brand`, `title`, `category`) stay NULL. Triggers
   `/api/enrich` via `waitUntil`. Pre-upsert snapshot resets `enrich_attempts`
   for any row whose Shopify `name` or `description` changed.
-- **Enrich** (`/api/enrich`): batches of 150 NULL-editorial rows where
-  `available = true` and `enrich_attempts < 3`, paced at 300 ms/call
-  (200 RPM, ~140k TPM at ~700 tok/call — sits under the OpenAI key's
-  500 RPM / 200k TPM ceiling with headroom for chain-overlap variance).
-  Writes via the `enrich_product` RPC's `COALESCE`. Self-chains up to 30
-  hops. Auth: `Bearer $CRON_SECRET`.
+- **Enrich** (`/api/enrich`): batches of 80 NULL-editorial rows where
+  `available = true` and `enrich_attempts < 3`, paced at 300 ms/call,
+  with each OpenAI fetch capped at 8 s via `AbortController` in
+  `cleanTitle.js`. Batch size is bounded by Vercel `maxDuration` (300 s),
+  not by the OpenAI key's 500 RPM / 200k TPM ceiling: 80 × ~2 s realistic
+  gpt-5.4-mini latency ≈ 160 s with comfortable headroom. Writes via the
+  `enrich_product` RPC's `COALESCE`. Self-chains up to 30 hops. Auth:
+  `Bearer $CRON_SECRET`.
 - **Feed** (`FeedClient.js` + `/api/products`): URL-driven filters/sort,
   load-more, back-nav scroll restore. Default sort = `get_interleaved_products`.
   Price sort fetches all matching rows and sorts in JS.
