@@ -12,13 +12,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const BATCH_SIZE = 150;
-const CYCLE_MS = 1200; // 50 RPM = one call every 1.2 s, measured from start
+const CYCLE_MS = 300; // 200 RPM = one call every 300 ms, measured from start
 const MAX_DEPTH = 30;
 const MAX_ENRICH_ATTEMPTS = 3;
-// 150 × 1.2 s = 180 s baseline. Vercel maxDuration is 300 s. The ~120 s
-// headroom absorbs Haiku-call latency that exceeds the 1.2 s sleep budget.
-// If a batch is killed before reaching the final waitUntil, the chain breaks
-// and only the next nightly cron resumes drain — keeping headroom matters.
+// 150 × 300 ms = 45 s baseline. Vercel maxDuration is 300 s. The ~255 s
+// headroom absorbs gpt-5.4-mini call latency that exceeds the 300 ms sleep
+// budget. If a batch is killed before reaching the final waitUntil, the
+// chain breaks and only the next hourly cron resumes drain — keeping
+// headroom matters. Pacing is set well under the OpenAI key's 500 RPM /
+// 200k TPM limits: 200 RPM and ~140k TPM at ~700 tok/call leave room for
+// chain-overlap variance and prompt-size spikes.
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
