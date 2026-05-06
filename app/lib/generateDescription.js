@@ -9,15 +9,14 @@ export async function generateDescription(product) {
   const storeName = product?.storeName ?? null;
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: "gpt-5.4-mini",
         max_tokens: 150,
         messages: [
           {
@@ -51,7 +50,7 @@ Description from store: ${description ? description.slice(0, 500) : "none"}`,
 
     if (!res.ok) return null;
     const data = await res.json();
-    return data?.content?.[0]?.text?.trim() ?? null;
+    return data?.choices?.[0]?.message?.content?.trim() ?? null;
   } catch {
     return null;
   }
