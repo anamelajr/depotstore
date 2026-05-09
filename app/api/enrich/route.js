@@ -50,6 +50,7 @@ export async function POST(request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const batchStartMs = Date.now();
   const url = new URL(request.url);
   const depth = parseInt(url.searchParams.get("depth") ?? "0", 10);
 
@@ -71,6 +72,16 @@ export async function POST(request) {
   let rejected = 0; // Dolce Vita allowlist rejections
   let attemptIncrementFailures = 0;
 
+  // Logging counters for enrich_runs
+  let fastPathCount = 0;
+  let openaiCalls = 0;
+  let openaiSucceeded = 0;
+  let openaiReturnedNull = 0;
+  let openaiNoCall = 0;
+  let categoryAssigned = 0;
+  let categoryFailed = 0;
+  const perStoreOpenaiCalls = {};
+
   async function tally(row) {
     const ok = await incrementAttempts(row);
     if (!ok) attemptIncrementFailures++;
@@ -82,12 +93,15 @@ export async function POST(request) {
     // deterministic and code-only. Allowlist gate is N/A here; the
     // brand passed it on the row's first pass.
     if (row.brand && row.title) {
+      fastPathCount++;
       const newCategory = assignCategory(row) ?? null;
       if (!newCategory) {
+        categoryFailed++;
         failed++;
         await tally(row);
         continue;
       }
+      categoryAssigned++;
       const { error: rpcErr } = await supabaseAdmin.rpc("enrich_product", {
         p_handle: row.handle,
         p_store_domain: row.store_domain,
@@ -104,13 +118,30 @@ export async function POST(request) {
       continue;
     }
 
+    // Pre-call short-circuit: row.name being empty means cleanTitle would
+    // return null immediately without making any API request. Count it
+    // separately so the reconciliation math (openai_calls × 750 ≈ dashboard
+    // input tokens) stays clean — this row consumed zero tokens.
+    if (!row.name) {
+      openaiNoCall++;
+      failed++;
+      await tally(row);
+      continue;
+    }
+
     const t0 = Date.now();
     try {
+      // Increment BEFORE the await so the count is robust even if cleanTitle
+      // is later refactored in a way that lets exceptions propagate here.
+      openaiCalls++;
+      perStoreOpenaiCalls[row.store_domain] =
+        (perStoreOpenaiCalls[row.store_domain] ?? 0) + 1;
       const result = await cleanTitle({
         name: row.name,
         rawDescription: row.description,
       });
       if (result) {
+        openaiSucceeded++;
         const { brand: newBrand, title: newTitle } = result;
         // Allowlist gate for filtered stores. Sync passed this row through
         // its weakened filter (no Haiku at sync time), so we re-apply the
@@ -138,6 +169,8 @@ export async function POST(request) {
 
         const newCategory =
           assignCategory({ ...row, brand: newBrand, title: newTitle }) ?? null;
+        if (newCategory) categoryAssigned++;
+        else categoryFailed++;
         // Atomic null-only write via RPC — COALESCE evaluates against the
         // row's current state inside the UPDATE, so a concurrent enrich
         // run that filled brand/title between our SELECT and now cannot
@@ -157,6 +190,7 @@ export async function POST(request) {
           succeeded++;
         }
       } else {
+        openaiReturnedNull++;
         failed++;
         await tally(row);
       }
@@ -190,6 +224,29 @@ export async function POST(request) {
       fetch(nextUrl, { method: "POST", headers }).catch(() => {})
     );
     chained = true;
+  }
+
+  try {
+    await supabaseAdmin.from("enrich_runs").insert({
+      run_type: "enrich",
+      duration_ms: Date.now() - batchStartMs,
+      depth,
+      queue_size: rows?.length ?? 0,
+      fast_path_count: fastPathCount,
+      openai_calls: openaiCalls,
+      openai_succeeded: openaiSucceeded,
+      openai_returned_null: openaiReturnedNull,
+      openai_no_call: openaiNoCall,
+      category_assigned: categoryAssigned,
+      category_failed: categoryFailed,
+      allowlist_rejected: rejected,
+      attempts_increment_failures: attemptIncrementFailures,
+      per_store_openai_calls: perStoreOpenaiCalls,
+      remaining_after: remaining ?? 0,
+      chained,
+    });
+  } catch (e) {
+    console.error("enrich_runs enrich log failed:", e?.message ?? e);
   }
 
   return Response.json({

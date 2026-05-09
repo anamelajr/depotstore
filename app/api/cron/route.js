@@ -12,7 +12,8 @@ export async function GET(request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const syncStart = new Date().toISOString();
+  const syncStartMs = Date.now();
+  const syncStart = new Date(syncStartMs).toISOString();
   const summary = { stores: {}, errors: [], totalUpserted: 0 };
 
   const STORES = await getActiveStores();
@@ -58,6 +59,8 @@ export async function GET(request) {
       // leaves enough headroom for the rest of the URL.
       const HANDLE_CHUNK = 100;
       let upserted = 0;
+      let storeResetsByName = 0;
+      let storeResetsByDesc = 0;
       for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
         const batch = syncRows.slice(i, i + BATCH_SIZE);
         const handles = batch.map((r) => r.handle);
@@ -101,14 +104,23 @@ export async function GET(request) {
         // Reset enrich_attempts for rows whose name or description changed.
         // These rows may have been capped at MAX_ENRICH_ATTEMPTS under the old
         // content — the new content deserves a fresh budget.
-        const resetHandles = [];
+        // Split by reason so enrich_runs logging can tell us whether
+        // description churn (Shopify-side edits) or title churn is driving
+        // daily token spend. `else if` prevents double-counting a row that
+        // changed both.
+        const resetHandlesByName = [];
+        const resetHandlesByDesc = [];
         for (const row of batch) {
           const prev = preMap[row.handle];
           if (!prev) continue; // new row — counter starts at 0 anyway
-          if (prev.name !== row.name || prev.description !== row.description) {
-            resetHandles.push(row.handle);
-          }
+          const nameChanged = prev.name !== row.name;
+          const descChanged = prev.description !== row.description;
+          if (nameChanged) resetHandlesByName.push(row.handle);
+          else if (descChanged) resetHandlesByDesc.push(row.handle);
         }
+        const resetHandles = [...resetHandlesByName, ...resetHandlesByDesc];
+        storeResetsByName += resetHandlesByName.length;
+        storeResetsByDesc += resetHandlesByDesc.length;
 
         if (resetHandles.length > 0) {
           for (const handleChunk of chunkArray(resetHandles, HANDLE_CHUNK)) {
@@ -188,15 +200,27 @@ export async function GET(request) {
         upserted += batch.length;
       }
 
-      return { store: store.domain, count: upserted };
+      return {
+        store: store.domain,
+        count: upserted,
+        resetsByName: storeResetsByName,
+        resetsByDesc: storeResetsByDesc,
+      };
     })
   );
 
   const successfulDomains = [];
+  const perStoreResets = {};
+  let totalResetsByName = 0;
+  let totalResetsByDesc = 0;
   for (const r of results) {
     if (r.status === "fulfilled") {
       summary.stores[r.value.store] = r.value.count;
       summary.totalUpserted += r.value.count;
+      // Accumulate reset counts for enrich_runs logging
+      perStoreResets[r.value.store] = (r.value.resetsByName ?? 0) + (r.value.resetsByDesc ?? 0);
+      totalResetsByName += r.value.resetsByName ?? 0;
+      totalResetsByDesc += r.value.resetsByDesc ?? 0;
       // Only eligible for stale cleanup if rows were actually upserted.
       // A count of 0 means the store returned empty — treat it as failed
       // so we don't delete its last-known-good inventory.
@@ -242,6 +266,23 @@ export async function GET(request) {
     fetch(enrichUrl, { method: "POST", headers: enrichHeaders }).catch(() => {})
   );
   summary.enrichTriggered = true;
+
+  try {
+    await supabaseAdmin.from("enrich_runs").insert({
+      run_type: "cron",
+      duration_ms: Date.now() - syncStartMs,
+      total_synced: summary.totalUpserted,
+      reset_count: totalResetsByName + totalResetsByDesc,
+      reset_by_name: totalResetsByName,
+      reset_by_desc: totalResetsByDesc,
+      per_store_synced: summary.stores,
+      per_store_resets: perStoreResets,
+      store_errors: summary.errors,
+      stale_deleted: summary.deleted ?? 0,
+    });
+  } catch (e) {
+    console.error("enrich_runs cron log failed:", e?.message ?? e);
+  }
 
   return Response.json(summary);
 }
