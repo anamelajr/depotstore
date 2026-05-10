@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Nav from "./Nav";
 
 export default function LayoutClient({ children, stores = [] }) {
@@ -8,8 +8,10 @@ export default function LayoutClient({ children, stores = [] }) {
 
   return (
     <>
-      <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
-      {children}
+      <Suspense fallback={null}>
+        <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
+      </Suspense>
+      <div className="min-h-screen">{children}</div>
       {isAboutOpen && (
         <div
           className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"

@@ -7,8 +7,20 @@ export const dynamic = 'force-dynamic';
 export default async function FeedPage() {
   const stores = await getActiveStores();
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<FeedLoadingFallback />}>
       <FeedClient stores={stores} />
     </Suspense>
+  );
+}
+
+function FeedLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] font-mono text-zinc-50">
+      <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pb-32 md:pt-8">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+          Loading products...
+        </p>
+      </main>
+    </div>
   );
 }
