@@ -131,7 +131,6 @@ const BRANDS = [
   "Helmut Lang",
   "Tom Ford",
   "Marc Jacobs",
-  "Calvin Klein",
   "Willy Chavarria",
   "Marking Distance",
   "The Row",
