@@ -74,6 +74,33 @@ function titleContainsAllowedBrand(rawTitle) {
 }
 
 export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
+
+// Whitespace-stripped variants of every allowlist entry. Catches vendors
+// that drop the space between brand tokens — e.g. "MiuMiu" vs "Miu Miu",
+// "APC" vs "A.P.C.", "Acne Studios" vs "AcneStudios". Without this, those
+// vendors fail the exact-normalized match and end up in /api/enrich, where
+// each one consumes ~750 input tokens just to be deleted by the allowlist
+// gate. Cheap to maintain — derived from BRANDS, no separate source of truth.
+const BRAND_SET_COMPACT = new Set(
+  BRANDS
+    .map((b) => normalizeBrand(b)?.replace(/\s+/g, ""))
+    .filter(Boolean)
+);
+
+// Allowlist membership check that survives whitespace differences.
+// Use this in place of `BRAND_SET_NORMALIZED.has(...)` whenever the input
+// is a vendor field or LLM-extracted brand — i.e. anywhere a single brand
+// string is being checked against the curated list. Two passes:
+//   1. exact normalized match (covers diacritics, punctuation, casing)
+//   2. whitespace-stripped match (covers the "MiuMiu" class of bugs)
+// Returns false on null/empty/non-string input.
+export function isAllowedBrand(value) {
+  const normalized = normalizeBrand(value);
+  if (!normalized) return false;
+  if (BRAND_SET_NORMALIZED.has(normalized)) return true;
+  return BRAND_SET_COMPACT.has(normalized.replace(/\s+/g, ""));
+}
+
 export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
 // Safety net used by getActiveStores() when Supabase is unreachable.
@@ -540,7 +567,7 @@ export async function fetchStoreProducts(store) {
           (titleContainsAllowedBrand(p.name) ? "matched_via_title" : null);
 
         if (!resolvedBrand) return null;
-        if (resolvedBrand !== "matched_via_title" && !BRAND_SET_NORMALIZED.has(resolvedBrand)) {
+        if (resolvedBrand !== "matched_via_title" && !isAllowedBrand(resolvedBrand)) {
           return null;
         }
       }
