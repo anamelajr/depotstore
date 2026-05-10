@@ -57,6 +57,7 @@ export async function POST(request) {
     .from("products")
     .select("id, handle, store_domain, name, brand, title, category, description, editorial_description")
     .eq("available", true)
+    .eq("hidden", false)
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null")
     .order("id", { ascending: false })
@@ -142,19 +143,24 @@ export async function POST(request) {
       if (result) {
         openaiSucceeded++;
         const { brand: newBrand, title: newTitle } = result;
-        // Allowlist gate for filtered stores. Sync passed this row through
-        // its weakened filter (no Haiku at sync time), so we re-apply the
-        // allowlist here against Haiku's extracted brand. If the brand
-        // isn't in the allowlist, mirror sync's pre-Task-4 behavior:
-        // delete the row so it doesn't surface in the feed. Sync will
-        // re-add it next night and we'll re-reject; the cycle is bounded.
+        // Allowlist gate for filtered stores. Hide the row instead of
+        // deleting it. A delete would be re-created on the next sync
+        // (Shopify still sells the item), then re-enriched, re-rejected,
+        // re-deleted — the loop that drove ~99% of our token spend.
+        // Hiding persists the rejection: subsequent syncs refresh
+        // synced_at (so stale-delete leaves it alone) but the enrich
+        // SELECT skips it via .eq("hidden", false). enrich_attempts is
+        // also capped as a second guard — cron's content-churn reset
+        // would otherwise zero it out and re-queue the row.
+        // Scoped to row.id (PK) rather than (handle, store_domain);
+        // the pair is unique in production but using the PK we already
+        // selected makes the call independent of that invariant.
         if (FILTER_BY_BRAND.has(row.store_domain)) {
           if (!isAllowedBrand(newBrand)) {
             await supabaseAdmin
               .from("products")
-              .delete()
-              .eq("handle", row.handle)
-              .eq("store_domain", row.store_domain);
+              .update({ hidden: true, enrich_attempts: MAX_ENRICH_ATTEMPTS })
+              .eq("id", row.id);
             rejected++;
             const elapsed = Date.now() - t0;
             await sleep(Math.max(0, CYCLE_MS - elapsed));
@@ -201,6 +207,7 @@ export async function POST(request) {
     .from("products")
     .select("*", { count: "exact", head: true })
     .eq("available", true)
+    .eq("hidden", false)
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null");
 
