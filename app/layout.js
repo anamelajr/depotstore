@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import LayoutClient from "./components/LayoutClient";
@@ -34,9 +33,7 @@ export default async function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Suspense fallback={null}>
-          <LayoutClient stores={stores}>{children}</LayoutClient>
-        </Suspense>
+        <LayoutClient stores={stores}>{children}</LayoutClient>
         <Footer />
       </body>
       <Analytics />

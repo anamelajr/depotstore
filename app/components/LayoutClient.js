@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Nav from "./Nav";
 
 export default function LayoutClient({ children, stores = [] }) {
@@ -8,7 +8,9 @@ export default function LayoutClient({ children, stores = [] }) {
 
   return (
     <>
-      <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
+      <Suspense fallback={null}>
+        <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
+      </Suspense>
       {children}
       {isAboutOpen && (
         <div
