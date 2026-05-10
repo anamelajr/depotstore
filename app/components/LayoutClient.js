@@ -11,7 +11,7 @@ export default function LayoutClient({ children, stores = [] }) {
       <Suspense fallback={null}>
         <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
       </Suspense>
-      {children}
+      <div className="min-h-screen">{children}</div>
       {isAboutOpen && (
         <div
           className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
