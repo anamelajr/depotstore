@@ -3,8 +3,7 @@ import { supabaseAdmin } from "../../lib/supabase.js";
 import { cleanTitle } from "../../lib/cleanTitle.js";
 import {
   assignCategory,
-  normalizeBrand,
-  BRAND_SET_NORMALIZED,
+  isAllowedBrand,
   FILTER_BY_BRAND,
 } from "../../lib/stores.js";
 
@@ -150,11 +149,7 @@ export async function POST(request) {
         // delete the row so it doesn't surface in the feed. Sync will
         // re-add it next night and we'll re-reject; the cycle is bounded.
         if (FILTER_BY_BRAND.has(row.store_domain)) {
-          const normalizedNewBrand = normalizeBrand(newBrand);
-          const allowed =
-            normalizedNewBrand &&
-            BRAND_SET_NORMALIZED.has(normalizedNewBrand);
-          if (!allowed) {
+          if (!isAllowedBrand(newBrand)) {
             await supabaseAdmin
               .from("products")
               .delete()
