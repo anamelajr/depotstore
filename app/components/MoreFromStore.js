@@ -7,6 +7,7 @@ async function fetchMore(storeDomain) {
     .select("name, title, brand, price, image_url, store_domain, product_url, available, handle")
     .eq("store_domain", storeDomain)
     .eq("available", true)
+    .eq("hidden", false)
     .order("synced_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(5);
