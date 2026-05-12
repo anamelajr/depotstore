@@ -33,7 +33,12 @@ function nameWithoutBrand(name, brand) {
   const stripped = accentStrip(name);
   const after = stripped.replace(re, "$1$2");
   if (after === stripped) return name;
-  return after.replace(/\s+/g, " ").trim();
+  // Strip leading/trailing non-alphanumerics so a name like "FENDI - WOOL"
+  // doesn't leave a dangling delimiter ("- Wool") in the resulting title.
+  return after
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
 }
 
 export const dynamic = "force-dynamic";

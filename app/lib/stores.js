@@ -101,20 +101,27 @@ export function isAllowedBrand(value) {
   return BRAND_SET_COMPACT.has(normalized.replace(/\s+/g, ""));
 }
 
-// Precomputed brand → handle-slug map. Sorted by slug length descending so
-// the most specific match wins (e.g. "maison-margiela" before "margiela"),
-// matching the precedence used in the curated allowlist itself.
+// Precomputed brand → handle-slug map. Each brand emits up to two slug
+// variants: dashed (`miu-miu`) and compact (`miumiu`). The compact variant
+// mirrors the BRAND_SET_COMPACT path that isAllowedBrand already trusts —
+// without it, the fallback would silently miss handles like `apc-jacket`
+// or `miumiu-bag` even though those brand strings are accepted everywhere
+// else. Sorted by slug length descending so the most specific match wins
+// (e.g. "maison-margiela" before "margiela").
 const BRAND_HANDLE_SLUGS = BRANDS
-  .map((b) => {
-    const slug = b
+  .flatMap((b) => {
+    const dashed = b
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
-    return slug ? { brand: b, slug } : null;
+    if (!dashed) return [];
+    const compact = dashed.replace(/-/g, "");
+    const out = [{ brand: b, slug: dashed }];
+    if (compact && compact !== dashed) out.push({ brand: b, slug: compact });
+    return out;
   })
-  .filter(Boolean)
   .sort((a, b) => b.slug.length - a.slug.length);
 
 // Extracts an allowlisted brand from a Shopify handle slug. Used by the
