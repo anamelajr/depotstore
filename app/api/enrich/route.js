@@ -5,7 +5,41 @@ import {
   assignCategory,
   isAllowedBrand,
   FILTER_BY_BRAND,
+  brandFromHandle,
 } from "../../lib/stores.js";
+
+// Lightweight title-cased coercion for the handle-fallback path. Lowercases
+// the raw Shopify name and capitalizes each word boundary so an ALL CAPS
+// input like "WOOL BLAZER" becomes "Wool Blazer".
+function toTitleCase(s) {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Removes the brand from the raw name before title-casing, so a row whose
+// Shopify name *does* include the brand (e.g. "HELMUT LANG DRESS") doesn't
+// produce a redundant title that echoes the brand line on the product card —
+// the same failure mode cleanTitle's `brandInTitle` guard exists to prevent.
+// Match is whole-word, case-insensitive, and accent-insensitive against the
+// full brand phrase; if no match, original name is returned untouched.
+function nameWithoutBrand(name, brand) {
+  const accentStrip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const tokens = accentStrip(brand).split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (tokens.length === 0) return name;
+  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(
+    `(^|[^A-Za-z0-9])${escaped.join("[^A-Za-z0-9]+")}([^A-Za-z0-9]|$)`,
+    "gi"
+  );
+  const stripped = accentStrip(name);
+  const after = stripped.replace(re, "$1$2");
+  if (after === stripped) return name;
+  // Strip leading/trailing non-alphanumerics so a name like "FENDI - WOOL"
+  // doesn't leave a dangling delimiter ("- Wool") in the resulting title.
+  return after
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -136,12 +170,45 @@ export async function POST(request) {
       openaiCalls++;
       perStoreOpenaiCalls[row.store_domain] =
         (perStoreOpenaiCalls[row.store_domain] ?? 0) + 1;
-      const result = await cleanTitle({
+      const cleanTitleResult = await cleanTitle({
         name: row.name,
         rawDescription: row.description,
       });
+      let result = cleanTitleResult;
+      let isHandleFallback = false;
+      if (!cleanTitleResult) {
+        openaiReturnedNull++;
+        // Deterministic fallback: cleanTitle couldn't extract a brand from
+        // the name/description, but the handle slug may still carry one.
+        // Catches stores that strip the brand from the Shopify name while
+        // keeping it in the URL (e.g. At Dawn Paris: handle `fendi-jacket`,
+        // name "WOOL BLAZER"). No OpenAI call — match is against the
+        // curated allowlist via hyphen-bounded boundaries, so a non-archive
+        // word fragment cannot impersonate a brand.
+        const handleBrand = brandFromHandle(row.handle);
+        const nameWords = row.name.trim().split(/\s+/).length;
+        if (handleBrand && nameWords >= 1 && nameWords <= 7) {
+          // Guard against name-equals-brand rows: stripping the brand from
+          // "FENDI" leaves an empty string, and writing an empty title
+          // would bypass the same empty-title invariant cleanTitle's gate
+          // enforces, permanently marking the row enriched with no title.
+          const fallbackTitle = toTitleCase(
+            nameWithoutBrand(row.name, handleBrand)
+          );
+          if (fallbackTitle.length > 0) {
+            result = {
+              brand: handleBrand.toUpperCase(),
+              title: fallbackTitle,
+            };
+            isHandleFallback = true;
+            console.log(
+              `[enrich] handle-fallback recovered ${row.store_domain}/${row.handle} → ${result.brand}`
+            );
+          }
+        }
+      }
       if (result) {
-        openaiSucceeded++;
+        if (!isHandleFallback) openaiSucceeded++;
         const { brand: newBrand, title: newTitle } = result;
         // Allowlist gate for filtered stores. Hide the row instead of
         // deleting it. A delete would be re-created on the next sync
@@ -191,7 +258,6 @@ export async function POST(request) {
           succeeded++;
         }
       } else {
-        openaiReturnedNull++;
         failed++;
         await tally(row);
       }
