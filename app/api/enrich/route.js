@@ -28,7 +28,7 @@ function nameWithoutBrand(name, brand) {
   const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = new RegExp(
     `(^|[^A-Za-z0-9])${escaped.join("[^A-Za-z0-9]+")}([^A-Za-z0-9]|$)`,
-    "i"
+    "gi"
   );
   const stripped = accentStrip(name);
   const after = stripped.replace(re, "$1$2");
@@ -183,14 +183,23 @@ export async function POST(request) {
         const handleBrand = brandFromHandle(row.handle);
         const nameWords = row.name.trim().split(/\s+/).length;
         if (handleBrand && nameWords >= 1 && nameWords <= 7) {
-          result = {
-            brand: handleBrand.toUpperCase(),
-            title: toTitleCase(nameWithoutBrand(row.name, handleBrand)),
-          };
-          isHandleFallback = true;
-          console.log(
-            `[enrich] handle-fallback recovered ${row.store_domain}/${row.handle} → ${result.brand}`
+          // Guard against name-equals-brand rows: stripping the brand from
+          // "FENDI" leaves an empty string, and writing an empty title
+          // would bypass the same empty-title invariant cleanTitle's gate
+          // enforces, permanently marking the row enriched with no title.
+          const fallbackTitle = toTitleCase(
+            nameWithoutBrand(row.name, handleBrand)
           );
+          if (fallbackTitle.length > 0) {
+            result = {
+              brand: handleBrand.toUpperCase(),
+              title: fallbackTitle,
+            };
+            isHandleFallback = true;
+            console.log(
+              `[enrich] handle-fallback recovered ${row.store_domain}/${row.handle} → ${result.brand}`
+            );
+          }
         }
       }
       if (result) {
