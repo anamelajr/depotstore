@@ -101,6 +101,38 @@ export function isAllowedBrand(value) {
   return BRAND_SET_COMPACT.has(normalized.replace(/\s+/g, ""));
 }
 
+// Precomputed brand → handle-slug map. Sorted by slug length descending so
+// the most specific match wins (e.g. "maison-margiela" before "margiela"),
+// matching the precedence used in the curated allowlist itself.
+const BRAND_HANDLE_SLUGS = BRANDS
+  .map((b) => {
+    const slug = b
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return slug ? { brand: b, slug } : null;
+  })
+  .filter(Boolean)
+  .sort((a, b) => b.slug.length - a.slug.length);
+
+// Extracts an allowlisted brand from a Shopify handle slug. Used by the
+// enrich route as a deterministic fallback when cleanTitle returns null —
+// e.g. At Dawn Paris listings strip the brand from the public name but
+// keep it in the URL slug ("fendi-jacket" / name "WOOL BLAZER").
+// Hyphen-bounded match so short slugs don't pick up incidental tokens
+// (`ami` won't match `ceramic-shirt`). Iterates the precomputed slug list
+// rather than building a regex set so the longest-wins ordering is explicit.
+export function brandFromHandle(handle) {
+  if (!handle || typeof handle !== "string") return null;
+  const lower = handle.toLowerCase();
+  for (const { brand, slug } of BRAND_HANDLE_SLUGS) {
+    if (new RegExp(`(^|-)${slug}(-|$)`).test(lower)) return brand;
+  }
+  return null;
+}
+
 export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
 // Safety net used by getActiveStores() when Supabase is unreachable.

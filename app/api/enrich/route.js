@@ -5,7 +5,15 @@ import {
   assignCategory,
   isAllowedBrand,
   FILTER_BY_BRAND,
+  brandFromHandle,
 } from "../../lib/stores.js";
+
+// Lightweight title-cased coercion for the handle-fallback path. Lowercases
+// the raw Shopify name and capitalizes each word boundary so an ALL CAPS
+// input like "WOOL BLAZER" becomes "Wool Blazer".
+function toTitleCase(s) {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -136,12 +144,36 @@ export async function POST(request) {
       openaiCalls++;
       perStoreOpenaiCalls[row.store_domain] =
         (perStoreOpenaiCalls[row.store_domain] ?? 0) + 1;
-      const result = await cleanTitle({
+      const cleanTitleResult = await cleanTitle({
         name: row.name,
         rawDescription: row.description,
       });
+      let result = cleanTitleResult;
+      let isHandleFallback = false;
+      if (!cleanTitleResult) {
+        openaiReturnedNull++;
+        // Deterministic fallback: cleanTitle couldn't extract a brand from
+        // the name/description, but the handle slug may still carry one.
+        // Catches stores that strip the brand from the Shopify name while
+        // keeping it in the URL (e.g. At Dawn Paris: handle `fendi-jacket`,
+        // name "WOOL BLAZER"). No OpenAI call — match is against the
+        // curated allowlist via hyphen-bounded boundaries, so a non-archive
+        // word fragment cannot impersonate a brand.
+        const handleBrand = brandFromHandle(row.handle);
+        const nameWords = row.name.trim().split(/\s+/).length;
+        if (handleBrand && nameWords >= 1 && nameWords <= 7) {
+          result = {
+            brand: handleBrand.toUpperCase(),
+            title: toTitleCase(row.name),
+          };
+          isHandleFallback = true;
+          console.log(
+            `[enrich] handle-fallback recovered ${row.store_domain}/${row.handle} → ${result.brand}`
+          );
+        }
+      }
       if (result) {
-        openaiSucceeded++;
+        if (!isHandleFallback) openaiSucceeded++;
         const { brand: newBrand, title: newTitle } = result;
         // Allowlist gate for filtered stores. Hide the row instead of
         // deleting it. A delete would be re-created on the next sync
@@ -191,7 +223,6 @@ export async function POST(request) {
           succeeded++;
         }
       } else {
-        openaiReturnedNull++;
         failed++;
         await tally(row);
       }
