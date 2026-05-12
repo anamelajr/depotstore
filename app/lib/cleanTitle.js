@@ -83,7 +83,7 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
         const parsed = JSON.parse(jsonText);
         const titleWords = parsed.title ? parsed.title.trim().split(/\s+/).length : 0;
         const brandValid = parsed.brand && parsed.brand.trim().length > 0;
-        const titleValid = parsed.title && titleWords >= 2 && titleWords <= 7;
+        const titleValid = parsed.title && parsed.title.trim().length > 0 && titleWords <= 7;
 
         // Accent-safe normalizer — matches normalizeBrand() style in stores.js
         const normalize = (s) =>
