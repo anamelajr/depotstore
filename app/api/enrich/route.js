@@ -15,6 +15,27 @@ function toTitleCase(s) {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Removes the brand from the raw name before title-casing, so a row whose
+// Shopify name *does* include the brand (e.g. "HELMUT LANG DRESS") doesn't
+// produce a redundant title that echoes the brand line on the product card —
+// the same failure mode cleanTitle's `brandInTitle` guard exists to prevent.
+// Match is whole-word, case-insensitive, and accent-insensitive against the
+// full brand phrase; if no match, original name is returned untouched.
+function nameWithoutBrand(name, brand) {
+  const accentStrip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const tokens = accentStrip(brand).split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (tokens.length === 0) return name;
+  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(
+    `(^|[^A-Za-z0-9])${escaped.join("[^A-Za-z0-9]+")}([^A-Za-z0-9]|$)`,
+    "i"
+  );
+  const stripped = accentStrip(name);
+  const after = stripped.replace(re, "$1$2");
+  if (after === stripped) return name;
+  return after.replace(/\s+/g, " ").trim();
+}
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -164,7 +185,7 @@ export async function POST(request) {
         if (handleBrand && nameWords >= 1 && nameWords <= 7) {
           result = {
             brand: handleBrand.toUpperCase(),
-            title: toTitleCase(row.name),
+            title: toTitleCase(nameWithoutBrand(row.name, handleBrand)),
           };
           isHandleFallback = true;
           console.log(
