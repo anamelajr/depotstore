@@ -19,12 +19,18 @@ const BRANDS = [
   "Visvim",
   "Sacai",
   "Junya Watanabe",
+  "Y-3",
   "Noir Kei Ninomiya",
   "Maison Mihara Yasuhiro",
   "Mihara Yasuhiro",
   "If Six was Nine",
   "By Joshua Jamal",
   "Joshua Jamal",
+  "Hysteric Glamour",
+  "Neighborhood",
+  "Wacko Maria",
+  "Toga",
+  "Toga Virilis",
 
   // Belgian / Antwerp
   "Ann Demeulemeester",
@@ -135,6 +141,8 @@ const BRANDS = [
   "Marking Distance",
   "The Row",
   "Thom Browne",
+  "1017 ALYX 9SM",
+  "ALYX",
 
   // Miscellaneous
   "Stone Island",
@@ -143,6 +151,7 @@ const BRANDS = [
   "Iris Van Herpen",
   "Carol Christian Poell",
   "Coperni",
+  "MCM",
 
   // Other archive staples
   "Acne Studios",
