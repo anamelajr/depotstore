@@ -7,6 +7,7 @@ import { SUBCATEGORIES_BY_SHORTKEY, NAV_TOP_LEVEL } from "../lib/categories.js";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import DesktopNav from "./DesktopNav";
+import MobileNavMenu from "./MobileNavMenu";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
@@ -260,6 +261,7 @@ export default function Nav({ onAboutOpen, stores = [] }) {
         />,
         document.body
       )}
+      <MobileNavMenu isOpen={isMobileOpen} onClose={() => setIsMobileOpen(false)} />
     </>
   );
 }
