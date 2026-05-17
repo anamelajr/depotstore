@@ -6,6 +6,7 @@ import TopBar from "./nav/TopBar";
 import MenuPanel from "./nav/MenuPanel";
 import Column1 from "./nav/Column1";
 import Column2 from "./nav/Column2";
+import { buildFeedUrl } from "../lib/feed-utils";
 
 export default function DesktopNav({ stores = [] }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -36,7 +37,7 @@ export default function DesktopNav({ stores = [] }) {
     setIsSearchMode(false);
     setSearchQuery("");
     setIsMenuOpen(false);
-    router.push(`/feed?search=${encodeURIComponent(q)}`);
+    router.push(buildFeedUrl(searchParams, { search: q }));
   };
 
   return (
