@@ -3,8 +3,6 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import ProductCard from "../components/ProductCard";
-import MobileFilterDrawer from "../components/MobileFilterDrawer";
-import MobileSortSheet from "../components/MobileSortSheet";
 import MobileSortPanel from "../components/MobileSortPanel";
 import DesktopFeedBar from "../components/feed/DesktopFeedBar";
 import DesktopSortMenu from "../components/feed/DesktopSortMenu";
@@ -14,7 +12,7 @@ import MobileSearchStrip from "../components/MobileSearchStrip";
 import MobileFeedActionBar from "../components/MobileFeedActionBar";
 import MobileFilterPanel from "../components/MobileFilterPanel";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
-import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
+import { SORT_MAP } from "../lib/sort-options";
 
 const LOAD_SIZE = 30;
 
@@ -102,25 +100,6 @@ export default function FeedClient({ stores = [] }) {
     sessionStorage.removeItem("depot_feed_url");
     window.scrollTo(0, y);
   }, [loading, products]);
-
-  // Scroll hide/show for mobile bar
-  const [barVisible, setBarVisible] = useState(true);
-  const lastScrollY = useRef(0);
-  useEffect(() => {
-    const handleScroll = () => {
-      const current = window.scrollY;
-      if (current < 60) {
-        setBarVisible(true);
-      } else if (current < lastScrollY.current) {
-        setBarVisible(true);
-      } else if (current > lastScrollY.current + 8) {
-        setBarVisible(false);
-      }
-      lastScrollY.current = current;
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   // Close ALL filter/sort UI on either breakpoint crossing.
   //
@@ -310,6 +289,17 @@ export default function FeedClient({ stores = [] }) {
     router.replace(`/feed${q ? `?${q}` : ""}`);
   }, [searchParams, router]);
 
+  const handleApplyFilters = useCallback(({ categories, store, brand }) => {
+    setLocalCategories(categories);
+    setLocalStore(store);
+    const updates = { category: categories };
+    updates.store = store !== ALL_STORES_VALUE ? store : null;
+    // Brand is buffered inside the panel; this is the only commit path for it.
+    // Empty string and undefined both clear the param via buildFeedUrl.
+    updates.brand = brand || null;
+    router.push(buildFeedUrl(searchParams, updates));
+  }, [router, searchParams]);
+
   const handleLoadMore = useCallback(() => {
     setLoadMoreOffset(products.length);
   }, [products.length]);
@@ -319,56 +309,13 @@ export default function FeedClient({ stores = [] }) {
     (localStore !== ALL_STORES_VALUE ? 1 : 0) +
     (selectedBrand ? 1 : 0) +
     (searchQuery ? 1 : 0);
-  const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
   const hasMore = !loading && products.length < total;
 
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-hidden">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
 
-        {/* ── MOBILE: sticky Refine / Sort (below md) ── */}
-        <header
-          className="md:hidden sticky z-20 border-b border-zinc-800/60 bg-[#0a0a0a]/95 backdrop-blur transition-transform duration-300 ease-out"
-          style={{
-            top: 0,
-            transform: barVisible ? "translateY(0)" : "translateY(-100%)",
-          }}
-        >
-          <div className="flex w-full h-[44px]">
-            <button
-              type="button"
-              onPointerDown={() => setFilterOpen(true)}
-              className="flex h-full flex-1 items-center justify-center gap-2 border-r border-zinc-800/40 px-4 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300 active:bg-zinc-900/80"
-            >
-              Refine
-              {activeFilterCount > 0 && (
-                <span className="rounded-full bg-zinc-50 px-2 py-0.5 font-mono text-[10px] leading-none text-zinc-950">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onPointerDown={() => setSortOpen(true)}
-              className="flex h-full flex-1 items-center justify-center gap-2 px-4 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300 active:bg-zinc-900/80"
-            >
-              {selectedSort !== "interleaved" ? activeSortLabel : "Sort"}
-            </button>
-          </div>
-        </header>
-
-        {/* Mobile drawers */}
-        <MobileFilterDrawer
-          isOpen={filterOpen}
-          onClose={() => setFilterOpen(false)}
-          selectedCategories={localCategories}
-          onToggleCategory={handleToggleCategory}
-          selectedStore={localStore}
-          storeOptions={storeOptions}
-          onStoreChange={handleStoreChange}
-          onClearAll={handleClearAll}
-          activeFilterCount={activeFilterCount}
-        />
+        {/* Mobile panels */}
         <MobileFilterPanel
           isOpen={filterOpen}
           onClose={() => setFilterOpen(false)}
@@ -376,20 +323,7 @@ export default function FeedClient({ stores = [] }) {
           selectedStore={localStore}
           selectedBrand={selectedBrand}
           storeOptions={storeOptions}
-          onApply={({ categories, store, brand }) => {
-            setLocalCategories(categories);
-            setLocalStore(store);
-            const updates = { category: categories };
-            updates.store = store !== ALL_STORES_VALUE ? store : null;
-            updates.brand = brand || null;
-            router.push(buildFeedUrl(searchParams, updates));
-          }}
-        />
-        <MobileSortSheet
-          isOpen={sortOpen}
-          onClose={() => setSortOpen(false)}
-          selectedSort={selectedSort}
-          onSortChange={handleSortChange}
+          onApply={handleApplyFilters}
         />
         <MobileSortPanel
           isOpen={sortOpen}
@@ -404,7 +338,7 @@ export default function FeedClient({ stores = [] }) {
           onOpenFilters={() => { setSortOpen(false); setFilterOpen(true); }}
           onOpenSort={() => { setFilterOpen(false); setSortOpen(true); }}
         />
-        <main className="mx-auto max-w-7xl px-4 pb-24 md:pb-32 pt-3 md:pt-8">
+        <main className="mx-auto max-w-7xl px-4 pb-32 md:pb-32 pt-3 md:pt-8">
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -412,7 +346,7 @@ export default function FeedClient({ stores = [] }) {
             </p>
           </div>
           {(searchQuery || selectedBrand) && (
-            <div className="mb-4 md:mb-6 flex flex-wrap gap-2">
+            <div className="hidden md:flex mb-4 md:mb-6 flex-wrap gap-2">
               {searchQuery && (
                 <FilterChip
                   label="Search:"
