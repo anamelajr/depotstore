@@ -1,5 +1,5 @@
 // Single source of truth for sort UI options.
-// Consumed by MobileSortSheet (mobile) and DesktopSortMenu (desktop).
+// Consumed by MobileSortPanel (mobile) and DesktopSortMenu (desktop).
 //
 // SORT_OPTIONS  — what the user sees and what gets written to the URL
 // SORT_MAP      — UI value → API "sort" param value (null = omit ?sort=
