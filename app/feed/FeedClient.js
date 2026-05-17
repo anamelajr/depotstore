@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import ProductCard from "../components/ProductCard";
 import MobileFilterDrawer from "../components/MobileFilterDrawer";
 import MobileSortSheet from "../components/MobileSortSheet";
+import MobileSortPanel from "../components/MobileSortPanel";
 import DesktopFeedBar from "../components/feed/DesktopFeedBar";
 import DesktopSortMenu from "../components/feed/DesktopSortMenu";
 import DesktopFilterPanel from "../components/feed/DesktopFilterPanel";
@@ -368,6 +369,12 @@ export default function FeedClient({ stores = [] }) {
           activeFilterCount={activeFilterCount}
         />
         <MobileSortSheet
+          isOpen={sortOpen}
+          onClose={() => setSortOpen(false)}
+          selectedSort={selectedSort}
+          onSortChange={handleSortChange}
+        />
+        <MobileSortPanel
           isOpen={sortOpen}
           onClose={() => setSortOpen(false)}
           selectedSort={selectedSort}
