@@ -5,6 +5,8 @@ import {
   assignCategory,
   isAllowedBrand,
   FILTER_BY_BRAND,
+  SELF_BRANDED_STORES,
+  isSelfBranded,
   brandFromHandle,
 } from "../../lib/stores.js";
 
@@ -235,6 +237,20 @@ export async function POST(request) {
           }
         }
 
+        // Self-brand gate for stores like nuovo-paris.com. Positive evidence
+        // (cleanTitle or the handle fallback resolved to the store's own
+        // house line), so hide immediately — no retry budget needed.
+        if (isSelfBranded(row.store_domain, newBrand)) {
+          await supabaseAdmin
+            .from("products")
+            .update({ hidden: true, enrich_attempts: MAX_ENRICH_ATTEMPTS })
+            .eq("id", row.id);
+          rejected++;
+          const elapsed = Date.now() - t0;
+          await sleep(Math.max(0, CYCLE_MS - elapsed));
+          continue;
+        }
+
         const newCategory =
           assignCategory({ ...row, brand: newBrand, title: newTitle }) ?? null;
         if (newCategory) categoryAssigned++;
@@ -260,6 +276,24 @@ export async function POST(request) {
       } else {
         failed++;
         await tally(row);
+        // Self-brand null-branch gate: only hide once the row has burned
+        // every retry. cleanTitle() returns null on transient OpenAI 5xx,
+        // rate limits, and 8 s timeouts as well as on genuinely
+        // unidentifiable rows, so an early hide would permanently kill
+        // legitimate-brand rows on a single OpenAI hiccup. Defer until
+        // attempts is about to reach MAX, at which point the row is
+        // genuinely un-enrichable and the store's policy treats it as
+        // self-branded/unbranded.
+        if (
+          SELF_BRANDED_STORES.has(row.store_domain) &&
+          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+        ) {
+          await supabaseAdmin
+            .from("products")
+            .update({ hidden: true })
+            .eq("id", row.id);
+          rejected++;
+        }
       }
     } catch {
       failed++;
