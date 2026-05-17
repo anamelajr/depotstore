@@ -12,6 +12,7 @@ import DesktopFilterPanel from "../components/feed/DesktopFilterPanel";
 import FilterChip from "../components/feed/FilterChip";
 import MobileSearchStrip from "../components/MobileSearchStrip";
 import MobileFeedActionBar from "../components/MobileFeedActionBar";
+import MobileFilterPanel from "../components/MobileFilterPanel";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
@@ -367,6 +368,22 @@ export default function FeedClient({ stores = [] }) {
           onStoreChange={handleStoreChange}
           onClearAll={handleClearAll}
           activeFilterCount={activeFilterCount}
+        />
+        <MobileFilterPanel
+          isOpen={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          selectedCategories={localCategories}
+          selectedStore={localStore}
+          selectedBrand={selectedBrand}
+          storeOptions={storeOptions}
+          onApply={({ categories, store, brand }) => {
+            setLocalCategories(categories);
+            setLocalStore(store);
+            const updates = { category: categories };
+            updates.store = store !== ALL_STORES_VALUE ? store : null;
+            updates.brand = brand || null;
+            router.push(buildFeedUrl(searchParams, updates));
+          }}
         />
         <MobileSortSheet
           isOpen={sortOpen}
