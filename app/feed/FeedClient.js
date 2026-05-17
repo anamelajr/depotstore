@@ -8,6 +8,7 @@ import MobileSortSheet from "../components/MobileSortSheet";
 import DesktopFeedBar from "../components/feed/DesktopFeedBar";
 import DesktopSortMenu from "../components/feed/DesktopSortMenu";
 import DesktopFilterPanel from "../components/feed/DesktopFilterPanel";
+import FilterChip from "../components/feed/FilterChip";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
@@ -255,6 +256,14 @@ export default function FeedClient({ stores = [] }) {
     router.push(buildFeedUrl(searchParams, { store: v }));
   }, [router, searchParams]);
 
+  const handleClearSearch = useCallback(() => {
+    router.push(buildFeedUrl(searchParams, { search: "" }));
+  }, [router, searchParams]);
+
+  const handleClearBrand = useCallback(() => {
+    router.push(buildFeedUrl(searchParams, { brand: "" }));
+  }, [router, searchParams]);
+
   const handleToggleCategory = useCallback((cat) => {
     const next = localCategories.includes(cat)
       ? localCategories.filter((c) => c !== cat)
@@ -301,7 +310,11 @@ export default function FeedClient({ stores = [] }) {
     setLoadMoreOffset(products.length);
   }, [products.length]);
 
-  const activeFilterCount = localCategories.length + (localStore !== ALL_STORES_VALUE ? 1 : 0) + (selectedBrand ? 1 : 0);
+  const activeFilterCount =
+    localCategories.length +
+    (localStore !== ALL_STORES_VALUE ? 1 : 0) +
+    (selectedBrand ? 1 : 0) +
+    (searchQuery ? 1 : 0);
   const activeSortLabel = SORT_OPTIONS.find((o) => o.value === selectedSort)?.label ?? "Sort";
   const hasMore = !loading && products.length < total;
 
@@ -350,6 +363,7 @@ export default function FeedClient({ stores = [] }) {
           storeOptions={storeOptions}
           onStoreChange={handleStoreChange}
           onClearAll={handleClearAll}
+          activeFilterCount={activeFilterCount}
         />
         <MobileSortSheet
           isOpen={sortOpen}
@@ -365,6 +379,26 @@ export default function FeedClient({ stores = [] }) {
               {loading ? "Loading…" : `${total} ${total === 1 ? "product" : "products"}`}
             </p>
           </div>
+          {(searchQuery || selectedBrand) && (
+            <div className="mb-4 md:mb-6 flex flex-wrap gap-2">
+              {searchQuery && (
+                <FilterChip
+                  label="Search:"
+                  value={`"${searchQuery}"`}
+                  clearLabel={`Clear search "${searchQuery}"`}
+                  onClear={handleClearSearch}
+                />
+              )}
+              {selectedBrand && (
+                <FilterChip
+                  label="Brand:"
+                  value={selectedBrand}
+                  clearLabel={`Clear brand ${selectedBrand}`}
+                  onClear={handleClearBrand}
+                />
+              )}
+            </div>
+          )}
           {loading ? (
             <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
               Loading products…

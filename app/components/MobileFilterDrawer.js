@@ -23,6 +23,7 @@ export default function MobileFilterDrawer({
   storeOptions,
   onStoreChange,
   onClearAll,
+  activeFilterCount,
 }) {
   // Lock body scroll when open
   useEffect(() => {
@@ -37,8 +38,6 @@ export default function MobileFilterDrawer({
   }, [isOpen]);
 
   if (!isOpen) return null;
-
-  const activeCount = selectedCategories.length + (selectedStore !== ALL_STORES_VALUE ? 1 : 0);
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0a0a0a]" onClick={(e) => e.stopPropagation()}>
@@ -131,7 +130,7 @@ export default function MobileFilterDrawer({
           onClick={onClose}
           className="w-full rounded-none bg-zinc-50 py-4 font-mono text-[11px] uppercase tracking-widest text-zinc-950"
         >
-          {activeCount > 0 ? `Apply (${activeCount})` : "Apply"}
+          {activeFilterCount > 0 ? `Apply (${activeFilterCount})` : "Apply"}
         </button>
       </div>
     </div>

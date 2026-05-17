@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { buildFreshFeedUrl } from "../lib/feed-utils";
+import { buildFeedUrl, buildFreshFeedUrl } from "../lib/feed-utils";
 import { SUBCATEGORIES_BY_SHORTKEY, NAV_TOP_LEVEL } from "../lib/categories.js";
 import Link from "next/link";
 import { createPortal } from "react-dom";
@@ -193,7 +193,7 @@ export default function Nav({ onAboutOpen, stores = [] }) {
                     if (e.key === "Enter") {
                       const trimmed = mobileSearchQuery.trim();
                       if (trimmed) {
-                        router.push(`/feed?search=${encodeURIComponent(trimmed)}`);
+                        router.push(buildFeedUrl(searchParams, { search: trimmed }));
                       }
                       setIsMobileSearchOpen(false);
                       setMobileSearchQuery("");
