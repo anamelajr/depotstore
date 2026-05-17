@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ALL_STORES_VALUE } from "../lib/feed-utils";
+import { NAV_TOP_LEVEL, SUBCATEGORIES_BY_SHORTKEY } from "../lib/categories.js";
 
 export default function MobileFilterPanel({
   isOpen,
@@ -62,7 +63,14 @@ export default function MobileFilterPanel({
           storeCount={draftStore !== ALL_STORES_VALUE ? 1 : 0}
         />
       )}
-      {/* CategoryView and StoreView land in Tasks 8 and 9 */}
+      {view === "category" && (
+        <CategoryView
+          onBack={() => setView("root")}
+          onClose={onClose}
+          draftCategories={draftCategories}
+          setDraftCategories={setDraftCategories}
+        />
+      )}
 
       <footer className="absolute bottom-0 left-0 right-0 h-14 grid grid-cols-2 bg-zinc-950/95 backdrop-blur border-t border-zinc-800/60">
         <button
@@ -80,6 +88,82 @@ export default function MobileFilterPanel({
       </footer>
     </div>,
     document.body
+  );
+}
+
+function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) {
+  const [expanded, setExpanded] = useState(null); // shortKey or null
+
+  const toggle = (slug) => {
+    setDraftCategories((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
+    );
+  };
+
+  return (
+    <>
+      <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ‹ BACK
+        </button>
+        <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
+          FILTERS
+        </span>
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ✕ CLOSE
+        </button>
+      </header>
+      <div className="flex-1 px-8 pt-2 pb-20 overflow-y-auto">
+        {NAV_TOP_LEVEL.map((cat) => {
+          const isExpanded = expanded === cat.shortKey;
+          const subs = SUBCATEGORIES_BY_SHORTKEY[cat.shortKey];
+          return (
+            <div key={cat.slug}>
+              <button
+                onClick={() => setExpanded(isExpanded ? null : cat.shortKey)}
+                className="flex items-center justify-between w-full py-4 border-b border-zinc-900 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+              >
+                <span>{cat.label.toUpperCase()}</span>
+                <span className="text-zinc-50 text-[15px] font-extralight leading-none">
+                  {isExpanded ? "−" : "+"}
+                </span>
+              </button>
+              {isExpanded && (
+                <div className="py-3 flex flex-col gap-3 border-b border-zinc-900">
+                  <OptionRow
+                    label={`View All ${cat.label}`}
+                    checked={draftCategories.includes(cat.slug)}
+                    onChange={() => toggle(cat.slug)}
+                  />
+                  {subs && subs.items.slice(1).map(([slug, sublabel]) => (
+                    <OptionRow
+                      key={slug}
+                      label={sublabel}
+                      checked={draftCategories.includes(slug)}
+                      onChange={() => toggle(slug)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function OptionRow({ label, checked, onChange }) {
+  return (
+    <button
+      onClick={onChange}
+      className="flex items-center font-mono text-[9px] tracking-[0.28em] uppercase text-zinc-50"
+    >
+      <span
+        className={`inline-block w-[11px] h-[11px] mr-3.5 border border-zinc-50 ${checked ? "bg-zinc-50" : ""}`}
+      />
+      {label}
+    </button>
   );
 }
 
