@@ -71,6 +71,15 @@ export default function MobileFilterPanel({
           setDraftCategories={setDraftCategories}
         />
       )}
+      {view === "store" && (
+        <StoreView
+          onBack={() => setView("root")}
+          onClose={onClose}
+          draftStore={draftStore}
+          setDraftStore={setDraftStore}
+          storeOptions={storeOptions}
+        />
+      )}
 
       <footer className="absolute bottom-0 left-0 right-0 h-14 grid grid-cols-2 bg-zinc-950/95 backdrop-blur border-t border-zinc-800/60">
         <button
@@ -164,6 +173,41 @@ function OptionRow({ label, checked, onChange }) {
       />
       {label}
     </button>
+  );
+}
+
+function StoreView({ onBack, onClose, draftStore, setDraftStore, storeOptions }) {
+  return (
+    <>
+      <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ‹ BACK
+        </button>
+        <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
+          FILTERS
+        </span>
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ✕ CLOSE
+        </button>
+      </header>
+      <div className="flex-1 px-8 pt-6 pb-20 overflow-y-auto flex flex-col gap-3">
+        <OptionRow
+          label="All stores"
+          checked={draftStore === ALL_STORES_VALUE}
+          onChange={() => setDraftStore(ALL_STORES_VALUE)}
+        />
+        {storeOptions
+          .filter((s) => s.value !== ALL_STORES_VALUE)
+          .map((s) => (
+            <OptionRow
+              key={s.value}
+              label={s.label}
+              checked={draftStore === s.value}
+              onChange={() => setDraftStore(s.value)}
+            />
+          ))}
+      </div>
+    </>
   );
 }
 
