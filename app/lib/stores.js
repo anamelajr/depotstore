@@ -147,7 +147,7 @@ export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 // store's self-brand variants and rows that exhausted enrichment with
 // brand=null. Real third-party brand inventory at the same store stays
 // visible. Wiring lives in /api/enrich, not in sync — see plan notes.
-export const SELF_BRANDED_STORES = new Set(["nuovo-paris.com"]);
+export const SELF_BRANDED_STORES = new Set(["nuovo-paris.com", "atdawnparis.com"]);
 
 // True when `brand` resolves to the store's own house line, or when
 // brand is missing entirely. The null/empty branch is provided so the
@@ -160,7 +160,13 @@ export function isSelfBranded(storeDomain, brand) {
   if (brand === null || brand === undefined) return true;
   const n = normalizeBrand(brand);
   if (!n) return true;
-  return n === "nuovo" || n === "nuovo paris" || n.startsWith("nuovo paris ");
+  if (storeDomain === "nuovo-paris.com") {
+    return n === "nuovo" || n === "nuovo paris" || n.startsWith("nuovo paris ");
+  }
+  if (storeDomain === "atdawnparis.com") {
+    return n === "at dawn" || n === "at dawn paris" || n.startsWith("at dawn paris ");
+  }
+  return false;
 }
 
 // Safety net used by getActiveStores() when Supabase is unreachable.
