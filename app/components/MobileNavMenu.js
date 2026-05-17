@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { NAV_TOP_LEVEL, SUBCATEGORIES_BY_SHORTKEY } from "../lib/categories.js";
+import { buildFreshFeedUrl } from "../lib/feed-utils";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
@@ -25,8 +27,24 @@ export default function MobileNavMenu({ isOpen, onClose }) {
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] text-zinc-50 flex flex-col motion-safe:[animation:navMenuEnter_150ms_ease-out]">
-      {view === "root" && <RootView onClose={onClose} onOpenShop={() => setView("shop")} />}
-      {/* SHOP and subcategory views land in Task 2 */}
+      {view === "root" && (
+        <RootView onClose={onClose} onOpenShop={() => setView("shop")} />
+      )}
+      {view === "shop" && (
+        <ShopView
+          onClose={onClose}
+          onBack={() => setView("root")}
+          onOpenSubcategory={(sub) => setView({ type: "subcategory", ...sub })}
+        />
+      )}
+      {typeof view === "object" && view.type === "subcategory" && (
+        <SubcategoryView
+          onClose={onClose}
+          onBack={() => setView("shop")}
+          shortKey={view.shortKey}
+          label={view.label}
+        />
+      )}
     </div>,
     document.body
   );
@@ -72,6 +90,84 @@ function RootView({ onClose, onOpenShop }) {
             Contact
           </a>
         </div>
+      </div>
+    </>
+  );
+}
+
+function ShopView({ onClose, onBack, onOpenSubcategory }) {
+  return (
+    <>
+      <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ‹ BACK
+        </button>
+        <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
+          SHOP
+        </span>
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ✕
+        </button>
+      </header>
+      <div className="flex-1 px-8 pt-10 pb-8 flex flex-col gap-6 overflow-y-auto">
+        {NAV_TOP_LEVEL.map((cat) => {
+          const subs = SUBCATEGORIES_BY_SHORTKEY[cat.shortKey];
+          const hasSubs = !!subs;
+          if (hasSubs) {
+            return (
+              <button
+                key={cat.slug}
+                onClick={() => onOpenSubcategory({ shortKey: cat.shortKey, label: cat.label })}
+                className="flex items-center justify-between font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+              >
+                <span>{cat.label.toUpperCase()}</span>
+                <span className="text-zinc-600 text-[14px] font-light">›</span>
+              </button>
+            );
+          }
+          return (
+            <Link
+              key={cat.slug}
+              href={buildFreshFeedUrl({ category: [cat.slug] })}
+              onClick={onClose}
+              className="flex items-center justify-between font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+            >
+              <span>{cat.label.toUpperCase()}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function SubcategoryView({ onClose, onBack, shortKey, label }) {
+  const subs = SUBCATEGORIES_BY_SHORTKEY[shortKey];
+  if (!subs) return null;
+  return (
+    <>
+      <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ‹ BACK
+        </button>
+        <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
+          {label.toUpperCase()}
+        </span>
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ✕
+        </button>
+      </header>
+      <div className="flex-1 px-8 pt-10 pb-8 flex flex-col gap-6 overflow-y-auto">
+        {subs.items.slice(1).map(([slug, sublabel]) => (
+          <Link
+            key={slug}
+            href={buildFreshFeedUrl({ category: [slug] })}
+            onClick={onClose}
+            className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+          >
+            {sublabel}
+          </Link>
+        ))}
       </div>
     </>
   );
