@@ -10,6 +10,7 @@ import DesktopSortMenu from "../components/feed/DesktopSortMenu";
 import DesktopFilterPanel from "../components/feed/DesktopFilterPanel";
 import FilterChip from "../components/feed/FilterChip";
 import MobileSearchStrip from "../components/MobileSearchStrip";
+import MobileFeedActionBar from "../components/MobileFeedActionBar";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_OPTIONS, SORT_MAP } from "../lib/sort-options";
 
@@ -374,6 +375,11 @@ export default function FeedClient({ stores = [] }) {
         />
 
         <MobileSearchStrip query={searchQuery} onClear={handleClearSearch} />
+        <MobileFeedActionBar
+          hasActiveFilters={activeFilterCount > 0}
+          onOpenFilters={() => { setSortOpen(false); setFilterOpen(true); }}
+          onOpenSort={() => { setFilterOpen(false); setSortOpen(true); }}
+        />
         <main className="mx-auto max-w-7xl px-4 pb-24 md:pb-32 pt-3 md:pt-8">
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
