@@ -158,7 +158,7 @@ function SubcategoryView({ onClose, onBack, shortKey, label }) {
         </button>
       </header>
       <div className="flex-1 px-8 pt-10 pb-8 flex flex-col gap-6 overflow-y-auto">
-        {subs.items.slice(1).map(([slug, sublabel]) => (
+        {subs.items.map(([slug, sublabel]) => (
           <Link
             key={slug}
             href={buildFreshFeedUrl({ category: [slug] })}
