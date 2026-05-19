@@ -73,6 +73,13 @@ export default function Column1({ expandedKey, onExpand, onClose }) {
           {expandedKey === "stores" && <span className="-ml-4 mr-1">— </span>}
           Stores
         </button>
+        <Link
+          href="/editorial"
+          onClick={onClose}
+          className={itemBase}
+        >
+          Editorial
+        </Link>
       </div>
 
       <div className="mt-8">
