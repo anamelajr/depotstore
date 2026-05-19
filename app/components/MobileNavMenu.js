@@ -82,6 +82,13 @@ function RootView({ onClose, onOpenShop }) {
         >
           <span>DESIGNERS</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </Link>
+        <Link
+          href="/editorial"
+          onClick={onClose}
+          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
+        >
+          <span>EDITORIAL</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+        </Link>
         <div className="mt-auto pt-8 border-t border-zinc-900 flex flex-col gap-4">
           <Link href="/about" onClick={onClose} className="font-sans text-[11px] text-zinc-500">
             About
