@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getEntryBySlug, getAllSlugs } from "../../../content/editorial/index.js";
+import EditorialHero from "../_components/EditorialHero.js";
 
 export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
@@ -18,10 +19,8 @@ export default async function EditorialEntryPage({ params }) {
   if (!entry) notFound();
 
   return (
-    <main className="min-h-screen bg-[#f5f2ed] text-zinc-900 px-8 py-12">
-      <pre className="font-mono text-[11px] overflow-x-auto">
-        {JSON.stringify(entry, null, 2)}
-      </pre>
+    <main className="min-h-screen bg-[#f5f2ed] text-zinc-900">
+      <EditorialHero entry={entry} />
     </main>
   );
 }
