@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { buildFeedUrl } from "../lib/feed-utils";
 import Link from "next/link";
 import DesktopNav from "./DesktopNav";
@@ -10,6 +10,12 @@ import MobileNavMenu from "./MobileNavMenu";
 export default function Nav({ onAboutOpen, stores = [] }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
+  // Suppress the mobile nav's bottom border only on /feed when ?search= is
+  // set — that is the only place MobileSearchStrip is rendered to provide
+  // a replacement divider. Anywhere else, the nav keeps its own border.
+  const hasMobileSearchBanner =
+    pathname === "/feed" && Boolean(searchParams.get("search"));
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [mobileSearchQuery, setMobileSearchQuery] = useState("");
@@ -24,7 +30,7 @@ export default function Nav({ onAboutOpen, stores = [] }) {
   return (
     <>
       {/* Mobile nav */}
-      <nav className="sticky top-0 z-50 flex h-[50px] items-center border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur md:hidden">
+      <nav className={`sticky top-0 z-50 flex h-[50px] items-center ${hasMobileSearchBanner ? "" : "border-b border-zinc-800"} bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur md:hidden`}>
         <div className="mx-auto flex w-full max-w-7xl items-center px-4">
           <div className="flex items-center justify-between w-full">
             {isMobileSearchOpen ? (
