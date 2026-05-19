@@ -312,7 +312,7 @@ export default function FeedClient({ stores = [] }) {
   const hasMore = !loading && products.length < total;
 
   return (
-    <div className="min-h-screen font-mono antialiased overflow-x-hidden">
+    <div className="min-h-screen font-mono antialiased overflow-x-clip">
       <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
 
         {/* Mobile panels */}
