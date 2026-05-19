@@ -6,10 +6,10 @@ const entry = {
     layout: "image-right",
     eyebrow: "Editorial",
     title: "Rick Owens",
-    subtitle: "The silhouette as architecture.\nThe body as subversion.",
+    subtitle: "Black cloth, long shadows.\nA uniform for the beautiful outsider.",
     byline: "By DÉPÔT",
     images: ["hero.webp"],
-    imageAlt: ["Rick Owens FW04 leather cape on concrete stairs."],
+    imageAlt: ["Rick Owens portrait in black"],
   },
 
   brandFilter: "Rick Owens",
@@ -31,59 +31,47 @@ const entry = {
       type: "text",
       width: "narrow",
       dropcap: true,
-      body:
-        "In a fashion landscape that rarely pauses, Rick Owens continues to create in shadow — unbothered, uncompromising, and entirely his own. For over three decades, he has built more than a brand; he has constructed a world.\n\nA world of long silhouettes, softened brutality, and a devotion to cut that borders on spiritual. Owens doesn't design for attention — he designs for presence.",
+      body: "Rick Owens builds clothes like shelter. Long lines, dropped crotches, warped leather, heavy boots, thin knits, and coats that move like architecture. The mood is severe, but never cold: part monastery, part nightclub, part desert ruin.",
     },
-    { type: "section-heading", text: "Architecture as attitude" },
+    { type: "section-heading", text: "Beauty, but scorched" },
     {
       type: "text",
       width: "narrow",
-      body:
-        "Owens has often spoken about architecture as the truest expression of clothing. His collections — temples of concrete, draped in silence — echo that belief. Shoulders become structures. Drapes fall like façades. Every seam, every fold, every shadow serves a purpose.",
+      body: "Owens made black feel expansive, not basic. His palette lives in ash, bone, dust, pearl, bruise, and pitch. The clothes look worn before they are worn, which is the point.",
     },
     {
       type: "image",
       src: "03.webp",
       width: "full-bleed",
-      alt: "FW19 runway — concrete amphitheatre, draped wool.",
+      alt: "Full-length Rick Owens runway look with elongated black silhouette and heavy boots",
     },
     {
       type: "pullquote",
-      text: "I am a designer of survivors. People who carry sadness with elegance.",
-      attribution: "Rick Owens, 2004",
+      text: "Working out is modern couture.",
+      attribution: "Rick Owens",
     },
     {
       type: "text",
       width: "narrow",
-      body:
-        "The quote is twenty years old. It still describes the cut of the FW24 cape — the way drape and weight conspire to make the body feel monumental, even at rest. Archive Owens reads like a sustained argument about how clothing should carry a person, not the other way around.",
+      body: "The body matters in Rick Owens. Shoulders are exaggerated, legs are stretched, torsos are wrapped or exposed. The silhouette is not flattering in the usual way; it is commanding.",
+    },
+    { type: "section-heading", text: "The uniform cult" },
+    {
+      type: "text",
+      width: "narrow",
+      body: "A Rick Owens piece rarely behaves like a trend item. It becomes part of a personal system: one boot, one jacket, one perfect layer too many. The effect is private, protective, and instantly readable.",
     },
     {
       type: "image",
       src: "04.jpg",
-      width: "wide",
-      caption: "FW04 leather, slung shoulder.",
-      alt: "FW04 leather jacket, slung shoulder, hanging on a mannequin.",
+      width: "full-bleed",
+      alt: "Close-up of Rick Owens leather, draped jersey, raw seams, and dark textured materials",
     },
-    { type: "section-heading", text: "The materials, the palette" },
+    { type: "section-heading", text: "Luxury with damage" },
     {
       type: "text",
       width: "narrow",
-      body:
-        "Black, dust, oyster, slate. A palette that reads like weather. Leather that has been distressed, waxed, or boiled into something between fabric and architecture. Owens collaborates with mills the way a sculptor collaborates with stone — the material is never the constraint, it's the partner.",
-    },
-    {
-      type: "image-pair",
-      images: [
-        { src: "05.webp", alt: "Boiled wool detail, FW18." },
-        { src: "06.jpg", alt: "Dust-tone cashmere knit, SS21." },
-      ],
-    },
-    {
-      type: "text",
-      width: "narrow",
-      body:
-        "To wear Owens is to take a position. About bodies, about volume, about whether clothing should comfort or confront. Three decades in, the position has only sharpened.",
+      body: "The materials carry the drama: washed leather, unstable jersey, shaved shearling, lacquered denim, rubber soles built like sculpture. Owens makes imperfection expensive without polishing it into politeness. That tension is the brand: elegance dragged through the dark and still standing.",
     },
   ],
 };
