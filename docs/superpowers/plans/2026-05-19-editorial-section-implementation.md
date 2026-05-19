@@ -40,6 +40,46 @@ npm install && npm run build
 
 Expected: build completes without errors. If it fails, fix before touching new code (this plan assumes a green starting baseline).
 
+- [ ] **Step 4: Align Node module mode by adding `"type": "module"` to package.json**
+
+The repo has no `"type"` field in `package.json`, which makes Node treat `.js` files as CommonJS by default. Every `.js` file in `app/` and `scripts/` already uses ESM `import`/`export` syntax, every config is already `.mjs`, and there are zero `module.exports` or `require()` calls in the codebase — so this is alignment, not migration. Required to make the `node --test` step in Task 5 runnable.
+
+Edit `package.json`. After `"private": true,` add a new line `"type": "module",`. The top of the file should look like:
+
+```json
+{
+  "name": "archiveapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+```
+
+- [ ] **Step 5: Verify build + dev still work**
+
+```bash
+npm run build
+```
+
+Expected: build succeeds, route map identical to step 3.
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000/`, click around the feed, open one PDP. Confirm nothing regressed. Kill the dev server.
+
+- [ ] **Step 6: Commit the foundation change**
+
+```bash
+git add package.json
+git commit -m "chore: declare ESM module type in package.json
+
+Aligns Node's default parser with the codebase, which already uses ESM
+syntax everywhere. Required so node --test can run the editorial
+data-layer tests added in the editorial-section feature plan."
+```
+
 ---
 
 ## Task 1: Scaffold the editorial route + content registry
@@ -756,9 +796,7 @@ git commit -m "feat(editorial): add EditorialBody renderer with five block types
 
 ## Task 5: `fetchEditorialProducts` lib + node:test
 
-**Goal:** A pure data layer that fetches the curated handles and the brand pool from Supabase, in one place, with the CLAUDE.md invariants baked in (`available=true` + `hidden=false`, `chunkArray` for IN queries, brand `ilike` filter). Tested standalone with `node:test` and a fake Supabase shim.
-
-**Note on unaccent:** The CLAUDE.md invariant for brand filtering is `unaccent + ILIKE`. That `unaccent` is applied inside the `get_interleaved_products` RPC; a plain `.ilike("brand", "%X%")` from JS does NOT apply it. For the MVP entry (Rick Owens — ASCII), this difference is invisible. For diacritic-heavy designers later (e.g. "Yohji Yamamoto pour Homme" vs accented variants), revisit by either (a) calling the existing RPC with `p_brand` set, or (b) adding a small read-only `get_brand_pool` RPC. Keep the limitation explicit in code via a one-line comment in the lib so a future reader knows the seam.
+**Goal:** A pure data layer that fetches the curated handles and the brand pool from Supabase, in one place, with the CLAUDE.md invariants baked in (`available=true` + `hidden=false`, `chunkArray` for IN queries, brand filtering via the existing `unaccent + ilike` RPC). Tested standalone with `node:test` and a fake Supabase shim.
 
 **Files:**
 - Create: `app/editorial/_lib/fetchEditorialProducts.js`
@@ -842,19 +880,20 @@ async function fetchCurated(client, curatedProducts) {
 
 async function fetchBrandPool(client, brandFilter, excludeKeys, limit) {
   if (!brandFilter || limit <= 0) return [];
-  // NOTE: plain ilike — no unaccent. See "Note on unaccent" in the plan / spec.
-  // ASCII brand names match correctly; diacritic-heavy names need an RPC.
-  const { data, error } = await client
-    .from("products")
-    .select(ROW_SELECT)
-    .ilike("brand", `%${brandFilter}%`)
-    .eq("available", true)
-    .eq("hidden", false)
-    .order("synced_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit + excludeKeys.size + 4); // pull a few extra to survive exclusions
+  // Reuse the feed's default-sort RPC so we inherit unaccent + ILIKE
+  // semantics AND the same interleave-by-store ordering Dépôt uses for
+  // discovery elsewhere. The RPC enforces available=true / hidden=false
+  // internally and accepts only the brand we want.
+  const { data, error } = await client.rpc("get_interleaved_products", {
+    p_store: null,
+    p_category: null,
+    p_search: null,
+    p_brand: brandFilter,
+    p_limit: limit + excludeKeys.size + 4, // pull extras to survive exclusions
+    p_offset: 0,
+  });
   if (error) {
-    console.error("[fetchEditorialProducts] brand-pool fetch error:", error.message);
+    console.error("[fetchEditorialProducts] brand-pool RPC error:", error.message);
     return [];
   }
   const out = [];
@@ -916,14 +955,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fetchEditorialProducts } from "./fetchEditorialProducts.js";
 
-// Tiny Supabase shim: records the predicates a query receives and returns
-// a configurable result. Each .from() returns a fresh builder.
+// Tiny Supabase shim: records the predicates a query OR an .rpc() call
+// receives and returns a configurable result. Each .from() returns a
+// fresh builder; .rpc() resolves immediately with the configured payload.
 function makeFakeClient(rowsByCall) {
   const calls = [];
   return {
     calls,
     from(table) {
-      const state = { table, filters: [], order: [], limit: null, op: null };
+      const state = { kind: "query", table, filters: [], order: [], limit: null };
       const builder = {
         select(cols) { state.cols = cols; return builder; },
         eq(col, val) { state.filters.push(["eq", col, val]); return builder; },
@@ -938,6 +978,12 @@ function makeFakeClient(rowsByCall) {
         },
       };
       return builder;
+    },
+    async rpc(name, params) {
+      const state = { kind: "rpc", name, params };
+      const result = rowsByCall(state, calls.length);
+      calls.push(state);
+      return result;
     },
   };
 }
@@ -989,16 +1035,18 @@ test("curated query is split per store_domain and filters available + hidden", a
   assert.equal(curated[1].handle, "b");
 });
 
-test("more-from uses ilike + excludes curated handles", async () => {
+test("more-from calls get_interleaved_products RPC + excludes curated handles", async () => {
   const client = makeFakeClient((state, i) => {
     if (i === 0) return { data: [row("a", "esco.test")] };
-    // The brand-pool call: should use ilike brand and exclude "a"
-    const got = Object.fromEntries(
-      state.filters.map(([op, col, val]) => [`${op}:${col}`, val])
-    );
-    assert.equal(got["ilike:brand"], "%Rick Owens%");
-    assert.equal(got["eq:available"], true);
-    assert.equal(got["eq:hidden"], false);
+    // The brand-pool call: must be an RPC call with p_brand set (gets
+    // unaccent + same default-sort ordering as the feed).
+    assert.equal(state.kind, "rpc");
+    assert.equal(state.name, "get_interleaved_products");
+    assert.equal(state.params.p_brand, "Rick Owens");
+    assert.equal(state.params.p_store, null);
+    assert.equal(state.params.p_category, null);
+    assert.equal(state.params.p_search, null);
+    assert.equal(state.params.p_offset, 0);
     return { data: [row("a", "esco.test"), row("x", "esco.test"), row("y", "esco.test")] };
   });
 
