@@ -62,8 +62,7 @@ export const CATEGORY_SLUG_TO_DB = Object.fromEntries(
 
 // Filter panel groups. Leaves have children=null; groups include an
 // "All <Label>" entry as the first child (so the parent slug remains
-// selectable). Used by DesktopFilterPanel directly and adapted by
-// MobileFilterDrawer.
+// selectable). Used by DesktopFilterPanel.
 export const FILTER_GROUPS = CATEGORIES.map((c) => ({
   value: c.slug,
   label: c.label,
