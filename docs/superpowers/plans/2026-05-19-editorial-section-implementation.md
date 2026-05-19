@@ -147,8 +147,9 @@ export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }) {
-  const entry = getEntryBySlug(params.slug);
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const entry = getEntryBySlug(slug);
   if (!entry) return { title: "Not found · Dépôt" };
   return { title: `${entry.hero.title} · Editorial · Dépôt` };
 }
@@ -443,8 +444,9 @@ export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }) {
-  const entry = getEntryBySlug(params.slug);
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const entry = getEntryBySlug(slug);
   if (!entry) return { title: "Not found · Dépôt" };
   return { title: `${entry.hero.title} · Editorial · Dépôt` };
 }
@@ -1264,8 +1266,9 @@ export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }) {
-  const entry = getEntryBySlug(params.slug);
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const entry = getEntryBySlug(slug);
   if (!entry) return { title: "Not found · Dépôt" };
   return {
     title: `${entry.hero.title} · Editorial · Dépôt`,
