@@ -7,6 +7,11 @@ import PiecesFeatured from "../_components/PiecesFeatured.js";
 import MoreFromDesigner from "../_components/MoreFromDesigner.js";
 import { fetchEditorialProducts } from "../_lib/fetchEditorialProducts.js";
 
+// Refresh the live "Pieces featured" + "More from" grids on the same cadence
+// as the Shopify→Supabase sync. Without this, generateStaticParams would
+// freeze inventory data into the build artifact.
+export const revalidate = 3600;
+
 export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
 }
