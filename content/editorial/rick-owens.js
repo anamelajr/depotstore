@@ -8,7 +8,7 @@ const entry = {
     title: "Rick Owens",
     subtitle: "The silhouette as architecture.\nThe body as subversion.",
     byline: "By DÉPÔT",
-    images: ["hero.jpg"],
+    images: ["hero.webp"],
     imageAlt: ["Rick Owens FW04 leather cape on concrete stairs."],
   },
 
@@ -43,7 +43,7 @@ const entry = {
     },
     {
       type: "image",
-      src: "03.jpg",
+      src: "03.webp",
       width: "full-bleed",
       alt: "FW19 runway — concrete amphitheatre, draped wool.",
     },
@@ -75,7 +75,7 @@ const entry = {
     {
       type: "image-pair",
       images: [
-        { src: "05.jpg", alt: "Boiled wool detail, FW18." },
+        { src: "05.webp", alt: "Boiled wool detail, FW18." },
         { src: "06.jpg", alt: "Dust-tone cashmere knit, SS21." },
       ],
     },
