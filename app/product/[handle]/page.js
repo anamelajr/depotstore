@@ -1,4 +1,3 @@
-import { Inter } from "next/font/google";
 import BackToFeedLink from "../../components/BackToFeedLink";
 import ProductGallery from "../../components/ProductGallery";
 import Accordion from "../../components/Accordion";
@@ -8,7 +7,6 @@ import { generateDescription } from "../../lib/generateDescription";
 import { supabase, supabaseAdmin } from "../../lib/supabase.js";
 import Link from "next/link";
 
-const inter = Inter({ subsets: ["latin"] });
 
 async function getProduct(handle, storeDomain) {
   try {
@@ -144,7 +142,7 @@ export default async function ProductPage({ params, searchParams }) {
                   {brand}
                 </p>
               )}
-              <h1 className={`${inter.className} mt-2.5 font-sans text-[14px] font-normal leading-[1.4] text-zinc-600`}>
+              <h1 className="mt-2.5 font-sans text-[14px] font-normal leading-[1.4] text-zinc-600">
                 {title}
               </h1>
             </div>
@@ -230,7 +228,7 @@ export default async function ProductPage({ params, searchParams }) {
               </p>
             )}
             <h1
-              className={`${inter.className} mt-2 text-[clamp(22px,2.2vw,28px)] font-medium leading-[1.25] tracking-tight text-zinc-900`}
+              className="mt-2 font-sans text-[clamp(22px,2.2vw,28px)] font-medium leading-[1.25] tracking-tight text-zinc-900"
             >
               {title}
             </h1>
@@ -246,7 +244,7 @@ export default async function ProductPage({ params, searchParams }) {
             )}
             {description && (
               <p
-                className={`${inter.className} mt-10 text-[13px] leading-[1.7] text-zinc-600`}
+                className="mt-10 font-sans text-[13px] leading-[1.7] text-zinc-600"
               >
                 {description}
               </p>

@@ -1,23 +1,30 @@
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/react";
 import LayoutClient from "./components/LayoutClient";
 import Footer from "./components/Footer";
 import { getActiveStores } from "./lib/stores.js";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const satoshi = localFont({
+  src: [
+    { path: "./fonts/Satoshi-300.woff2", weight: "300", style: "normal" },
+    { path: "./fonts/Satoshi-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/Satoshi-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/Satoshi-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-satoshi",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const playfairDisplay = Playfair_Display({
-  variable: "--font-playfair",
-  subsets: ["latin"],
+const generalSans = localFont({
+  src: [
+    { path: "./fonts/GeneralSans-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/GeneralSans-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/GeneralSans-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/GeneralSans-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-general-sans",
+  display: "swap",
 });
 
 export const metadata = {
@@ -30,7 +37,7 @@ export default async function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} h-full antialiased`}
+      className={`h-full antialiased ${satoshi.variable} ${generalSans.variable}`}
     >
       <body className="min-h-full flex flex-col">
         <LayoutClient stores={stores}>{children}</LayoutClient>

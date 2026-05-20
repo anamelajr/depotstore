@@ -54,7 +54,7 @@ export default function ParisMap({ products = [], stores = [] }) {
         }).addTo(map);
 
         circle.bindTooltip(
-          `<div style="font-family:monospace;font-size:11px;line-height:1.6;background:#0a0a0a;color:#e4e4e7;border:1px solid #3f3f46;padding:8px 12px;border-radius:0;">
+          `<div style="font-family:var(--font-general-sans),sans-serif;font-size:11px;line-height:1.6;background:#0a0a0a;color:#e4e4e7;border:1px solid #3f3f46;padding:8px 12px;border-radius:0;">
             <strong style="font-size:12px;">${store.name}</strong><br/>
             ${store.location}<br/>
             <span style="color:#71717a">${count} pcs</span>
@@ -77,7 +77,7 @@ export default function ParisMap({ products = [], stores = [] }) {
           const btnStyle = `
       width:32px;height:32px;background:#0a0a0a;color:#a1a1aa;
       border:1px solid #3f3f46;display:flex;align-items:center;
-      justify-content:center;cursor:pointer;font-family:monospace;
+      justify-content:center;cursor:pointer;font-family:var(--font-general-sans),sans-serif;
       font-size:16px;line-height:1;transition:color 0.2s,border-color 0.2s;
     `;
 
