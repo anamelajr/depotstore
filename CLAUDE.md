@@ -28,6 +28,11 @@ feed filtered by store, category, brand, price, search.
   Price sort fetches all matching rows and sorts in JS.
 - **PDP**: Shopify live fetch + Supabase brand/title/store + on-demand
   description (cached back to the row).
+- **Editorial** (`/editorial/[slug]`): static content modules registered in
+  `content/editorial/index.js`'s hardcoded `ENTRIES` array — new entries are
+  imported + pushed, no filesystem auto-discovery. Each module exports
+  `{ hero, brandFilter, curatedProducts, blocks }`. `scripts/draftEditorial.mjs`
+  scaffolds drafts.
 
 ## Before editing
 
@@ -92,6 +97,12 @@ surfaces: `/api/products/route.js`, the `get_interleaved_products` /
   RESET→APPLY race.
 - **Single sources of truth:** category taxonomy + `CATEGORY_SLUG_TO_DB` →
   `app/lib/categories.js`; sort options → `app/lib/sort-options.js`.
+- **Editorial entry pages set `revalidate = 3600`.** Without it,
+  `generateStaticParams` freezes Supabase reads into the build artifact and
+  the "Live inventory · N in stock" header lies between deploys.
+- **`fetchEditorialProducts` preserves curated order via an `orderIndex`
+  Map.** Supabase `.in()` returns arbitrary order; the helper rehydrates the
+  editorial sequence. A naive flatten silently reshuffles curated grids.
 
 ## DB objects not in git
 
@@ -127,6 +138,14 @@ applying any change.
 - **`overflow-x-hidden` promotes `overflow-y` to auto** and creates a new
   scrolling ancestor — breaks `position: sticky` descendants. Use
   `overflow-x-clip` on feed wrappers.
+- **Font variables are two-layer.** `next/font/local` exposes
+  `--font-satoshi` / `--font-general-sans`; `@theme inline` in `globals.css`
+  maps Tailwind's `--font-sans` / `--font-mono` / `--font-serif` onto them.
+  Collapsing the layers (renaming the next/font variable to `--font-mono`,
+  etc.) re-introduces a self-referential `@theme` that fails silently if
+  anyone drops `inline`. Raw-HTML injection (Leaflet markup in
+  `ParisMap.js`) must reference the next/font variable directly — Tailwind
+  utilities can't reach a detached DOM.
 
 ## Workflow
 
@@ -148,6 +167,4 @@ CRON_SECRET                       # bearer for /api/cron + /api/enrich;
 OPENAI_API_KEY
 VERCEL_AUTOMATION_BYPASS_SECRET   # auto-injected; lets cron self-fetch
                                   # bypass Vercel SSO on previews
-BEEHIIV_PUBLICATION_ID
-BEEHIIV_API_KEY
 ```
