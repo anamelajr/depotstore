@@ -167,6 +167,4 @@ CRON_SECRET                       # bearer for /api/cron + /api/enrich;
 OPENAI_API_KEY
 VERCEL_AUTOMATION_BYPASS_SECRET   # auto-injected; lets cron self-fetch
                                   # bypass Vercel SSO on previews
-BEEHIIV_PUBLICATION_ID
-BEEHIIV_API_KEY
 ```
