@@ -12,7 +12,7 @@ const satoshi = localFont({
     { path: "./fonts/Satoshi-500.woff2", weight: "500", style: "normal" },
     { path: "./fonts/Satoshi-700.woff2", weight: "700", style: "normal" },
   ],
-  variable: "--font-sans",
+  variable: "--font-satoshi",
   display: "swap",
 });
 
@@ -23,7 +23,7 @@ const generalSans = localFont({
     { path: "./fonts/GeneralSans-600.woff2", weight: "600", style: "normal" },
     { path: "./fonts/GeneralSans-700.woff2", weight: "700", style: "normal" },
   ],
-  variable: "--font-serif",
+  variable: "--font-general-sans",
   display: "swap",
 });
 
