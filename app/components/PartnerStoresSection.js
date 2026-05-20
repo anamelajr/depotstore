@@ -26,7 +26,7 @@ export default function PartnerStoresSection({ products = [], stores = [] }) {
               <span
                 className="font-medium tracking-tight transition-colors group-hover:text-zinc-50"
                 style={{
-                  fontFamily: "'General Sans', sans-serif",
+                  fontFamily: "var(--font-serif), sans-serif",
                   fontSize: "clamp(20px, 3vw, 28px)",
                 }}
               >

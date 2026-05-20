@@ -91,7 +91,7 @@ try {
               </p>
               <h2
                 className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
-                style={{ fontFamily: "'General Sans', sans-serif" }}
+                style={{ fontFamily: "var(--font-serif), sans-serif" }}
               >
                 Today&apos;s Edit
               </h2>
@@ -124,7 +124,7 @@ try {
             </p>
             <h2
               className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
-              style={{ fontFamily: "'General Sans', sans-serif" }}
+              style={{ fontFamily: "var(--font-serif), sans-serif" }}
             >
               Across Paris
             </h2>

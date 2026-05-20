@@ -1,4 +1,3 @@
-@import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=general-sans@400,500,600,700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -10,9 +9,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Satoshi', sans-serif;
-  --font-mono: 'General Sans', sans-serif;
-  --font-serif: 'General Sans', sans-serif;
+  --font-sans: var(--font-sans), sans-serif;
+  --font-mono: var(--font-serif), sans-serif;
+  --font-serif: var(--font-serif), sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,7 +24,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Satoshi', sans-serif;
+  font-family: var(--font-sans), sans-serif;
 }
 
 .depot-tooltip .leaflet-tooltip {

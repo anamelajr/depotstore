@@ -39,7 +39,7 @@ export default async function StoresPage() {
         </p>
         <h1
           className="mb-16 text-[clamp(36px,6vw,56px)] font-medium leading-tight tracking-tight"
-          style={{ fontFamily: "'General Sans', sans-serif" }}
+          style={{ fontFamily: "var(--font-serif), sans-serif" }}
         >
           Partner Stores
         </h1>
@@ -60,7 +60,7 @@ export default async function StoresPage() {
                   </span>
                   <span
                     className="text-[clamp(24px,4vw,32px)] font-medium tracking-tight transition-colors group-hover:text-zinc-50"
-                    style={{ fontFamily: "'General Sans', sans-serif" }}
+                    style={{ fontFamily: "var(--font-serif), sans-serif" }}
                   >
                     {store.displayName}
                   </span>

@@ -1,8 +1,31 @@
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/react";
 import LayoutClient from "./components/LayoutClient";
 import Footer from "./components/Footer";
 import { getActiveStores } from "./lib/stores.js";
 import "./globals.css";
+
+const satoshi = localFont({
+  src: [
+    { path: "./fonts/Satoshi-300.woff2", weight: "300", style: "normal" },
+    { path: "./fonts/Satoshi-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/Satoshi-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/Satoshi-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const generalSans = localFont({
+  src: [
+    { path: "./fonts/GeneralSans-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/GeneralSans-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/GeneralSans-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/GeneralSans-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-serif",
+  display: "swap",
+});
 
 export const metadata = {
   title: "Create Next App",
@@ -12,7 +35,10 @@ export const metadata = {
 export default async function RootLayout({ children }) {
   const stores = await getActiveStores();
   return (
-    <html lang="en" className="h-full antialiased">
+    <html
+      lang="en"
+      className={`h-full antialiased ${satoshi.variable} ${generalSans.variable}`}
+    >
       <body className="min-h-full flex flex-col">
         <LayoutClient stores={stores}>{children}</LayoutClient>
         <Footer />
