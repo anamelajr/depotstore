@@ -1,24 +1,8 @@
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import LayoutClient from "./components/LayoutClient";
 import Footer from "./components/Footer";
 import { getActiveStores } from "./lib/stores.js";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const playfairDisplay = Playfair_Display({
-  variable: "--font-playfair",
-  subsets: ["latin"],
-});
 
 export const metadata = {
   title: "Create Next App",
@@ -28,10 +12,7 @@ export const metadata = {
 export default async function RootLayout({ children }) {
   const stores = await getActiveStores();
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <LayoutClient stores={stores}>{children}</LayoutClient>
         <Footer />

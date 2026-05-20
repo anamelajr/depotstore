@@ -67,7 +67,7 @@ export default function ProductCard({ product }) {
         {/* Mobile */}
         <div className="md:hidden">
           {brand ? (
-            <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
+            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
               {brand}
             </div>
           ) : null}
@@ -90,7 +90,7 @@ export default function ProductCard({ product }) {
         <div className="hidden md:flex md:justify-between md:gap-4">
           <div className="flex flex-col min-w-0">
             {brand ? (
-              <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-100">
+              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
                 {brand}
               </div>
             ) : null}

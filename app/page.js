@@ -45,7 +45,7 @@ try {
       <section className="relative flex min-h-screen flex-col bg-[#f5f2ed] text-zinc-950">
         <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 pt-8">
           <div className="max-w-4xl">
-            <div className="text-[clamp(60px,10vw,132px)] font-bold uppercase leading-[0.9] tracking-tight">
+            <div className="text-[clamp(60px,10vw,132px)] font-medium uppercase leading-[0.9] tracking-tight">
               DÉPÔT
             </div>
             <div className="mt-6 max-w-2xl text-sm leading-6 text-zinc-800">
@@ -90,8 +90,8 @@ try {
                 Selection
               </p>
               <h2
-                className="text-[clamp(28px,4vw,40px)] font-medium leading-tight tracking-tight"
-                style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
+                className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
+                style={{ fontFamily: "'General Sans', sans-serif" }}
               >
                 Today&apos;s Edit
               </h2>
@@ -123,8 +123,8 @@ try {
               Geography
             </p>
             <h2
-              className="text-[clamp(28px,4vw,40px)] font-medium leading-tight tracking-tight"
-              style={{ fontFamily: "var(--font-playfair), Georgia, serif" }}
+              className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
+              style={{ fontFamily: "'General Sans', sans-serif" }}
             >
               Across Paris
             </h2>
