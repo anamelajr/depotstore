@@ -103,6 +103,20 @@ surfaces: `/api/products/route.js`, the `get_interleaved_products` /
 - **`fetchEditorialProducts` preserves curated order via an `orderIndex`
   Map.** Supabase `.in()` returns arbitrary order; the helper rehydrates the
   editorial sequence. A naive flatten silently reshuffles curated grids.
+- **Homepage picks are stored as JSON, loaded dynamically, with a runtime
+  fallback to the date-seeded rotation.** `content/homepage-edit.json` is
+  read by `app/lib/loadHomepagePicks.js` via `fs.readFile` + `JSON.parse`
+  inside try/catch. Returns `[]` on any read/parse failure. Never `import`
+  the picks file statically — a syntax error would crash production
+  homepage rendering before the fallback could trigger.
+- **`save-homepage-edit` writes atomically.** Serialize → write to
+  `homepage-edit.json.tmp.<pid>.<ts>` → `fs.rename` to the final path.
+  Prevents truncated files crashing the homepage during a mid-write
+  interruption.
+- **Editorial save rollback is asymmetric.** If `<slug>.js` writes but
+  `index.js` patch fails AND the slug file did not exist before this
+  save, the slug file is unlinked. For existing entries, no rollback —
+  prior content is already overwritten.
 
 ## DB objects not in git
 
@@ -146,6 +160,20 @@ applying any change.
   anyone drops `inline`. Raw-HTML injection (Leaflet markup in
   `ParisMap.js`) must reference the next/font variable directly — Tailwind
   utilities can't reach a detached DOM.
+- **Admin tool is local-only.** `/admin/*` and `/api/admin/*` return 404 in
+  production via `middleware.js`. Tool runs only during `npm run dev`,
+  writes to the filesystem (`content/editorial/<slug>.js` + auto-patched
+  `content/editorial/index.js`, or `content/homepage-edit.json`). Editorial
+  drafting via OpenAI lives in `app/lib/draftEditorialPrompt.js`, shared
+  by `scripts/draftEditorial.mjs` (CLI) and `/api/admin/draft`. If you
+  rename the `ENTRIES` constant in `content/editorial/index.js`, update
+  `app/lib/patchEditorialIndex.js`'s anchor regex too.
+- **`loadSource` defaults to `allowFiles: false`.** The shared draft helper
+  treats non-HTTP values as inline text unless the caller explicitly opts
+  in. Only the CLI opts in. **Never pass `allowFiles: true` from an HTTP
+  route** — request-controlled paths could read `.env.local` and
+  exfiltrate the contents through the OpenAI prompt (DNS rebind / hostile
+  local process). Documented as invariant #9 of the editorial-admin plan.
 
 ## Workflow
 
