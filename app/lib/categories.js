@@ -75,27 +75,40 @@ const SLUG_TO_FILTER = (() => {
   return map;
 })();
 
-// Given an array of URL slugs (parent or leaf), return the deduplicated
-// arrays of DB category values and subcategory slugs to filter on.
-// Either array may be empty.
+// Given an array of URL slugs (parent or leaf), separate them into:
+//   parentCategories — DB categories filtered without a subcategory constraint
+//   leafFilters      — (category, subcategory) pairs that must match together
+//
+// The caller composes them as an OR clause:
+//   category IN (parentCategories) OR (category=X AND subcategory=Y) OR …
+//
+// Keeping the two shapes separate is what fixes the mixed parent+leaf bug:
+// flattening into independent `category IN (…)` AND `subcategory IN (…)`
+// filters intersects them globally and silently drops parent-only rows.
 export function resolveCategoryFilter(slugs) {
   if (!Array.isArray(slugs) || slugs.length === 0) {
-    return { categoryDbValues: [], subcategorySlugs: [] };
+    return { parentCategories: [], leafFilters: [] };
   }
-  const cats = new Set();
-  const subs = new Set();
+  const parentCategories = new Set();
+  const leafFilters = [];
   for (const slug of slugs) {
     const entry = SLUG_TO_FILTER[slug];
     if (!entry) {
-      cats.add(slug);
+      // Unknown slug: preserve the legacy `|| s` fallback by treating it
+      // as a raw category filter. Mismatches are silently filtered out
+      // downstream when no rows match.
+      parentCategories.add(slug);
       continue;
     }
-    cats.add(entry.category);
-    if (entry.subcategory) subs.add(entry.subcategory);
+    if (entry.subcategory) {
+      leafFilters.push({ category: entry.category, subcategory: entry.subcategory });
+    } else {
+      parentCategories.add(entry.category);
+    }
   }
   return {
-    categoryDbValues: [...cats],
-    subcategorySlugs: [...subs],
+    parentCategories: [...parentCategories],
+    leafFilters,
   };
 }
 
