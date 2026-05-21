@@ -390,6 +390,40 @@ function isSwimwear(...sources) {
   return SWIMWEAR_RX.test(text);
 }
 
+function classifyTopsLeaf(text) {
+  if (!text) return null;
+  if (/\b(t[\s-]?shirts?|tee[\s-]?shirts?|tees?)\b/.test(text)) return "tees";
+  if (/\b(hoodies?|sweatshirts?|sweaters?|crewnecks?|cardigans?|pullovers?|fleeces?|half[\s-]?zips?)\b/.test(text)) return "hoodies_sweaters";
+  if (/\b(shirts?|blouses?|polo[\s-]?shirts?|polos?|button[\s-]?ups?|button[\s-]?downs?|overshirts?|tunics?|tank[\s-]?tops?|tanks?|camisoles?|cami|bodysuits?|bras?|corsets?|bustiers?|vests?|waistcoats?|jerseys?)\b/.test(text)) return "shirts_blouses";
+  if (/\b(knitwears?|knits?|turtlenecks?|roll[\s-]?necks?)\b/.test(text)) return "knitwear";
+  return null;
+}
+
+function classifyJacketsCoatsLeaf(text) {
+  if (!text) return null;
+  if (/\b(bombers?|blazers?|anoraks?|windbreakers?|boleros?|perfectos?)\b/.test(text)) return "jackets";
+  if (/\b(trench(?:coats?|es)?|parkas?|peacoats?|overcoats?|raincoats?)\b/.test(text)) return "coats";
+  if (/\bjackets?\b/.test(text)) return "jackets";
+  if (/\bcoats?\b/.test(text)) return "coats";
+  return null;
+}
+
+function classifyBagsAccessoriesLeaf(text) {
+  if (!text) return null;
+  if (/\b(bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|baguettes?|pouchettes?|card[\s-]?holders?)\b/.test(text)) return "bags";
+  if (/\b(belts?|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|bowtie|bow[\s-]?tie|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|compact[\s-]?mirrors?|chapkas?|neckties?|ties?)\b/.test(text)) return "accessories";
+  return null;
+}
+
+function classifyLeaf(parent, text) {
+  switch (parent) {
+    case "Tops":               return classifyTopsLeaf(text);
+    case "Jackets & Coats":    return classifyJacketsCoatsLeaf(text);
+    case "Bags & Accessories": return classifyBagsAccessoriesLeaf(text);
+    default:                   return null;
+  }
+}
+
 // Classify a product into one of the feed categories, or return null when
 // there is no confident match. Prefers null over a wrong guess — the feed
 // filter is unforgiving when rows are mislabelled.
@@ -458,41 +492,55 @@ export function assignCategory(product) {
   // "Leather Jacket" with a desc that mentions "layer over a swimsuit"
   // must still classify as Jackets — desc text is not allowed to veto a
   // strong title match.
-  if (isSwimwear(rawType, rawTitle, strippedName)) return null;
+  if (isSwimwear(rawType, rawTitle, strippedName)) {
+    return { category: null, subcategory: null };
+  }
 
   // Pass 1: cleaned title + productType.
   if (rawTitle.trim()) {
-    const result = tryClassify(prepareText(rawTitle));
-    if (result !== null) return result;
+    const text = prepareText(rawTitle);
+    const parent = tryClassify(text);
+    if (parent !== null) {
+      return { category: parent, subcategory: classifyLeaf(parent, text) };
+    }
   }
 
   // Pass 2: brand/vendor-stripped name + productType.
   if (strippedName.trim()) {
-    const result = tryClassify(prepareText(strippedName));
-    if (result !== null) return result;
+    const text = prepareText(strippedName);
+    const parent = tryClassify(text);
+    if (parent !== null) {
+      return { category: parent, subcategory: classifyLeaf(parent, text) };
+    }
   }
 
   // Late swim guard: title/name produced no match. If the description heads
   // betray swimwear context (a generic "One Piece" whose desc says "swim
   // suit"), null out before description fallback misclassifies on
   // accessory-style prose ("halter top", "ring detail", "tie belt").
-  if (isSwimwear(descHead, editorialHead)) return null;
+  if (isSwimwear(descHead, editorialHead)) {
+    return { category: null, subcategory: null };
+  }
 
   // Pass 3: raw description head. Description prose is noisier than titles,
   // so productType is NOT prepended (the desc already speaks for itself)
   // and `strict: true` drops bare set/suit/combination tokens from rule 6.
   if (descHead) {
-    const result = tryClassify(descHead, { strict: true });
-    if (result !== null) return result;
+    const parent = tryClassify(descHead, { strict: true });
+    if (parent !== null) {
+      return { category: parent, subcategory: classifyLeaf(parent, descHead) };
+    }
   }
 
   // Pass 4: editorial_description head. Last resort, also strict.
   if (editorialHead) {
-    const result = tryClassify(editorialHead, { strict: true });
-    if (result !== null) return result;
+    const parent = tryClassify(editorialHead, { strict: true });
+    if (parent !== null) {
+      return { category: parent, subcategory: classifyLeaf(parent, editorialHead) };
+    }
   }
 
-  return null;
+  return { category: null, subcategory: null };
 }
 
 export function toAbsoluteUrl(inputUrl, domain) {
