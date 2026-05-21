@@ -122,6 +122,10 @@ export default function Editor({ initialEntry, slug }) {
       alert("Slug is required and must be kebab-case.");
       return;
     }
+    if (/^\d/.test(effectiveSlug)) {
+      alert("Slug cannot start with a digit — prefix with a letter (e.g., \"y2026-archive\").");
+      return;
+    }
     const payload = { ...entry, slug: effectiveSlug };
     const res = await fetch("/api/admin/save", {
       method: "POST",

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { assertDev } from "../_gate.js";
 import { serializeEditorialModule } from "../../../lib/serializeEditorialModule.js";
-import { patchEditorialIndex } from "../../../lib/patchEditorialIndex.js";
+import { patchEditorialIndex, slugToIdentifier, isValidIdentifier } from "../../../lib/patchEditorialIndex.js";
 
 export async function POST(request) {
   const gate = assertDev();
@@ -22,6 +22,15 @@ export async function POST(request) {
   const slug = entry.slug;
   if (!slug || !/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
     return NextResponse.json({ error: "invalid slug" }, { status: 400 });
+  }
+  if (!isValidIdentifier(slugToIdentifier(slug))) {
+    return NextResponse.json(
+      {
+        error:
+          "slug produces a reserved word or digit-prefixed JS identifier — try prefixing with a letter (e.g., \"y2026-archive\" instead of \"2026-archive\")",
+      },
+      { status: 400 }
+    );
   }
 
   const root = process.cwd();

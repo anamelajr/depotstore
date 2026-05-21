@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { patchEditorialIndex, slugToIdentifier } from "../../app/lib/patchEditorialIndex.js";
+import {
+  patchEditorialIndex,
+  slugToIdentifier,
+  isValidIdentifier,
+} from "../../app/lib/patchEditorialIndex.js";
 
 const SAMPLE = `import rickOwens from "./rick-owens.js";
 
@@ -57,5 +61,53 @@ describe("patchEditorialIndex", () => {
     expect(() => patchEditorialIndex("// no entries here", "x")).toThrow(
       /ENTRIES/
     );
+  });
+
+  it("rejects slugs that produce digit-prefixed identifiers", () => {
+    expect(() => patchEditorialIndex(SAMPLE, "2026-archive")).toThrow(
+      /invalid JS identifier/
+    );
+  });
+
+  it("rejects slugs that produce reserved-word identifiers", () => {
+    expect(() => patchEditorialIndex(SAMPLE, "new")).toThrow(
+      /invalid JS identifier/
+    );
+    expect(() => patchEditorialIndex(SAMPLE, "class")).toThrow(
+      /invalid JS identifier/
+    );
+  });
+
+  it("accepts slugs whose first segment merely contains a reserved word", () => {
+    const out = patchEditorialIndex(SAMPLE, "new-collection");
+    expect(out).toContain('import newCollection from "./new-collection.js";');
+  });
+});
+
+describe("isValidIdentifier", () => {
+  it("accepts plain camelCase identifiers", () => {
+    expect(isValidIdentifier("rickOwens")).toBe(true);
+    expect(isValidIdentifier("comme")).toBe(true);
+    expect(isValidIdentifier("newCollection")).toBe(true);
+  });
+
+  it("rejects digit-prefixed identifiers", () => {
+    expect(isValidIdentifier("2026Archive")).toBe(false);
+    expect(isValidIdentifier("9to5")).toBe(false);
+  });
+
+  it("rejects reserved words", () => {
+    expect(isValidIdentifier("new")).toBe(false);
+    expect(isValidIdentifier("class")).toBe(false);
+    expect(isValidIdentifier("function")).toBe(false);
+    expect(isValidIdentifier("default")).toBe(false);
+    expect(isValidIdentifier("let")).toBe(false);
+    expect(isValidIdentifier("await")).toBe(false);
+  });
+
+  it("rejects empty or non-string input", () => {
+    expect(isValidIdentifier("")).toBe(false);
+    expect(isValidIdentifier(null)).toBe(false);
+    expect(isValidIdentifier(undefined)).toBe(false);
   });
 });

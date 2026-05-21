@@ -17,8 +17,33 @@ export function slugToIdentifier(slug) {
     .join("");
 }
 
+// Strict-mode reserved words can't be used as import bindings. ESM is
+// always strict, so the slug-to-identifier output must avoid all of these
+// AND start with a letter/$/_ (not a digit).
+const RESERVED_IDENTIFIERS = new Set([
+  "break", "case", "catch", "class", "const", "continue", "debugger",
+  "default", "delete", "do", "else", "enum", "export", "extends", "false",
+  "finally", "for", "function", "if", "import", "in", "instanceof", "new",
+  "null", "return", "super", "switch", "this", "throw", "true", "try",
+  "typeof", "var", "void", "while", "with", "yield",
+  "let", "static", "implements", "interface", "package", "private",
+  "protected", "public", "await", "async", "arguments", "eval",
+]);
+
+export function isValidIdentifier(ident) {
+  if (typeof ident !== "string" || ident.length === 0) return false;
+  if (!/^[A-Za-z_$][\w$]*$/.test(ident)) return false;
+  if (RESERVED_IDENTIFIERS.has(ident)) return false;
+  return true;
+}
+
 export function patchEditorialIndex(source, slug) {
   const ident = slugToIdentifier(slug);
+  if (!isValidIdentifier(ident)) {
+    throw new Error(
+      `patchEditorialIndex: slug "${slug}" produces invalid JS identifier "${ident}"`
+    );
+  }
   const importLine = `import ${ident} from "./${slug}.js";`;
 
   // Idempotent — bail if the import already exists.
