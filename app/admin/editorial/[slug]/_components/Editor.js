@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import HeroPanel from "./HeroPanel.js";
+import CuratedProductsPanel from "./CuratedProductsPanel.js";
 import BlockCard from "./BlockCard.js";
 import AddBlockMenu from "./AddBlockMenu.js";
 import PreviewPane from "./PreviewPane.js";
@@ -69,6 +70,7 @@ export default function Editor({ initialEntry, slug }) {
   function updateHero(hero) { setEntry({ ...entry, hero }); }
   function updateBrand(brandFilter) { setEntry({ ...entry, brandFilter }); }
   function updatePublishedAt(publishedAt) { setEntry({ ...entry, publishedAt }); }
+  function updateCurated(curatedProducts) { setEntry({ ...entry, curatedProducts }); }
   function updateBlock(i, next) {
     const blocks = entry.blocks.slice();
     blocks[i] = next;
@@ -234,6 +236,11 @@ export default function Editor({ initialEntry, slug }) {
           onBrandFilterChange={updateBrand}
           publishedAt={entry.publishedAt}
           onPublishedAtChange={updatePublishedAt}
+        />
+
+        <CuratedProductsPanel
+          curatedProducts={entry.curatedProducts}
+          onChange={updateCurated}
         />
 
         <section
