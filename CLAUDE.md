@@ -25,10 +25,6 @@ PDP, homepage, `fetchEditorialProducts`), and the category taxonomy +
   `products_subcategory_matches_category` when the classifier's leaf parent
   disagrees with the row's already-set category, burning enrich retries
   silently on re-classification candidates.
-- **Cron Step-1 snapshot resets `enrich_attempts` to 0 for rows whose Shopify
-  `name` or `description` changed before the upsert.** Without it, edits
-  that rename or rewrite a product would leave a row pinned at the retry
-  cap with stale editorial.
 - **`cleanTitle.js`'s `null` is retryable.** It covers transient OpenAI
   failures (5xx, rate-limit, 8 s timeout) as well as genuinely
   unclassifiable rows — treat as transient, not terminal.
@@ -49,16 +45,6 @@ PDP, homepage, `fetchEditorialProducts`), and the category taxonomy +
   returns nothing and a category like `"Dresses, Skirts & Robes"` 400s.
   Use `escapePostgrestValue` in `/api/products/route.js`; `search-products`
   has an inline equivalent.
-- **`resolveCategoryFilter` returns `{ parentCategories, leafFilters }` —
-  never collapse them.** Callers compose
-  `category IN (parents) OR (category=X AND subcategory=Y) OR …`.
-  Flattening into independent `category IN (…)` AND `subcategory IN (…)`
-  filters intersects them globally and silently drops parent-only rows.
-- **Mixed parent+leaf selections bypass `get_interleaved_products`.** Its
-  WHERE clause ANDs subcategory, which drops parent-only rows. Mixed or
-  leaf-only requests fall through to the direct-query path (newest-first,
-  not interleaved). Both interleaved RPCs accept `p_subcategory`; the route
-  passes `null` and lets the OR clause do the work.
 - **Enrich batch SELECT and remaining-count query must carry identical
   filters** (`available`, `!hidden`, `enrich_attempts < MAX`,
   `brand|title|category IS NULL`). A mismatch pins `remaining > 0` forever,
@@ -182,16 +168,9 @@ applying any change.
   next/font variable directly — Tailwind utilities can't reach a detached
   DOM.
 - **Admin tool is local-only.** `/admin/*` and `/api/admin/*` return 404
-  in production via `middleware.js`. Cross-file couplings to remember:
-  - Renaming the `ENTRIES` constant in `content/editorial/index.js`
-    requires updating `app/lib/patchEditorialIndex.js`'s anchor regex.
-  - Admin slugs must produce a valid (non-reserved, non-digit-prefixed)
-    JS identifier; `patchEditorialIndex` rejects them upfront. A slug
-    like `2026-archive` would emit `import 2026Archive` and crash the
-    next build.
-  - Admin routes that read editorial modules use `fs.readFile` +
-    `new Function`, not dynamic `import()` — the latter cached stale
-    module instances across slugs in dev.
+  in production via `middleware.js`. Admin routes that read editorial
+  modules use `fs.readFile` + `new Function`, not dynamic `import()` —
+  the latter cached stale module instances across slugs in dev.
 - **`loadSource` defaults to `allowFiles: false`.** The shared draft
   helper treats non-HTTP values as inline text unless the caller
   explicitly opts in. Only the CLI opts in. **Never pass
