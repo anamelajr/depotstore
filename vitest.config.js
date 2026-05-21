@@ -3,7 +3,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["app/**/__tests__/**/*.test.{js,mjs}"],
+    include: [
+      "app/**/__tests__/**/*.test.{js,mjs}",
+      "tests/**/*.test.js",
+    ],
     globals: false,
     env: {
       NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co",
