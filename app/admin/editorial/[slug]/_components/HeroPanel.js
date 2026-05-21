@@ -42,6 +42,20 @@ const inputStyle = {
 
 export default function HeroPanel({ hero, onChange, slug, brandFilter, onBrandFilterChange, publishedAt, onPublishedAtChange }) {
   const update = (patch) => onChange({ ...hero, ...patch });
+  const isPair = hero.layout === "image-pair-top";
+
+  function setImageAt(i, v) {
+    const next = [...(hero.images ?? [])];
+    while (next.length <= i) next.push("");
+    next[i] = v;
+    update({ images: next });
+  }
+  function setAltAt(i, v) {
+    const next = [...(hero.imageAlt ?? [])];
+    while (next.length <= i) next.push("");
+    next[i] = v;
+    update({ imageAlt: next });
+  }
 
   return (
     <section
@@ -115,22 +129,46 @@ export default function HeroPanel({ hero, onChange, slug, brandFilter, onBrandFi
         />
       </Field>
 
-      <Field label="Hero image filename" hint={`File goes in public/editorial/${slug}/`}>
+      <Field
+        label={isPair ? "Hero image 1 filename" : "Hero image filename"}
+        hint={`File goes in public/editorial/${slug}/`}
+      >
         <ImageFilenameInput
           slug={slug}
           value={hero.images?.[0] ?? ""}
-          onChange={(v) => update({ images: [v] })}
+          onChange={(v) => setImageAt(0, v)}
           placeholder="hero image filename"
         />
       </Field>
 
-      <Field label="Hero image alt">
+      <Field label={isPair ? "Hero image 1 alt" : "Hero image alt"}>
         <input
           style={inputStyle}
           value={hero.imageAlt?.[0] ?? ""}
-          onChange={(e) => update({ imageAlt: [e.target.value] })}
+          onChange={(e) => setAltAt(0, e.target.value)}
         />
       </Field>
+
+      {isPair && (
+        <>
+          <Field label="Hero image 2 filename" hint={`File goes in public/editorial/${slug}/`}>
+            <ImageFilenameInput
+              slug={slug}
+              value={hero.images?.[1] ?? ""}
+              onChange={(v) => setImageAt(1, v)}
+              placeholder="second hero image filename"
+            />
+          </Field>
+
+          <Field label="Hero image 2 alt">
+            <input
+              style={inputStyle}
+              value={hero.imageAlt?.[1] ?? ""}
+              onChange={(e) => setAltAt(1, e.target.value)}
+            />
+          </Field>
+        </>
+      )}
 
       <Field label="Brand filter" hint="Used for the 'More from designer' grid + Generate prompt.">
         <input
