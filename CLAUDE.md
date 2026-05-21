@@ -171,6 +171,8 @@ applying any change.
   in production via `middleware.js`. Admin routes that read editorial
   modules use `fs.readFile` + `new Function`, not dynamic `import()` —
   the latter cached stale module instances across slugs in dev.
+  Publish-to-preview route is also dev-only; refuses when `HEAD == main`
+  unless `{ newSession: true }` is passed.
 - **`loadSource` defaults to `allowFiles: false`.** The shared draft
   helper treats non-HTTP values as inline text unless the caller
   explicitly opts in. Only the CLI opts in. **Never pass

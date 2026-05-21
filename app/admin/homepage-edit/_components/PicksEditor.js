@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PublishButton from "../../_components/PublishButton.js";
 
 const inputStyle = {
   width: "100%",
@@ -68,6 +69,7 @@ export default function PicksEditor({ initialPicks }) {
           disabled={saving}
           style={{
             marginLeft: 12,
+            marginRight: 6,
             background: "#d6d2c4",
             color: "#18181a",
             border: "none",
@@ -80,6 +82,10 @@ export default function PicksEditor({ initialPicks }) {
         >
           {saving ? "Saving…" : "Save"}
         </button>
+        <PublishButton
+          files={["content/homepage-edit.json"]}
+          label="todays-edit"
+        />
       </header>
 
       <section style={{ background: "#18181a", border: "1px solid #2a2a2c", borderRadius: 6, padding: 14, marginBottom: 14 }}>
