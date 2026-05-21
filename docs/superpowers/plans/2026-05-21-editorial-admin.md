@@ -6,9 +6,20 @@
 
 **Goal:** A local-only browser admin tool for visually authoring editorial entries (with GPT-5.5 drafting) and hand-curating the homepage "Today's Edit" — built on the existing content-module format and shared with the existing CLI drafting script.
 
-**Architecture:** New `/admin/*` routes (Next.js App Router) gated by `NODE_ENV` middleware. The editor renders a form on the left and the real `Block.js` components on the right for live preview. Saving writes a `content/editorial/<slug>.js` content module and idempotently patches `content/editorial/index.js`. Today's Edit is curated by writing a new `content/homepage-edit.js` (same shape as `curatedProducts` arrays); `app/page.js` reads it with a fallback to the current date-seeded rotation. GPT integration: the prompt-building + OpenAI-calling logic in `scripts/draftEditorial.mjs` is extracted to `app/lib/draftEditorialPrompt.js`, shared by the CLI and a new `/api/admin/draft` route that injects a structural plan (derived from the editor's current image-block placements) so generated text doesn't dangle into image breaks.
+**Architecture:** New `/admin/*` routes (Next.js App Router) gated by `NODE_ENV` middleware. The editor renders a form on the left and the real `Block.js` components on the right for live preview. Saving writes a `content/editorial/<slug>.js` content module and idempotently patches `content/editorial/index.js`. Today's Edit is curated by writing `content/homepage-edit.json` (a plain JSON array of `{ storeDomain, handle }` objects); `app/page.js` reads it dynamically inside try/catch with a fallback to the date-seeded rotation when the file is missing, empty, or malformed. GPT integration: the prompt-building + OpenAI-calling logic in `scripts/draftEditorial.mjs` is extracted to `app/lib/draftEditorialPrompt.js`, shared by the CLI and a new `/api/admin/draft` route that injects a structural plan (derived from the editor's current image-block placements) so generated text doesn't dangle into image breaks. The draft route accepts only HTTP URLs and pasted text — never filesystem paths — to prevent a hostile localhost requestor from exfiltrating `.env.local` through the OpenAI prompt.
 
 **Tech Stack:** Next.js 16 (App Router), React 19, Tailwind v4, Supabase (Frankfurt), OpenAI (`gpt-5.5`), Node ESM. Adding **vitest** for unit testing pure helpers.
+
+---
+
+## Revisions
+
+**2026-05-21 (post-Codex adversarial review):**
+- **API trust boundary tightened.** The shared `loadSource` helper no longer reads filesystem paths by default. The CLI must explicitly opt in via `{ allowFiles: true }`. `/api/admin/draft` only accepts HTTP/HTTPS URLs and pasted text — closes a DNS-rebinding / hostile-local-process vector that would have let request-controlled paths read `.env.local` and exfiltrate the contents through the OpenAI prompt.
+- **Homepage picks moved from `.js` to `.json`.** A static `import` of a `.js` content module would crash module evaluation on syntax error, defeating the documented "fall back to date-seeded rotation" invariant. Switching to JSON + dynamic `fs.readFile` + `JSON.parse` inside a try/catch makes the fallback actually catchable. Writes are atomic (temp file + `fs.rename`) to prevent truncation.
+- **Save adds a rollback step.** If the slug file write succeeds but the `index.js` patch fails *and* the slug file did not previously exist, the slug file is unlinked. Avoids orphaned entries on the rare partial-write failure.
+- **`mergeGeneratedBlocks` validates block counts.** If GPT returns fewer text-shaped blocks than the structure plan asked for, the merge falls back to "append all generated blocks before the user's image blocks" and surfaces a UI warning instead of silently shuffling content.
+- **Engineer must confirm `gpt-5.5` is a current model** before relying on it (Task 4 adds an explicit verification step).
 
 ---
 
@@ -30,10 +41,13 @@
 2. Save writes `content/editorial/<slug>.js` AND patches `content/editorial/index.js` to add the import + push to `ENTRIES`. Idempotent — re-saving an existing entry only rewrites the slug file.
 3. Generate replaces text content only. Image blocks, hero images, and `curatedProducts` are preserved.
 4. Generate prompt includes a structural plan derived from the current block list. Every text block must end on a complete sentence + complete idea.
-5. `content/homepage-edit.js` shape matches `curatedProducts`: `export default [{ storeDomain, handle }, ...]`. Hydration reuses the chunked `.in()` + `orderIndex` Map pattern.
-6. Homepage fallback: if `homepage-edit.js` exports an empty array or fails to import, `app/page.js` falls back to today's date-seeded rotation. The feature must never produce an empty homepage section.
+5. `content/homepage-edit.json` is a JSON file (not a JS module) containing `[{ "storeDomain": "...", "handle": "..." }, ...]`. Hydration reuses the chunked `.in()` + `orderIndex` Map pattern. JSON parse errors are catchable, unlike module-evaluation errors from a malformed `.js` content module.
+6. Homepage fallback: `app/page.js` loads `content/homepage-edit.json` with `fs.readFile` + `JSON.parse` inside a try/catch. If the read or parse fails OR the array is empty, the homepage falls back to the date-seeded rotation. The feature must never produce an empty (or crashing) homepage section. **Static `import` of the picks file is forbidden** — it would defeat the catchable fallback.
 7. The admin tool never writes to `products.brand/title/category` in Supabase (editorial protection from CLAUDE.md).
 8. Image filename autocomplete reads `public/editorial/<slug>/` only via a server route — never expose arbitrary filesystem reads.
+9. `/api/admin/draft` does NOT accept filesystem paths in `sourceValues` / `styleValues`. Only HTTP/HTTPS URLs and pasted text strings. The shared `loadSource` helper defaults to `allowFiles: false`; only the CLI (`scripts/draftEditorial.mjs`) opts in to filesystem reads, since it runs from your shell with your trust.
+10. Save is rollback-safe for new entries: if the `<slug>.js` write succeeds but the `index.js` patch fails AND the slug file did not previously exist on disk, the route unlinks the slug file before returning the error. Re-saving an existing entry never rolls back the slug file (the prior content is already gone).
+11. `content/homepage-edit.json` writes are atomic: serialize → write to `homepage-edit.json.tmp` → `fs.rename` to the final path. Prevents truncated files crashing the homepage.
 
 ## File map
 
@@ -67,7 +81,8 @@ app/lib/serializeEditorialModule.js
 app/lib/patchEditorialIndex.js
 app/lib/structurePlan.js
 app/editorial/_lib/fetchHomepagePicks.js
-content/homepage-edit.js
+app/lib/loadHomepagePicks.js
+content/homepage-edit.json
 middleware.js
 tests/lib/serializeEditorialModule.test.js
 tests/lib/patchEditorialIndex.test.js
@@ -243,7 +258,25 @@ describe("buildPrompt", () => {
     expect(out).toMatch(/<note index="1">keep it short<\/note>/);
   });
 });
-```
+
+describe("loadSource", () => {
+  it("treats non-HTTP values as pasted text by default (allowFiles: false)", async () => {
+    const { loadSource } = await import("../../app/lib/draftEditorialPrompt.js");
+    const r = await loadSource("/etc/hosts");
+    // Must NOT read the file. The value is treated as inline text.
+    expect(r.error).toBe(null);
+    expect(r.text).toBe("/etc/hosts");
+    expect(r.value).toBe("pasted");
+  });
+
+  it("reads files when allowFiles: true (CLI use)", async () => {
+    const { loadSource } = await import("../../app/lib/draftEditorialPrompt.js");
+    // package.json definitely exists at repo root; use it as a harmless probe.
+    const r = await loadSource("package.json", { allowFiles: true });
+    expect(r.error).toBe(null);
+    expect(r.text).toMatch(/"name":\s*"archiveapp"/);
+  });
+});
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -272,7 +305,11 @@ export const VALID_LAYOUTS = [
 const MAX_SOURCE_CHARS = 6000;
 const FETCH_TIMEOUT_MS = 15000;
 
-export async function loadSource(value) {
+// Treat any non-HTTP value as either a filesystem path (CLI only) or
+// pasted text. The API route MUST NOT pass allowFiles: true — request-
+// controlled paths would let a hostile local process exfiltrate .env.local
+// via the OpenAI prompt.
+export async function loadSource(value, { allowFiles = false } = {}) {
   if (/^https?:\/\//i.test(value)) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -299,6 +336,19 @@ export async function loadSource(value) {
       clearTimeout(t);
     }
   }
+
+  if (!allowFiles) {
+    // The API route reaches here. Treat the value as inline text rather
+    // than a filesystem path. The label is shown to the model as the
+    // source identifier ("pasted-1", "pasted-2", …) since there's no URL.
+    return {
+      value: "pasted",
+      error: null,
+      text: String(value).slice(0, MAX_SOURCE_CHARS),
+    };
+  }
+
+  // CLI only: load from disk.
   try {
     const text = await fs.readFile(value, "utf8");
     return { value, error: null, text: text.slice(0, MAX_SOURCE_CHARS) };
@@ -307,10 +357,10 @@ export async function loadSource(value) {
   }
 }
 
-export async function loadAll(values) {
+export async function loadAll(values, { allowFiles = false } = {}) {
   const results = [];
   for (const v of values) {
-    const r = await loadSource(v);
+    const r = await loadSource(v, { allowFiles });
     if (r.error) {
       console.warn(`[draftEditorial] skipping ${v}: ${r.error}`);
     } else {
@@ -428,7 +478,7 @@ Run:
 npm test -- draftEditorialPrompt
 ```
 
-Expected: 3 tests pass.
+Expected: 5 tests pass (3 buildPrompt + 2 loadSource).
 
 - [ ] **Step 5: Commit**
 
@@ -439,12 +489,24 @@ git commit -m "feat: extract draft prompt + OpenAI call into shared module"
 
 ---
 
-### Task 4: Update CLI to use the shared module
+### Task 4: Update CLI to use the shared module + verify model
 
 **Files:**
 - Modify: `scripts/draftEditorial.mjs`
 
-- [ ] **Step 1: Replace inline functions with imports**
+- [ ] **Step 1: Verify `gpt-5.5` is a current OpenAI model**
+
+The existing CLI hard-codes `model: "gpt-5.5"`. Before relying on this in production, confirm the model identifier is valid against your account:
+
+```bash
+curl -s https://api.openai.com/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  | grep -o '"id": *"[^"]*"' | sort -u | grep -E "(gpt-5|gpt-4)" | head -20
+```
+
+Expected: the list includes an entry like `"id": "gpt-5.5"` (or whichever variant the codebase uses). If `gpt-5.5` is not in the response, update the constant in `app/lib/draftEditorialPrompt.js` (the `callOpenAI` function) to the closest current model before proceeding. Do NOT silently swap the model — if it changes, note it in the commit message.
+
+- [ ] **Step 2: Replace inline functions with imports**
 
 In `scripts/draftEditorial.mjs`:
 
@@ -463,7 +525,23 @@ import {
 } from "../app/lib/draftEditorialPrompt.js";
 ```
 
-- [ ] **Step 2: Run the CLI to confirm regression-free behavior**
+- [ ] **Step 3: CLI must opt into file reads**
+
+Find the two `loadAll(...)` calls inside `main()`:
+```js
+  const sources = await loadAll(args.sources);
+  const styles = await loadAll(args.styles);
+```
+
+Replace with:
+```js
+  const sources = await loadAll(args.sources, { allowFiles: true });
+  const styles = await loadAll(args.styles, { allowFiles: true });
+```
+
+Without this, the CLI silently treats `--source ./notes.txt` as the literal text "./notes.txt" rather than the file contents.
+
+- [ ] **Step 4: Run the CLI to confirm regression-free behavior**
 
 Run a smoke test with no source material (won't actually generate, but should validate args and reach the OpenAI call):
 ```bash
@@ -472,18 +550,26 @@ node scripts/draftEditorial.mjs --slug smoke-test --title "Smoke Test" --note "t
 
 Expected: either the CLI completes and writes `content/editorial/smoke-test.js`, or it errors with a real OpenAI error (rate limit, etc.). It must NOT error with "function not defined" or import errors.
 
-- [ ] **Step 3: Clean up the smoke test artifact**
+Then run a second test that actually exercises the file-load path:
+```bash
+echo "test source content from a file" > /tmp/draftsrc.txt
+node scripts/draftEditorial.mjs --slug smoke-test --title "Smoke Test" --note "use the file" --source /tmp/draftsrc.txt --force 2>&1 | head -30
+```
+
+Expected: log line `[draftEditorial] sources=1 …` (NOT `sources=0`, which would mean the file path was rejected as text).
+
+- [ ] **Step 5: Clean up the smoke test artifacts**
 
 ```bash
-rm -f content/editorial/smoke-test.js
+rm -f content/editorial/smoke-test.js /tmp/draftsrc.txt
 rm -rf public/editorial/smoke-test
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add scripts/draftEditorial.mjs
-git commit -m "refactor: CLI uses shared draftEditorialPrompt module"
+git commit -m "refactor: CLI uses shared draftEditorialPrompt module with allowFiles opt-in"
 ```
 
 ---
@@ -2155,17 +2241,49 @@ export async function POST(request) {
     );
   }
 
+  // Track whether the slug file existed before this save so we can roll
+  // back cleanly on partial failure (orphan-slug-without-registry-entry).
+  let slugFileExistedBefore = true;
+  try {
+    await fs.access(slugFile);
+  } catch {
+    slugFileExistedBefore = false;
+  }
+
   try {
     await fs.writeFile(slugFile, source, "utf8");
-    if (nextIndex !== indexSource) {
-      await fs.writeFile(indexFile, nextIndex, "utf8");
-    }
-    await fs.mkdir(imgDir, { recursive: true });
   } catch (err) {
     return NextResponse.json(
-      { error: `write failed: ${err.message}` },
+      { error: `slug-file write failed: ${err.message}` },
       { status: 500 }
     );
+  }
+
+  if (nextIndex !== indexSource) {
+    try {
+      await fs.writeFile(indexFile, nextIndex, "utf8");
+    } catch (err) {
+      // Rollback: if we just created a brand-new slug file but failed to
+      // update the registry, unlink the slug file so we don't leave an
+      // orphan that fails public lookup but appears in /admin/editorial.
+      // For existing entries we leave the slug file in place — the prior
+      // content is already gone and the index entry already points at it.
+      if (!slugFileExistedBefore) {
+        await fs.unlink(slugFile).catch(() => {});
+      }
+      return NextResponse.json(
+        {
+          error: `index.js write failed (rolled back: ${!slugFileExistedBefore}): ${err.message}`,
+        },
+        { status: 500 }
+      );
+    }
+  }
+
+  try {
+    await fs.mkdir(imgDir, { recursive: true });
+  } catch {
+    // Image dir creation failure is non-fatal — user can mkdir manually.
   }
 
   return NextResponse.json({
@@ -2472,9 +2590,13 @@ export async function POST(request) {
     return NextResponse.json({ error: "invalid layout" }, { status: 400 });
   }
 
+  // SECURITY: do NOT pass allowFiles: true here. The shared loadSource
+  // helper defaults to "treat non-HTTP values as inline text" precisely
+  // so request-controlled values can't escape into fs.readFile and
+  // exfiltrate .env.local through the OpenAI prompt. See invariant #9.
   const sources = await loadAll(sourceValues);
   const styles = await loadAll(styleValues);
-  const { plan } = buildStructurePlan({ currentBlocks, length });
+  const { plan, textBlockCount } = buildStructurePlan({ currentBlocks, length });
 
   const prompt = buildPrompt({
     title,
@@ -2506,6 +2628,7 @@ export async function POST(request) {
   return NextResponse.json({
     hero: parsed.hero ?? null,
     generatedBlocks: parsed.blocks ?? [],
+    expectedTextCount: textBlockCount,
   });
 }
 ```
@@ -2806,20 +2929,43 @@ The merge rule: text-shaped blocks (`text`, `section-heading`, `pullquote`) gene
 
 Insert after the imports, before `const EMPTY_ENTRY`:
 ```js
-function mergeGeneratedBlocks(currentBlocks, generatedBlocks) {
+function mergeGeneratedBlocks(currentBlocks, generatedBlocks, expectedTextCount) {
   // currentBlocks may include user-placed image / image-pair blocks.
   // generatedBlocks comes from GPT — text / section-heading / pullquote
   // (and possibly image blocks we ignore).
   //
   // The structural plan was built assuming text blocks split into N+1
   // segments around N image breaks. We replay that split here.
+  //
+  // Returns { merged, warning } where `warning` is a string the caller
+  // surfaces to the user, or null if the merge proceeded cleanly.
   const isImage = (b) => b.type === "image" || b.type === "image-pair";
   const imageSlots = currentBlocks.filter(isImage);
   const generatedTextish = generatedBlocks.filter((b) => !isImage(b));
 
   const segments = imageSlots.length + 1;
-  const perSegment = Math.max(1, Math.floor(generatedTextish.length / segments));
 
+  // GPT can return fewer (or more) text-shaped blocks than the plan asked
+  // for. If the count doesn't match, the per-segment split silently
+  // shifts content across image breaks — exactly the failure mode we
+  // built the structural plan to avoid. Detect and fall back to a
+  // conservative merge: put every generated block before the user's
+  // image blocks, in order. Less elegant but obviously correct.
+  if (
+    typeof expectedTextCount === "number" &&
+    generatedTextish.length !== expectedTextCount
+  ) {
+    return {
+      merged: [...generatedTextish, ...imageSlots],
+      warning:
+        `GPT returned ${generatedTextish.length} text-shaped blocks; ` +
+        `the structure plan asked for ${expectedTextCount}. ` +
+        `Generated content placed before your image blocks instead of threaded around them. ` +
+        `Drag blocks to rearrange, or regenerate.`,
+    };
+  }
+
+  const perSegment = Math.max(1, Math.floor(generatedTextish.length / segments));
   const merged = [];
   let cursor = 0;
   for (let s = 0; s < segments; s++) {
@@ -2829,7 +2975,7 @@ function mergeGeneratedBlocks(currentBlocks, generatedBlocks) {
     cursor += take;
     if (!isLast) merged.push(imageSlots[s]);
   }
-  return merged;
+  return { merged, warning: null };
 }
 ```
 
@@ -2842,7 +2988,12 @@ Inside the Editor component, add state for `showGenerate`:
 
 Add the apply handler:
 ```js
-  function applyGenerated({ hero, generatedBlocks }) {
+  function applyGenerated({ hero, generatedBlocks, expectedTextCount }) {
+    const { merged, warning } = mergeGeneratedBlocks(
+      entry.blocks,
+      generatedBlocks,
+      expectedTextCount
+    );
     setEntry({
       ...entry,
       hero: hero
@@ -2856,8 +3007,14 @@ Add the apply handler:
             // layout and images intentionally preserved
           }
         : entry.hero,
-      blocks: mergeGeneratedBlocks(entry.blocks, generatedBlocks),
+      blocks: merged,
     });
+    if (warning) {
+      // Surface to the user. A toast component would be nicer than alert
+      // but keeps zero deps; swap to a non-blocking notice once the
+      // editor grows a status bar.
+      alert(warning);
+    }
   }
 ```
 
@@ -3352,29 +3509,82 @@ git commit -m "feat: curated products picker with Supabase search"
 
 ## Phase 9: Today's Edit
 
-### Task 27: Initial homepage-edit.js content module
+### Task 27: Initial homepage-edit.json file + shared loader
 
 **Files:**
-- Create: `content/homepage-edit.js`
+- Create: `content/homepage-edit.json`
+- Create: `app/lib/loadHomepagePicks.js`
 
-- [ ] **Step 1: Create the empty module**
+**Why JSON, not a JS module:** A static `import` of a `.js` content module evaluates at module-load time. A truncated write, syntax error, or bad manual edit would crash `app/page.js` in *production*, defeating the documented "fall back to date-seeded rotation" invariant. JSON is parsed at runtime inside a try/catch — failures are catchable.
 
-Write `content/homepage-edit.js`:
-```js
-// Hand-curated picks for the homepage "Today's Edit" section.
-// Same shape as editorial curatedProducts: [{ storeDomain, handle }, ...].
-// Managed via /admin/homepage-edit. When this array is empty, the homepage
-// falls back to the previous date-seeded rotation in app/page.js.
-const picks = [];
+- [ ] **Step 1: Create the empty JSON file**
 
-export default picks;
+Write `content/homepage-edit.json`:
+```json
+[]
 ```
 
-- [ ] **Step 2: Commit**
+That's the entire file — a JSON array literal, nothing else. The schema is `[{ "storeDomain": string, "handle": string }, ...]`.
+
+- [ ] **Step 2: Create the shared loader**
+
+Write `app/lib/loadHomepagePicks.js`:
+```js
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+
+const PICKS_FILE = join(process.cwd(), "content", "homepage-edit.json");
+
+// Loads the hand-curated homepage picks. Returns [] on:
+//   - file missing (ENOENT)
+//   - empty file or empty array
+//   - malformed JSON
+//   - non-array root (e.g. an object got written by mistake)
+//   - any individual pick missing storeDomain/handle
+//
+// The homepage uses [] as the signal to fall back to the date-seeded
+// rotation. Never throw from this function — production homepage rendering
+// depends on it being infallible.
+export async function loadHomepagePicks() {
+  let raw;
+  try {
+    raw = await fs.readFile(PICKS_FILE, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.warn(`[loadHomepagePicks] read failed: ${err.message}`);
+    }
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    console.warn(`[loadHomepagePicks] JSON.parse failed: ${err.message}`);
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) {
+    console.warn("[loadHomepagePicks] expected array, got", typeof parsed);
+    return [];
+  }
+
+  // Filter out malformed entries rather than throwing — one bad row
+  // shouldn't kill the whole list.
+  return parsed.filter(
+    (p) =>
+      p &&
+      typeof p.storeDomain === "string" &&
+      typeof p.handle === "string"
+  );
+}
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add content/homepage-edit.js
-git commit -m "feat: empty homepage-edit content module"
+git add content/homepage-edit.json app/lib/loadHomepagePicks.js
+git commit -m "feat: homepage-edit.json + infallible loadHomepagePicks helper"
 ```
 
 ---
@@ -3473,21 +3683,6 @@ import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { assertDev } from "../_gate.js";
 
-function serializePicks(picks) {
-  const items = picks
-    .map((p) => `  { storeDomain: ${JSON.stringify(p.storeDomain)}, handle: ${JSON.stringify(p.handle)} }`)
-    .join(",\n");
-  return `// Hand-curated picks for the homepage "Today's Edit" section.
-// Managed via /admin/homepage-edit. When empty, app/page.js falls back to
-// the date-seeded rotation.
-const picks = [
-${items}${picks.length ? "," : ""}
-];
-
-export default picks;
-`;
-}
-
 export async function POST(request) {
   const gate = assertDev();
   if (gate) return gate;
@@ -3499,6 +3694,10 @@ export async function POST(request) {
   if (body.picks.length > 8) {
     return NextResponse.json({ error: "max 8 picks" }, { status: 400 });
   }
+  // Normalize and validate. Only `storeDomain` and `handle` make it into
+  // the file — anything else the client sent (e.g. a `_preview` cache) is
+  // stripped here so it never appears on disk.
+  const normalized = [];
   for (const p of body.picks) {
     if (!p || typeof p.storeDomain !== "string" || typeof p.handle !== "string") {
       return NextResponse.json(
@@ -3506,15 +3705,27 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+    normalized.push({ storeDomain: p.storeDomain, handle: p.handle });
   }
 
-  const file = join(process.cwd(), "content", "homepage-edit.js");
+  const file = join(process.cwd(), "content", "homepage-edit.json");
+  const tmpFile = `${file}.tmp.${process.pid}.${Date.now()}`;
+
+  // Atomic write: serialize → write to tmp → fsync via flush → rename.
+  // fs.rename on POSIX is atomic for paths on the same filesystem, so
+  // app/page.js's loadHomepagePicks() can never read a half-written file.
+  // Prevents the truncated-file production crash that prompted moving
+  // from `.js` to `.json`.
+  const json = JSON.stringify(normalized, null, 2) + "\n";
   try {
-    await fs.writeFile(file, serializePicks(body.picks), "utf8");
+    await fs.writeFile(tmpFile, json, "utf8");
+    await fs.rename(tmpFile, file);
   } catch (err) {
+    // Best-effort cleanup if rename failed and tmp file lingers.
+    await fs.unlink(tmpFile).catch(() => {});
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, count: body.picks.length });
+  return NextResponse.json({ ok: true, count: normalized.length });
 }
 ```
 
@@ -3537,24 +3748,16 @@ git commit -m "feat: save-homepage-edit route"
 
 Write `app/admin/homepage-edit/page.js`:
 ```js
-import { join } from "node:path";
+import { loadHomepagePicks } from "../../lib/loadHomepagePicks.js";
 import PicksEditor from "./_components/PicksEditor.js";
 
-async function loadPicks() {
-  const file = join(process.cwd(), "content", "homepage-edit.js");
-  try {
-    const mod = await import(file + `?t=${Date.now()}`);
-    return mod.default ?? [];
-  } catch {
-    return [];
-  }
-}
-
 export default async function HomepageEditPage() {
-  const picks = await loadPicks();
+  const picks = await loadHomepagePicks();
   return <PicksEditor initialPicks={picks} />;
 }
 ```
+
+The shared `loadHomepagePicks` helper handles missing-file, malformed-JSON, and bad-row cases — the page never crashes on a bad save.
 
 - [ ] **Step 2: Write the client editor**
 
@@ -3617,7 +3820,7 @@ export default function PicksEditor({ initialPicks }) {
     setSaving(false);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) alert(`Save failed: ${data.error || res.status}`);
-    else alert(`Saved ${data.count} pick(s) → content/homepage-edit.js`);
+    else alert(`Saved ${data.count} pick(s) → content/homepage-edit.json`);
   }
 
   return (
@@ -3725,7 +3928,7 @@ const smallBtn = {
 
 - [ ] **Step 3: Manual verification**
 
-Run `npm run dev`. Visit `/admin/homepage-edit`. Search "owens" — confirm results appear. Click to add 1-2 products. Save. Confirm `content/homepage-edit.js` now lists them.
+Run `npm run dev`. Visit `/admin/homepage-edit`. Search "owens" — confirm results appear. Click to add 1-2 products. Save. Confirm `content/homepage-edit.json` now contains a JSON array with those picks (and only `storeDomain` + `handle` keys — any client-side `_preview` cache should be stripped).
 
 Stop the dev server.
 
@@ -3747,24 +3950,28 @@ git commit -m "feat: /admin/homepage-edit page"
 
 Read `app/page.js` lines 1-50 first to confirm imports, then lines 84-116 for the rotation block. Note exactly which variables (`recentProducts`, `STORES`, `baseUrl`, `seed`) the existing code uses.
 
-- [ ] **Step 2: Add the import for fetchHomepagePicks and the picks module**
+- [ ] **Step 2: Add the imports**
 
 At the top of `app/page.js`, add:
 ```js
 import { fetchHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
-import homepagePicks from "../content/homepage-edit.js";
+import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 ```
+
+**Do NOT add `import homepagePicks from "../content/homepage-edit.js"` or any static import of the picks data.** A static import evaluates at module-load time; any syntax error in the picks file would crash `app/page.js` in production before the runtime try/catch could rescue it. The rule (invariant #6) is: read picks dynamically inside try/catch.
 
 - [ ] **Step 3: Try picks first, fall back to rotation**
 
-Locate the existing `recentProducts` initialization (around lines 17–36 — the `STORES.map(async (store) => …)` block). Wrap it in a fallback:
-
-Replace the existing block (the `const perStore = await Promise.all(...)` through `recentProducts = perStore.flat().filter(Boolean).slice(0, 8);`) with:
+Locate the existing `recentProducts` initialization (around lines 17–36 — the `STORES.map(async (store) => …)` block). Replace the existing block (the `const perStore = await Promise.all(...)` through `recentProducts = perStore.flat().filter(Boolean).slice(0, 8);`) with:
 
 ```js
 let recentProducts = [];
 
-if (homepagePicks && homepagePicks.length > 0) {
+// loadHomepagePicks is infallible — it returns [] on any read/parse
+// failure rather than throwing. The try/catch around fetchHomepagePicks
+// catches downstream Supabase failures only.
+const homepagePicks = await loadHomepagePicks();
+if (homepagePicks.length > 0) {
   try {
     recentProducts = await fetchHomepagePicks(homepagePicks);
   } catch (err) {
@@ -3774,7 +3981,7 @@ if (homepagePicks && homepagePicks.length > 0) {
 
 if (recentProducts.length === 0) {
   // Existing date-seeded rotation — preserves current behavior when
-  // no picks have been curated.
+  // no picks have been curated OR when the picks file is unreadable.
   const perStore = await Promise.all(
     STORES.map(async (store) => {
       const res = await fetch(
@@ -3818,11 +4025,41 @@ return all
 
 Run `npm run dev`. Curate 2-3 picks via `/admin/homepage-edit`. Visit `/`. Confirm "Today's Edit" shows those exact products in that exact order.
 
-- [ ] **Step 5: Manual verification with fallback**
+- [ ] **Step 5: Manual verification with fallback (empty picks)**
 
-Edit `content/homepage-edit.js` and set `const picks = [];`. Visit `/`. Confirm the date-seeded rotation kicks back in (you'll see 1 newest product per store).
+Edit `content/homepage-edit.json` and set its content to `[]`. Visit `/`. Confirm the date-seeded rotation kicks back in (you'll see 1 newest product per store).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Regression test — homepage survives a malformed picks file**
+
+This is the bug the JSON-over-JS switch was designed to prevent. Write garbage into the picks file and confirm the homepage renders the fallback rather than crashing:
+
+```bash
+echo "this is not valid json {{" > content/homepage-edit.json
+```
+
+Visit `http://localhost:3000/`. Expected:
+- Page returns 200 (NOT a 500 error)
+- "Today's Edit" section renders with the date-seeded rotation
+- Server console shows `[loadHomepagePicks] JSON.parse failed: …` warning
+
+Now corrupt it differently — an object instead of an array:
+```bash
+echo '{"oops": "wrong shape"}' > content/homepage-edit.json
+```
+
+Refresh `/`. Expected:
+- Page returns 200
+- Fallback rotation still appears
+- Console shows `[loadHomepagePicks] expected array, got object`
+
+Restore:
+```bash
+echo "[]" > content/homepage-edit.json
+```
+
+If the page 500s in any of those cases, something in `app/page.js` is still throwing — most likely a static import of the picks file slipped through. Search for `import .* homepage-edit` and remove it.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add app/page.js app/editorial/_lib/fetchHomepagePicks.js
@@ -3838,7 +4075,7 @@ git commit -m "feat: homepage reads hand-curated picks with rotation fallback"
 **Files:**
 - Modify: `CLAUDE.md`
 
-- [ ] **Step 1: Add a "Sharp edges" entry and an invariant**
+- [ ] **Step 1: Add "Sharp edges" entries and invariants**
 
 In `CLAUDE.md`, locate the "Sharp edges" section. Append a bullet:
 
@@ -3846,19 +4083,36 @@ In `CLAUDE.md`, locate the "Sharp edges" section. Append a bullet:
 - **Admin tool is local-only.** `/admin/*` and `/api/admin/*` return 404 in
   production via `middleware.js`. Tool runs only during `npm run dev`,
   writes to the filesystem (`content/editorial/<slug>.js` + auto-patched
-  `content/editorial/index.js`, or `content/homepage-edit.js`). Editorial
+  `content/editorial/index.js`, or `content/homepage-edit.json`). Editorial
   drafting via OpenAI lives in `app/lib/draftEditorialPrompt.js`, shared
   by `scripts/draftEditorial.mjs` (CLI) and `/api/admin/draft`. If you
   rename the `ENTRIES` constant in `content/editorial/index.js`, update
   `app/lib/patchEditorialIndex.js`'s anchor regex too.
+- **`loadSource` defaults to `allowFiles: false`.** The shared draft helper
+  treats non-HTTP values as inline text unless the caller explicitly opts
+  in. Only the CLI opts in. **Never pass `allowFiles: true` from an HTTP
+  route** — request-controlled paths could read `.env.local` and
+  exfiltrate the contents through the OpenAI prompt (DNS rebind / hostile
+  local process). Documented as invariant #9 of the editorial-admin plan.
 ```
 
 In the "Invariants" section, append:
 
 ```markdown
-- **Homepage falls back to the date-seeded rotation if `content/homepage-edit.js`
-  exports an empty array** (or fails to import). Removing the fallback turns an
-  empty picks list into an empty "Today's Edit" section — never acceptable.
+- **Homepage picks are stored as JSON, loaded dynamically, with a runtime
+  fallback to the date-seeded rotation.** `content/homepage-edit.json` is
+  read by `app/lib/loadHomepagePicks.js` via `fs.readFile` + `JSON.parse`
+  inside try/catch. Returns `[]` on any read/parse failure. Never `import`
+  the picks file statically — a syntax error would crash production
+  homepage rendering before the fallback could trigger.
+- **`save-homepage-edit` writes atomically.** Serialize → write to
+  `homepage-edit.json.tmp.<pid>.<ts>` → `fs.rename` to the final path.
+  Prevents truncated files crashing the homepage during a mid-write
+  interruption.
+- **Editorial save rollback is asymmetric.** If `<slug>.js` writes but
+  `index.js` patch fails AND the slug file did not exist before this
+  save, the slug file is unlinked. For existing entries, no rollback —
+  prior content is already overwritten.
 ```
 
 - [ ] **Step 2: Commit**
@@ -3914,7 +4168,8 @@ Run `npm run dev`. Walk through this sequence:
 11. Visit `/editorial/e2e-test` — page renders end-to-end.
 12. Navigate to `/admin/homepage-edit`. Search a real product. Add 2-3 to picks. Save.
 13. Visit `/` — confirm "Today's Edit" shows the curated picks.
-14. Edit `content/homepage-edit.js` to `const picks = [];`. Visit `/` — confirm rotation fallback kicks in.
+14. Set `content/homepage-edit.json` to `[]`. Visit `/` — confirm rotation fallback kicks in.
+14b. **Regression check (the JSON-over-JS switch):** corrupt the picks file with `echo "not json" > content/homepage-edit.json`, visit `/`, confirm it still returns 200 with the rotation fallback. Restore to `[]` afterward.
 15. Clean up: remove `content/editorial/e2e-test.js`, remove `e2e-test` import/entry from `index.js`, remove `public/editorial/e2e-test/`, reset picks.
 
 - [ ] **Step 4: Final commit (only if Step 1-3 surfaced fixes)**
