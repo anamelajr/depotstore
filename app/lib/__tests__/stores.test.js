@@ -33,3 +33,34 @@ describe("assignCategory — Tops leaves", () => {
     expect(result).toEqual({ category, subcategory });
   });
 });
+
+describe("assignCategory — Jackets & Coats leaves", () => {
+  const cases = [
+    ["Denim Jacket",       "Jackets & Coats", "jackets"],
+    ["Bomber",             "Jackets & Coats", "jackets"],
+    ["Bomber Coat",        "Jackets & Coats", "jackets"],
+    ["Shearling Jacket",   "Jackets & Coats", "jackets"],
+    ["Puffer Jacket",      "Jackets & Coats", "jackets"],
+    ["Blazer",             "Jackets & Coats", "jackets"],
+    ["Anorak",             "Jackets & Coats", "jackets"],
+    ["Windbreaker",        "Jackets & Coats", "jackets"],
+    ["Bolero",             "Jackets & Coats", "jackets"],
+    ["Denim Coat",         "Jackets & Coats", "coats"],
+    ["Trench",             "Jackets & Coats", "coats"],
+    ["Trench Coat",        "Jackets & Coats", "coats"],
+    ["Trench Jacket",      "Jackets & Coats", "coats"],
+    ["Parka",              "Jackets & Coats", "coats"],
+    ["Peacoat",            "Jackets & Coats", "coats"],
+    ["Overcoat",           "Jackets & Coats", "coats"],
+    ["Puffer Coat",        "Jackets & Coats", "coats"],
+    ["Shearling Coat",     "Jackets & Coats", "coats"],
+    ["Puffer",             "Jackets & Coats", null],
+    ["Shearling",          "Jackets & Coats", null],
+    ["Cape",               "Jackets & Coats", null],
+    ["Caban",              "Jackets & Coats", null],
+  ];
+  it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
+    const result = classify(title);
+    expect(result).toEqual({ category, subcategory });
+  });
+});
