@@ -6,7 +6,7 @@
 //   label     — human-readable display string (e.g. "Jackets & Coats")
 //   dbName    — display string stored in the products.category column
 //   shortKey  — (groups only) compact alias used by nav code to key sub-menus
-//   children  — (groups only) array of { slug, label } leaf entries
+//   children  — (groups only) array of { slug, label, subcategory? } leaf entries
 //
 // Children inherit their parent's dbName: a product tagged "tops_tees" in the
 // URL filters against rows where products.category = "Tops" in the DB.
@@ -18,10 +18,10 @@ export const CATEGORIES = [
     dbName: "Tops",
     shortKey: "tops",
     children: [
-      { slug: "tops_hoodies_sweaters", label: "Hoodies & Sweaters" },
-      { slug: "tops_shirts_blouses",   label: "Shirts & Blouses"   },
-      { slug: "tops_tees",             label: "Tees"               },
-      { slug: "tops_knitwear",         label: "Knitwear"           },
+      { slug: "tops_hoodies_sweaters", label: "Hoodies & Sweaters", subcategory: "hoodies_sweaters" },
+      { slug: "tops_shirts_blouses",   label: "Shirts & Blouses",   subcategory: "shirts_blouses"   },
+      { slug: "tops_tees",             label: "Tees",               subcategory: "tees"             },
+      { slug: "tops_knitwear",         label: "Knitwear",           subcategory: "knitwear"         },
     ],
   },
   { slug: "bottoms",        label: "Bottoms",          dbName: "Bottoms" },
@@ -32,8 +32,8 @@ export const CATEGORIES = [
     dbName: "Jackets & Coats",
     shortKey: "jackets",
     children: [
-      { slug: "jackets", label: "Jackets" },
-      { slug: "coats",   label: "Coats"   },
+      { slug: "jackets", label: "Jackets", subcategory: "jackets" },
+      { slug: "coats",   label: "Coats",   subcategory: "coats"   },
     ],
   },
   { slug: "footwear", label: "Footwear", dbName: "Footwear" },
@@ -43,8 +43,8 @@ export const CATEGORIES = [
     dbName: "Bags & Accessories",
     shortKey: "bags",
     children: [
-      { slug: "bags",        label: "Bags"        },
-      { slug: "accessories", label: "Accessories" },
+      { slug: "bags",        label: "Bags",        subcategory: "bags"        },
+      { slug: "accessories", label: "Accessories", subcategory: "accessories" },
     ],
   },
   { slug: "sets", label: "Sets", dbName: "Sets" },
@@ -59,6 +59,45 @@ export const CATEGORY_SLUG_TO_DB = Object.fromEntries(
     ...(c.children || []).map((child) => [child.slug, c.dbName]),
   ]),
 );
+
+// Leaf-aware slug → DB filter shape. Parent slugs resolve to a category
+// filter with no subcategory; leaf slugs resolve to BOTH (category +
+// subcategory). Unknown slugs return { category: slug, subcategory: null }
+// — preserves the legacy `|| s` fallback in /api/products/route.js.
+const SLUG_TO_FILTER = (() => {
+  const map = {};
+  for (const c of CATEGORIES) {
+    map[c.slug] = { category: c.dbName, subcategory: null };
+    for (const child of c.children || []) {
+      map[child.slug] = { category: c.dbName, subcategory: child.subcategory };
+    }
+  }
+  return map;
+})();
+
+// Given an array of URL slugs (parent or leaf), return the deduplicated
+// arrays of DB category values and subcategory slugs to filter on.
+// Either array may be empty.
+export function resolveCategoryFilter(slugs) {
+  if (!Array.isArray(slugs) || slugs.length === 0) {
+    return { categoryDbValues: [], subcategorySlugs: [] };
+  }
+  const cats = new Set();
+  const subs = new Set();
+  for (const slug of slugs) {
+    const entry = SLUG_TO_FILTER[slug];
+    if (!entry) {
+      cats.add(slug);
+      continue;
+    }
+    cats.add(entry.category);
+    if (entry.subcategory) subs.add(entry.subcategory);
+  }
+  return {
+    categoryDbValues: [...cats],
+    subcategorySlugs: [...subs],
+  };
+}
 
 // Filter panel groups. Leaves have children=null; groups include an
 // "All <Label>" entry as the first child (so the parent slug remains
