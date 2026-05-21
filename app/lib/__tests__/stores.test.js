@@ -64,3 +64,53 @@ describe("assignCategory — Jackets & Coats leaves", () => {
     expect(result).toEqual({ category, subcategory });
   });
 });
+
+describe("assignCategory — Bags & Accessories leaves", () => {
+  const cases = [
+    ["Tote Bag",     "Bags & Accessories", "bags"],
+    ["Belt Bag",     "Bags & Accessories", "bags"],
+    ["Crossbody",    "Bags & Accessories", "bags"],
+    ["Clutch",       "Bags & Accessories", "bags"],
+    ["Backpack",     "Bags & Accessories", "bags"],
+    ["Card Holder",  "Bags & Accessories", "bags"],
+    ["Wallet",       "Bags & Accessories", "bags"],
+    ["Belt",         "Bags & Accessories", "accessories"],
+    ["Silk Scarf",   "Bags & Accessories", "accessories"],
+    ["Sunglasses",   "Bags & Accessories", "accessories"],
+    ["Beanie",       "Bags & Accessories", "accessories"],
+    ["Tie",          "Bags & Accessories", "accessories"],
+    ["Necktie",      "Bags & Accessories", "accessories"],
+    ["Bracelet",     "Bags & Accessories", "accessories"],
+    ["Watch",        "Bags & Accessories", "accessories"],
+  ];
+  it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
+    const result = classify(title);
+    expect(result).toEqual({ category, subcategory });
+  });
+});
+
+describe("assignCategory — flat buckets (subcategory must be null)", () => {
+  const cases = [
+    ["Denim Jeans",   "Bottoms",          null],
+    ["Cargo Pants",   "Bottoms",          null],
+    ["Sneakers",      "Footwear",         null],
+    ["Boots",         "Footwear",         null],
+    ["Maxi Dress",    "Dresses & Skirts", null],
+    ["Skirt",         "Dresses & Skirts", null],
+    ["Wool Set",      "Sets",             null],
+    ["Tracksuit",     "Sets",             null],
+  ];
+  it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
+    const result = classify(title);
+    expect(result).toEqual({ category, subcategory });
+  });
+});
+
+describe("assignCategory — uncategorisable rows", () => {
+  it("returns { category: null, subcategory: null } when nothing matches", () => {
+    expect(classify("Comme des Garçons Special Piece")).toEqual({
+      category: null,
+      subcategory: null,
+    });
+  });
+});
