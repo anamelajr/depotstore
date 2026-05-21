@@ -53,6 +53,28 @@ export default function Editor({ initialEntry, slug }) {
     setEntry({ ...entry, blocks: [...entry.blocks, block] });
   }
 
+  async function handleSave() {
+    if (!effectiveSlug || !/^[a-z0-9][a-z0-9-]*$/.test(effectiveSlug)) {
+      alert("Slug is required and must be kebab-case.");
+      return;
+    }
+    const payload = { ...entry, slug: effectiveSlug };
+    const res = await fetch("/api/admin/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entry: payload }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(`Save failed: ${data.error || res.status}`);
+      return;
+    }
+    alert(`Saved ${data.slugFile}${data.indexUpdated ? " (+ index.js)" : ""}`);
+    if (isNew) {
+      window.location.href = `/admin/editorial/${effectiveSlug}`;
+    }
+  }
+
   return (
     <div>
       <header
@@ -70,6 +92,7 @@ export default function Editor({ initialEntry, slug }) {
           {effectiveSlug ? `content/editorial/${effectiveSlug}.js` : "(unsaved)"}
         </span>
         <button
+          onClick={handleSave}
           style={{
             background: "#d6d2c4",
             color: "#18181a",
