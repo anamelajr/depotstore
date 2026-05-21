@@ -21,6 +21,9 @@
 - **`mergeGeneratedBlocks` validates block counts.** If GPT returns fewer text-shaped blocks than the structure plan asked for, the merge falls back to "append all generated blocks before the user's image blocks" and surfaces a UI warning instead of silently shuffling content.
 - **Engineer must confirm `gpt-5.5` is a current model** before relying on it (Task 4 adds an explicit verification step).
 
+**2026-05-21 (second-pass clarification, post second Codex review):**
+- **Task 13 rewritten** to remove contradictory language about RSC boundaries. Previous wording said "client components can render server components only via composition, NOT direct calls" right next to instructions that directly imported `Block` and `EditorialHero` from a client component — which read as a contradiction. The reality is narrower: that rule applies only to *true* server components that use server-only APIs (`cookies()`, `headers()`, `import "server-only"`, async data fetching in the component body). `Block.js` and `EditorialHero.js` are **shared components** — files without `"use client"` *and* without server-only APIs — which Next.js bundles for whichever side imports them. The new Task 13 makes this explicit, adds a `grep` gate in Step 1 to confirm the shared-component assumption still holds at implementation time, and keeps the fallback (Client*.js clones) documented for the day either file picks up a server-only dependency.
+
 ---
 
 ## Existing code touched/reused (read these before starting)
@@ -1356,20 +1359,29 @@ git commit -m "feat: admin editorial list page"
 
 ---
 
-### Task 13: PreviewPane component (server-component-safe wrapper)
+### Task 13: PreviewPane component
 
 **Files:**
 - Create: `app/admin/editorial/[slug]/_components/PreviewPane.js`
 
-The preview renders the entry through the **real** `Block.js` components. To avoid divergence between live `/editorial/<slug>` and the editor's preview, we reuse `app/editorial/_components/Block.js` directly. We also reuse the same hero rendering. Read-only here; later tasks pass live state.
+The preview renders the entry through the **real** `Block.js` and `EditorialHero.js` components. To avoid divergence between live `/editorial/<slug>` and the editor's preview, we reuse those components directly.
 
-- [ ] **Step 1: Inspect the existing Block component**
+**Why this is safe in Next.js App Router:** `Block.js` and `EditorialHero.js` are **shared components** in RSC parlance — files without `"use client"` *and* without any server-only API usage (no `cookies()`, no `headers()`, no `next/image` server-side props, no async data fetching in the component body, no `import "server-only"`). Shared components are bundled for whichever side imports them. Importing them from a server component → they render on the server. Importing them from a client component → they render on the client. The "client components can't import server components directly" rule only applies to *true* server components that use server-only APIs.
 
-Read `app/editorial/_components/Block.js`. Confirm it accepts a single `block` prop and is a server component (no `"use client"`). Confirm the hero component (likely `app/editorial/_components/EditorialHero.js`) accepts an `entry.hero` prop.
+- [ ] **Step 1: Confirm Block.js and EditorialHero.js are still shared components**
 
-If `Block.js` is a server component but renders fine with arbitrary block data, we can reuse it from a client component by lifting it to a separate render call. If it directly imports server-only modules (`next/image` with server config, etc.) we either keep PreviewPane as a server component (re-rendered on form submits, slower) or fork a client-safe copy. **Inspect first, then choose.**
+The plan assumes both files are pure presentational (props in → JSX out). Verify with:
 
-If `Block.js` is server-component-only with no client-incompatible imports, mark `PreviewPane` with `"use client"` and import + call `<Block />` from it — React will render server components inside client components via composition only, NOT direct calls. **For this plan, assume Block.js is renderable from client code** (no server-only APIs); if inspection shows otherwise, the alternative is below.
+```bash
+grep -l "use client" app/editorial/_components/Block.js app/editorial/_components/EditorialHero.js
+grep -E "cookies\(|headers\(|server-only|^async function|fetch\(" app/editorial/_components/Block.js app/editorial/_components/EditorialHero.js
+```
+
+Expected: **both commands print nothing.** If either grep finds anything, the assumption is broken — skip to the **Fallback** section at the end of this task. As of this plan's authoring (2026-05-21), both files were clean.
+
+Also confirm the signatures the preview will call:
+- `Block` accepts `{ block, slug }` props
+- `EditorialHero` accepts `{ entry }` and reads `entry.hero`
 
 - [ ] **Step 2: Write PreviewPane**
 
@@ -1377,6 +1389,13 @@ Write `app/admin/editorial/[slug]/_components/PreviewPane.js`:
 ```js
 "use client";
 
+// PreviewPane is a client component because the editor lifts state into
+// React useState and PreviewPane needs to re-render on every keystroke.
+// Block and EditorialHero are shared components (verified in Step 1) —
+// importing them here causes Next.js to bundle them for the client.
+// This is the supported pattern; only true server components (those that
+// use cookies/headers/server-only) require the children-via-props
+// composition trick.
 import Block from "../../../../editorial/_components/Block.js";
 import EditorialHero from "../../../../editorial/_components/EditorialHero.js";
 
@@ -1404,14 +1423,18 @@ export default function PreviewPane({ entry }) {
 }
 ```
 
-If inspection in Step 1 showed `Block.js` is incompatible with client rendering (uses server-only APIs), instead create `app/admin/editorial/[slug]/_components/ClientBlock.js` as a thin client-side clone of the renderer covering all 5 block types (text, section-heading, image, pullquote, image-pair). Use the same JSX/CSS classes — but tag the file with `"use client"`. **Document the divergence in a code comment** so future block additions update both.
-
 - [ ] **Step 3: Commit**
 
 ```bash
 git add app/admin/editorial/[slug]/_components/PreviewPane.js
-git commit -m "feat: PreviewPane reusing Block.js renderer"
+git commit -m "feat: PreviewPane reusing Block.js + EditorialHero.js"
 ```
+
+**Fallback (only if Step 1's grep found server-only API usage in either file):**
+
+Create `app/admin/editorial/[slug]/_components/ClientBlock.js` and `ClientEditorialHero.js` — thin client-side clones covering all 5 block types (text, section-heading, image, pullquote, image-pair) and the 4 hero layouts. Use the same JSX/CSS classes as the originals so visual parity is preserved. Add a code comment on both files referencing the original they shadow, so future block-type additions update both copies. PreviewPane then imports the Client* versions instead.
+
+This path is documented but should not be needed today — the grep in Step 1 is the gate.
 
 ---
 
