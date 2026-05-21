@@ -1,5 +1,5 @@
 import { supabase } from "../../lib/supabase.js";
-import { CATEGORY_SLUG_TO_DB } from "../../lib/categories.js";
+import { resolveCategoryFilter } from "../../lib/categories.js";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +25,8 @@ export async function GET(request) {
   const store = searchParams.get("store");
   const categoryRaw = searchParams.get("category");
   const categorySlugs = categoryRaw ? categoryRaw.split(",").filter(Boolean) : [];
-  // Map slugs to DB display names and deduplicate
-  const categories = [...new Set(categorySlugs.map((s) => CATEGORY_SLUG_TO_DB[s] || s))];
+  const { categoryDbValues, subcategorySlugs } = resolveCategoryFilter(categorySlugs);
+  const categories = categoryDbValues;
   const search = searchParams.get("search");
   const brand = searchParams.get("brand");
   const sort = searchParams.get("sort");
@@ -34,6 +34,7 @@ export async function GET(request) {
 
   // Comma-separated DB category names for the RPC (which splits via string_to_array)
   const categoryDbParam = categories.length > 0 ? categories.join(",") : null;
+  const subcategoryParam = subcategorySlugs.length > 0 ? subcategorySlugs.join(",") : null;
 
   // Use interleaved RPC when no explicit sort is set (default discovery mode)
   if (!sort || sort === "interleaved") {
@@ -41,6 +42,7 @@ export async function GET(request) {
       supabase.rpc("get_interleaved_products", {
         p_store: store || null,
         p_category: categoryDbParam,
+        p_subcategory: subcategoryParam,
         p_search: search || null,
         p_brand: brand || null,
         p_limit: limit,
@@ -49,6 +51,7 @@ export async function GET(request) {
       supabase.rpc("count_interleaved_products", {
         p_store: store || null,
         p_category: categoryDbParam,
+        p_subcategory: subcategoryParam,
         p_search: search || null,
         p_brand: brand || null,
       }),
@@ -81,7 +84,7 @@ export async function GET(request) {
   const from = offset;
   const to = from + limit - 1;
 
-  const selectCols = "id, name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle, category";
+  const selectCols = "id, name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle, category, subcategory";
 
   // Price is stored as TEXT ("€29.99") so DB ordering is lexicographic.
   // For price sorts: fetch all matching rows, sort numerically in JS, then paginate.
@@ -95,6 +98,8 @@ export async function GET(request) {
     if (store) priceQuery = priceQuery.eq("store_domain", store);
     if (categories.length === 1) priceQuery = priceQuery.eq("category", categories[0]);
     else if (categories.length > 1) priceQuery = priceQuery.in("category", categories);
+    if (subcategorySlugs.length === 1) priceQuery = priceQuery.eq("subcategory", subcategorySlugs[0]);
+    else if (subcategorySlugs.length > 1) priceQuery = priceQuery.in("subcategory", subcategorySlugs);
     if (brand) priceQuery = priceQuery.ilike("brand", `%${brand}%`);
     priceQuery = applySearchFilter(priceQuery, search);
 
@@ -142,6 +147,8 @@ export async function GET(request) {
   if (store) query = query.eq("store_domain", store);
   if (categories.length === 1) query = query.eq("category", categories[0]);
   else if (categories.length > 1) query = query.in("category", categories);
+  if (subcategorySlugs.length === 1) query = query.eq("subcategory", subcategorySlugs[0]);
+  else if (subcategorySlugs.length > 1) query = query.in("subcategory", subcategorySlugs);
   if (brand) query = query.ilike("brand", `%${brand}%`);
   query = applySearchFilter(query, search);
 
