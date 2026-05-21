@@ -65,13 +65,18 @@ export function decideBranchAction({
 
   if (isEditingBranch(currentBranch)) {
     if (newSession) {
+      // `openPr` is for the branch we're about to leave — never reuse it.
       return {
         action: "create-and-switch",
         newBranchName: buildBranchName(now),
       };
     }
     if (openPr) {
-      return { action: "use-current", branch: currentBranch };
+      return {
+        action: "use-current",
+        branch: currentBranch,
+        reusePr: openPr,
+      };
     }
     if (mergedPr) {
       return {

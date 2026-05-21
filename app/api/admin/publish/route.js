@@ -249,14 +249,18 @@ export async function POST(request) {
     }
   }
 
-  // Resolve PR — reuse existing open PR if we're on the same branch, else create.
+  // Resolve PR — reuse the orchestrator-approved openPr (only ever set on
+  // `use-current`), else create. We can't fall back to the local `openPr`
+  // variable directly because after `create-and-switch` it refers to the
+  // PR of the branch we just left.
   let prUrl;
   let prNumber;
   let prAction;
 
-  if (openPr) {
-    prUrl = openPr.url;
-    prNumber = openPr.number;
+  const reusablePr = decision.reusePr || null;
+  if (reusablePr) {
+    prUrl = reusablePr.url;
+    prNumber = reusablePr.number;
     prAction = "updated";
   } else {
     const prTitle = `Content: ${labelHint || branchName.replace(/^content\/edit-/, "")}`;

@@ -74,6 +74,38 @@ describe("decideBranchAction", () => {
     });
     expect(out.action).toBe("use-current");
     expect(out.branch).toBe("content/edit-20260520-1000");
+    expect(out.reusePr).toEqual({
+      url: "https://github.com/x/y/pull/1",
+      number: 1,
+    });
+  });
+
+  it("does NOT carry reusePr when create-and-switch is requested from a branch with an open PR", () => {
+    // Regression: route used to blindly reuse the discovered openPr,
+    // which after create-and-switch belongs to the branch we just left.
+    const out = decideBranchAction({
+      currentBranch: "content/edit-20260520-1000",
+      defaultBranch: "main",
+      newSession: true,
+      openPr: { url: "https://github.com/x/y/pull/1", number: 1 },
+      mergedPr: null,
+      now: NOW,
+    });
+    expect(out.action).toBe("create-and-switch");
+    expect(out.reusePr).toBeUndefined();
+  });
+
+  it("does NOT carry reusePr on use-current with no PR yet", () => {
+    const out = decideBranchAction({
+      currentBranch: "content/edit-20260521-0900",
+      defaultBranch: "main",
+      newSession: false,
+      openPr: null,
+      mergedPr: null,
+      now: NOW,
+    });
+    expect(out.action).toBe("use-current");
+    expect(out.reusePr).toBeUndefined();
   });
 
   it("refuses when current editing branch has a merged PR", () => {
