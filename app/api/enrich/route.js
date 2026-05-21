@@ -130,7 +130,7 @@ export async function POST(request) {
     // brand passed it on the row's first pass.
     if (row.brand && row.title) {
       fastPathCount++;
-      const newCategory = assignCategory(row) ?? null;
+      const { category: newCategory, subcategory: newSubcategory } = assignCategory(row);
       if (!newCategory) {
         categoryFailed++;
         failed++;
@@ -144,6 +144,7 @@ export async function POST(request) {
         p_brand: row.brand,
         p_title: row.title,
         p_category: newCategory,
+        p_subcategory: newSubcategory,
       });
       if (rpcErr) {
         failed++;
@@ -251,8 +252,8 @@ export async function POST(request) {
           continue;
         }
 
-        const newCategory =
-          assignCategory({ ...row, brand: newBrand, title: newTitle }) ?? null;
+        const { category: newCategory, subcategory: newSubcategory } =
+          assignCategory({ ...row, brand: newBrand, title: newTitle });
         if (newCategory) categoryAssigned++;
         else categoryFailed++;
         // Atomic null-only write via RPC — COALESCE evaluates against the
@@ -266,6 +267,7 @@ export async function POST(request) {
           p_brand: newBrand,
           p_title: newTitle,
           p_category: newCategory,
+          p_subcategory: newSubcategory,
         });
         if (rpcErr) {
           failed++;
