@@ -17,6 +17,11 @@ export async function GET(request) {
     return NextResponse.json({ products: [] });
   }
 
+  // PostgREST treats , . : ( ) as filter syntax inside .or(). Wrap the value
+  // in double quotes so they're parsed as literal data; escape \ and " inside.
+  const escaped = q.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const pattern = `"%${escaped}%"`;
+
   const { data, error } = await supabase
     .from("products")
     .select(
@@ -24,7 +29,7 @@ export async function GET(request) {
     )
     .eq("available", true)
     .eq("hidden", false)
-    .or(`name.ilike.%${q}%,title.ilike.%${q}%,brand.ilike.%${q}%`)
+    .or(`name.ilike.${pattern},title.ilike.${pattern},brand.ilike.${pattern}`)
     .limit(30);
 
   if (error) {
