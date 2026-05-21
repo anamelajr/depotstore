@@ -5,6 +5,41 @@ import HeroPanel from "./HeroPanel.js";
 import BlockCard from "./BlockCard.js";
 import AddBlockMenu from "./AddBlockMenu.js";
 import PreviewPane from "./PreviewPane.js";
+import GenerateModal from "./GenerateModal.js";
+
+function mergeGeneratedBlocks(currentBlocks, generatedBlocks, expectedTextCount) {
+  const isImage = (b) => b.type === "image" || b.type === "image-pair";
+  const imageSlots = currentBlocks.filter(isImage);
+  const generatedTextish = generatedBlocks.filter((b) => !isImage(b));
+
+  const segments = imageSlots.length + 1;
+
+  if (
+    typeof expectedTextCount === "number" &&
+    generatedTextish.length !== expectedTextCount
+  ) {
+    return {
+      merged: [...generatedTextish, ...imageSlots],
+      warning:
+        `GPT returned ${generatedTextish.length} text-shaped blocks; ` +
+        `the structure plan asked for ${expectedTextCount}. ` +
+        `Generated content placed before your image blocks instead of threaded around them. ` +
+        `Drag blocks to rearrange, or regenerate.`,
+    };
+  }
+
+  const perSegment = Math.max(1, Math.floor(generatedTextish.length / segments));
+  const merged = [];
+  let cursor = 0;
+  for (let s = 0; s < segments; s++) {
+    const isLast = s === segments - 1;
+    const take = isLast ? generatedTextish.length - cursor : perSegment;
+    merged.push(...generatedTextish.slice(cursor, cursor + take));
+    cursor += take;
+    if (!isLast) merged.push(imageSlots[s]);
+  }
+  return { merged, warning: null };
+}
 
 const EMPTY_ENTRY = {
   slug: "",
@@ -53,6 +88,33 @@ export default function Editor({ initialEntry, slug }) {
     setEntry({ ...entry, blocks: [...entry.blocks, block] });
   }
 
+  const [showGenerate, setShowGenerate] = useState(false);
+
+  function applyGenerated({ hero, generatedBlocks, expectedTextCount }) {
+    const { merged, warning } = mergeGeneratedBlocks(
+      entry.blocks,
+      generatedBlocks,
+      expectedTextCount
+    );
+    setEntry({
+      ...entry,
+      hero: hero
+        ? {
+            ...entry.hero,
+            eyebrow: hero.eyebrow ?? entry.hero.eyebrow,
+            title: hero.title ?? entry.hero.title,
+            subtitle: hero.subtitle ?? entry.hero.subtitle,
+            byline: hero.byline ?? entry.hero.byline,
+            imageAlt: hero.imageAlt ?? entry.hero.imageAlt,
+          }
+        : entry.hero,
+      blocks: merged,
+    });
+    if (warning) {
+      alert(warning);
+    }
+  }
+
   async function handleSave() {
     if (!effectiveSlug || !/^[a-z0-9][a-z0-9-]*$/.test(effectiveSlug)) {
       alert("Slug is required and must be kebab-case.");
@@ -91,6 +153,21 @@ export default function Editor({ initialEntry, slug }) {
         <span style={{ marginLeft: "auto", fontSize: 12, color: "#8a8a80" }}>
           {effectiveSlug ? `content/editorial/${effectiveSlug}.js` : "(unsaved)"}
         </span>
+        <button
+          onClick={() => setShowGenerate(true)}
+          style={{
+            background: "linear-gradient(135deg, #6a4ba6, #4a3578)",
+            color: "#fff",
+            border: "none",
+            padding: "6px 14px",
+            borderRadius: 4,
+            fontSize: 12,
+            cursor: "pointer",
+            marginRight: 6,
+          }}
+        >
+          ✦ Generate draft
+        </button>
         <button
           onClick={handleSave}
           style={{
@@ -189,6 +266,13 @@ export default function Editor({ initialEntry, slug }) {
 
       <PreviewPane entry={{ ...entry, slug: effectiveSlug }} />
     </div>
+        {showGenerate && (
+          <GenerateModal
+            entry={{ ...entry, slug: effectiveSlug }}
+            onClose={() => setShowGenerate(false)}
+            onApply={applyGenerated}
+          />
+        )}
     </div>
   );
 }
