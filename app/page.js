@@ -1,6 +1,8 @@
 import Link from "next/link";
 import ProductCard from "./components/ProductCard";
 import ParisMap from "./components/ParisMap";
+import { fetchHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
+import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 
 export const dynamic = 'force-dynamic';
 
@@ -12,28 +14,37 @@ try {
   const { getActiveStores } = await import("./lib/stores.js");
   stores = await getActiveStores();
   const STORES = stores;
-  const seed = Math.floor(Date.now() / 86400000);
-  
-  const perStore = await Promise.all(
-    STORES.map(async (store) => {
-      const res = await fetch(
-        `${baseUrl}/api/products?limit=20&store=${store.domain}&sort=newest`,
-        { next: { revalidate: 3600 } }
-      );
-      if (!res.ok) return [];
-      const data = await res.json();
-      const products = data.products ?? [];
-      if (products.length === 0) return [];
-      // Pick one product per store using daily seed
-      const idx = seed % products.length;
-      return [products[idx]];
-    })
-  );
-  
-  recentProducts = perStore
-    .flat()
-    .filter(Boolean)
-    .slice(0, 8);
+
+  const homepagePicks = await loadHomepagePicks();
+  if (homepagePicks.length > 0) {
+    try {
+      recentProducts = await fetchHomepagePicks(homepagePicks);
+    } catch (err) {
+      console.warn("[homepage] fetchHomepagePicks failed, falling back:", err.message);
+    }
+  }
+
+  if (recentProducts.length === 0) {
+    // Existing date-seeded rotation — preserves current behavior when
+    // no picks have been curated OR when the picks file is unreadable.
+    const seed = Math.floor(Date.now() / 86400000);
+    const perStore = await Promise.all(
+      STORES.map(async (store) => {
+        const res = await fetch(
+          `${baseUrl}/api/products?limit=20&store=${store.domain}&sort=newest`,
+          { next: { revalidate: 3600 } }
+        );
+        if (!res.ok) return [];
+        const data = await res.json().catch(() => ({}));
+        const products = data.products ?? [];
+        if (products.length === 0) return [];
+        // Pick one product per store using daily seed
+        const idx = seed % products.length;
+        return [products[idx]];
+      })
+    );
+    recentProducts = perStore.flat().filter(Boolean).slice(0, 8);
+  }
 } catch {
   // ignore
 }
