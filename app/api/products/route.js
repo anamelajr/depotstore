@@ -3,6 +3,35 @@ import { resolveCategoryFilter } from "../../lib/categories.js";
 
 export const dynamic = "force-dynamic";
 
+// PostgREST treats `,` `.` `:` `(` `)` and whitespace as filter-syntax
+// delimiters when unquoted. Wrap any value containing one of those in
+// double quotes (doubling any embedded quote per PostgREST convention)
+// so the parser reads it as a single literal value. Defensive against
+// future category names like "Dresses, Skirts & Robes".
+function escapePostgrestValue(value) {
+  const s = String(value);
+  if (/[,.:()"\s]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+// Build the OR clause that unifies parent-only selections with
+// (category, subcategory) leaf pairs. Without this, a request like
+// ?category=tops,jackets would AND `category IN (Tops,J&C)` with
+// `subcategory='jackets'`, silently dropping all Tops rows.
+function applyCategoryOrFilter(query, { parentCategories, leafFilters }) {
+  if (parentCategories.length === 0 && leafFilters.length === 0) return query;
+  const parts = [
+    ...parentCategories.map((c) => `category.eq.${escapePostgrestValue(c)}`),
+    ...leafFilters.map(
+      ({ category, subcategory }) =>
+        `and(category.eq.${escapePostgrestValue(category)},subcategory.eq.${escapePostgrestValue(subcategory)})`,
+    ),
+  ];
+  return query.or(parts.join(","));
+}
+
 // Split search query into words; each word must appear in title, brand, or name.
 // Chained .or() calls are ANDed by PostgREST (append semantics, not overwrite).
 function applySearchFilter(query, search) {
@@ -25,24 +54,28 @@ export async function GET(request) {
   const store = searchParams.get("store");
   const categoryRaw = searchParams.get("category");
   const categorySlugs = categoryRaw ? categoryRaw.split(",").filter(Boolean) : [];
-  const { categoryDbValues, subcategorySlugs } = resolveCategoryFilter(categorySlugs);
-  const categories = categoryDbValues;
+  const { parentCategories, leafFilters } = resolveCategoryFilter(categorySlugs);
   const search = searchParams.get("search");
   const brand = searchParams.get("brand");
   const sort = searchParams.get("sort");
   const offset = (page - 1) * limit;
 
-  // Comma-separated DB category names for the RPC (which splits via string_to_array)
-  const categoryDbParam = categories.length > 0 ? categories.join(",") : null;
-  const subcategoryParam = subcategorySlugs.length > 0 ? subcategorySlugs.join(",") : null;
+  // Interleaved RPC only works for parent-only selections — its WHERE clause
+  // ANDs the category and subcategory filters, which silently drops parent
+  // rows when leaf filters are present. Mixed or leaf-only requests fall
+  // through to the direct-query path, which uses OR semantics. The cost
+  // is losing store-interleaving for those requests; newest-first is the
+  // pragmatic substitute order.
+  const hasLeafFilters = leafFilters.length > 0;
+  const useInterleavedRpc = (!sort || sort === "interleaved") && !hasLeafFilters;
 
-  // Use interleaved RPC when no explicit sort is set (default discovery mode)
-  if (!sort || sort === "interleaved") {
+  if (useInterleavedRpc) {
+    const categoryDbParam = parentCategories.length > 0 ? parentCategories.join(",") : null;
     const [{ data, error }, { data: countData, error: countError }] = await Promise.all([
       supabase.rpc("get_interleaved_products", {
         p_store: store || null,
         p_category: categoryDbParam,
-        p_subcategory: subcategoryParam,
+        p_subcategory: null,
         p_search: search || null,
         p_brand: brand || null,
         p_limit: limit,
@@ -51,7 +84,7 @@ export async function GET(request) {
       supabase.rpc("count_interleaved_products", {
         p_store: store || null,
         p_category: categoryDbParam,
-        p_subcategory: subcategoryParam,
+        p_subcategory: null,
         p_search: search || null,
         p_brand: brand || null,
       }),
@@ -80,7 +113,7 @@ export async function GET(request) {
     return Response.json({ products, total: Number(countData), page, limit });
   }
 
-  // Explicit sort — fall back to standard query
+  // Direct-query path: explicit sort OR a mixed parent+leaf selection.
   const from = offset;
   const to = from + limit - 1;
 
@@ -96,10 +129,7 @@ export async function GET(request) {
       .eq("hidden", false);
 
     if (store) priceQuery = priceQuery.eq("store_domain", store);
-    if (categories.length === 1) priceQuery = priceQuery.eq("category", categories[0]);
-    else if (categories.length > 1) priceQuery = priceQuery.in("category", categories);
-    if (subcategorySlugs.length === 1) priceQuery = priceQuery.eq("subcategory", subcategorySlugs[0]);
-    else if (subcategorySlugs.length > 1) priceQuery = priceQuery.in("subcategory", subcategorySlugs);
+    priceQuery = applyCategoryOrFilter(priceQuery, { parentCategories, leafFilters });
     if (brand) priceQuery = priceQuery.ilike("brand", `%${brand}%`);
     priceQuery = applySearchFilter(priceQuery, search);
 
@@ -136,7 +166,8 @@ export async function GET(request) {
     return Response.json({ products, total: count, page, limit });
   }
 
-  // Non-price explicit sorts (oldest, newest) — DB ordering is correct
+  // Default newest-first ordering; covers explicit oldest/newest sorts AND
+  // the leaf-bypass-of-interleaved fallback.
   let query = supabase
     .from("products")
     .select(selectCols, { count: "exact" })
@@ -145,10 +176,7 @@ export async function GET(request) {
     .range(from, to);
 
   if (store) query = query.eq("store_domain", store);
-  if (categories.length === 1) query = query.eq("category", categories[0]);
-  else if (categories.length > 1) query = query.in("category", categories);
-  if (subcategorySlugs.length === 1) query = query.eq("subcategory", subcategorySlugs[0]);
-  else if (subcategorySlugs.length > 1) query = query.in("subcategory", subcategorySlugs);
+  query = applyCategoryOrFilter(query, { parentCategories, leafFilters });
   if (brand) query = query.ilike("brand", `%${brand}%`);
   query = applySearchFilter(query, search);
 
