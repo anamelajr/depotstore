@@ -43,4 +43,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/
+# brainstorming session artifacts (visual companion)
 .superpowers/
+
+# raw GPT outputs from the CLI drafting script on parse failure
+drafts/
