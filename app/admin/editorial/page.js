@@ -10,8 +10,9 @@ async function loadEntries() {
     if (!file.endsWith(".js") || file === "index.js") continue;
     const slug = file.replace(/\.js$/, "");
     try {
-      const mod = await import(join(dir, file) + `?t=${Date.now()}`);
-      const e = mod.default;
+      const src = await fs.readFile(join(dir, file), "utf8");
+      const fn = new Function(src.replace(/export default\s+(\w+)\s*;/, "return $1;"));
+      const e = fn();
       entries.push({
         slug,
         title: e?.hero?.title ?? slug,

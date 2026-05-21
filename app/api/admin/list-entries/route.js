@@ -15,9 +15,9 @@ export async function GET() {
     if (!file.endsWith(".js") || file === "index.js") continue;
     const slug = file.replace(/\.js$/, "");
     try {
-      // Cache-bust so we always get the latest file content during dev.
-      const mod = await import(join(dir, file) + `?t=${Date.now()}`);
-      const entry = mod.default;
+      const src = await fs.readFile(join(dir, file), "utf8");
+      const fn = new Function(src.replace(/export default\s+(\w+)\s*;/, "return $1;"));
+      const entry = fn();
       entries.push({
         slug,
         title: entry?.hero?.title ?? slug,

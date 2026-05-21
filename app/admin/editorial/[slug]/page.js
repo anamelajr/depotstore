@@ -8,8 +8,9 @@ async function loadEntry(slug) {
   if (slug === "new") return null;
   const file = join(process.cwd(), "content", "editorial", `${slug}.js`);
   try {
-    const mod = await import(file + `?t=${Date.now()}`);
-    return mod.default;
+    const src = await fs.readFile(file, "utf8");
+    const fn = new Function(src.replace(/export default\s+(\w+)\s*;/, "return $1;"));
+    return fn();
   } catch {
     return null;
   }
