@@ -149,8 +149,16 @@ function printSamples(detail) {
 
 function emitSql(detail, path) {
   const groups = {};
+  const crossCategory = [];
   for (const d of detail) {
     if (!d.proposed_subcategory) continue;
+    // The CHECK constraint requires subcategory to match current category's leaves.
+    // Skip cross-category re-classifications — they signal a wrong existing parent
+    // (e.g. a Scarf currently in Tops). Those need separate review, not a silent reparent.
+    if (d.proposed_parent !== d.current_category) {
+      crossCategory.push(d);
+      continue;
+    }
     groups[d.proposed_subcategory] ??= [];
     groups[d.proposed_subcategory].push(d.id);
   }
@@ -174,7 +182,17 @@ function emitSql(detail, path) {
   }
   lines.push("", "COMMIT;");
   writeFileSync(path, lines.join("\n") + "\n");
-  console.log(`\nWet-backfill SQL written to ${path} (${detail.length} rows considered, ${Object.values(groups).flat().length} UPDATEs across ${Object.keys(groups).length} leaves).`);
+  const updated = Object.values(groups).flat().length;
+  console.log(`\nWet-backfill SQL written to ${path}`);
+  console.log(`  rows considered:      ${detail.length}`);
+  console.log(`  rows updated:         ${updated} across ${Object.keys(groups).length} leaves`);
+  console.log(`  cross-category skip:  ${crossCategory.length} (proposed parent disagrees with current category — see below)`);
+  if (crossCategory.length) {
+    console.log("\n=== Cross-category skips (review manually if you want them re-parented) ===");
+    for (const d of crossCategory) {
+      console.log(`  id=${String(d.id).padEnd(10)} ${d.store_domain.padEnd(24)} ${d.current_category} → ${d.proposed_parent}/${d.proposed_subcategory}  "${d.title ?? d.name ?? ""}"`);
+    }
+  }
 }
 
 const rows = await fetchAll();
