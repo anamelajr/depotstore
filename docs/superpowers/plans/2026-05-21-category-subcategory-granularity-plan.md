@@ -728,9 +728,35 @@ No commit here — the script and dry-run output don't change the repo.
 
 # Phase 3 — DB schema + RPC + wet backfill (push-safe in isolation)
 
-These four tasks happen in the Supabase SQL Editor. They DO NOT touch the JS repo. Production `main` continues serving with its old code; the new column is nullable and the new RPC parameters default to NULL, so old callers keep working.
+These four tasks happen in the Supabase SQL Editor. They DO NOT touch the JS repo. Production `main` continues serving with its old code; the new column is nullable and the new RPC parameters default to NULL, so old callers keep working — **provided the RPC migrations are written correctly**. See the warning below.
 
 **Why this phase is safe to advance through fully before any JS pushes:** the new RPC signatures are strictly additive (`p_subcategory text DEFAULT NULL`), the new column is nullable, and no `main` code reads it. The DB is "ready" but production `main` doesn't know yet — and doesn't care.
+
+### ⚠️ Postgres function-overload ambiguity — must drop, not just CREATE OR REPLACE
+
+`CREATE OR REPLACE FUNCTION` in Postgres **only replaces** an existing function when the signature (name + parameter count + parameter types) matches exactly. Adding a parameter — at the end, in the middle, anywhere — creates a **new overload** alongside the old function. Both functions then coexist in `pg_proc`.
+
+This is fatal for our migration. Production `main` calls the RPCs by **named arguments** (Supabase JS via PostgREST only supports named-argument dispatch). After a naive `CREATE OR REPLACE` with a new `p_subcategory` parameter, a call like:
+
+```sql
+SELECT enrich_product(
+  p_handle := X, p_store_domain := Y, p_brand := Z,
+  p_title := W, p_category := V
+);
+```
+
+matches **both** signatures — the old 5-arg, and the new 6-arg where `p_subcategory` is omitted via DEFAULT. Postgres errors with `function call is ambiguous` and the live enrich pipeline breaks immediately, before any JS push.
+
+**Mitigation, applied in Tasks 9 and 10:** every RPC migration is wrapped in a transaction that **drops the old signature first**, then creates the new one. The DDL is transactional, so the function never visibly disappears to concurrent callers:
+
+```sql
+BEGIN;
+DROP FUNCTION IF EXISTS public.<fn>(<exact old arg types>);
+CREATE OR REPLACE FUNCTION public.<fn>(<new arg list with p_subcategory>) ... ;
+COMMIT;
+```
+
+The smoke-test step in each migration task verifies the **exact named-arg call shape** that `main` uses — not a positional SQL call — because positional and named dispatch take different code paths in Postgres, and the ambiguity error only surfaces on named calls.
 
 ## Task 8: Apply schema change in Supabase (column + CHECK)
 
@@ -814,8 +840,15 @@ git commit -m "ops(supabase): add subcategory column + CHECK constraint"
 
 ```sql
 -- Update enrich_product to COALESCE-write subcategory alongside category.
--- p_subcategory DEFAULT NULL keeps old callers (on main) working unchanged.
+-- The DROP-then-CREATE is required to avoid creating an OVERLOAD that
+-- would make production main's named-arg calls ambiguous — see Phase 3
+-- preamble. Wrapped in a transaction so the function never visibly
+-- disappears (Postgres DDL is transactional).
 -- Apply via Supabase SQL Editor.
+
+BEGIN;
+
+DROP FUNCTION IF EXISTS public.enrich_product(text, text, text, text, text);
 
 CREATE OR REPLACE FUNCTION public.enrich_product(
   p_handle        text,
@@ -834,7 +867,19 @@ AS $$
     subcategory = COALESCE(subcategory, p_subcategory)
   WHERE handle = p_handle AND store_domain = p_store_domain;
 $$;
+
+COMMIT;
 ```
+
+**Before pasting:** confirm the current production signature is exactly `enrich_product(text, text, text, text, text)`. The `DROP FUNCTION IF EXISTS` line names that exact signature; if it diverges in production (e.g. someone added a parameter we don't know about), the DROP becomes a no-op and the new function becomes an unwanted overload. Verify with:
+
+```sql
+SELECT proname, pg_get_function_identity_arguments(oid)
+FROM pg_proc
+WHERE proname = 'enrich_product' AND pronamespace = 'public'::regnamespace;
+```
+
+Expected before applying: one row, arguments = `text, text, text, text, text`.
 
 - [ ] **Step 2: Apply in the Supabase SQL Editor**
 
@@ -874,14 +919,27 @@ WHERE handle = '<that-handle>' AND store_domain = '<that-store-domain>';
 
 Expected: brand/title/category unchanged; subcategory now `'tees'`. Roll back: `UPDATE products SET subcategory = NULL WHERE id = X;`.
 
-- [ ] **Step 5: Verify old-style calls still work (backwards compat)**
+- [ ] **Step 5: Verify old-style NAMED-ARG calls still work (backwards compat)**
+
+Production `main` uses `@supabase/supabase-js`, which sends RPC calls via PostgREST in **named-argument** form only. The smoke test must mirror that exact call shape — not a positional SQL call — because positional and named dispatch take different code paths in Postgres, and the overload-ambiguity error only surfaces on named calls.
 
 ```sql
--- 5-argument call (no p_subcategory) should still resolve — DEFAULT NULL covers it
-SELECT enrich_product('<some-handle>', '<some-domain>', 'X', 'Y', 'Z');
+-- Old-style 5-named-arg call (no p_subcategory) — exactly what main sends
+SELECT enrich_product(
+  p_handle       := '<some-handle>',
+  p_store_domain := '<some-domain>',
+  p_brand        := 'X',
+  p_title        := 'Y',
+  p_category     := 'Z'
+);
+
+-- And confirm only ONE enrich_product signature exists post-migration
+SELECT proname, pg_get_function_identity_arguments(oid)
+FROM pg_proc
+WHERE proname = 'enrich_product' AND pronamespace = 'public'::regnamespace;
 ```
 
-Expected: succeeds (no "function does not exist" error). Production `main` still uses 5-arg calls — this must work or main breaks.
+Expected: the call succeeds with NO `function call is ambiguous` error; the `pg_proc` query returns exactly one row with `text, text, text, text, text, text` as the argument list. If you see an ambiguity error, the DROP in Step 3 didn't run (or didn't match the old signature) and you now have two coexisting overloads — investigate `pg_proc` and drop the stray one before continuing.
 
 - [ ] **Step 6: Commit (stay local — do not push)**
 
@@ -899,21 +957,28 @@ git commit -m "ops(supabase): enrich_product RPC writes subcategory via COALESCE
 
 The interleaved RPCs are not in git. Pull live definitions, add `p_subcategory text DEFAULT NULL`, commit updated DDL.
 
-- [ ] **Step 1: Pull current RPC bodies**
+- [ ] **Step 1: Pull current RPC bodies AND exact argument types**
 
 In the Supabase SQL Editor:
 ```sql
-SELECT pg_get_functiondef(oid)
+-- Full body for each function (paste each into the scratch file)
+SELECT proname, pg_get_functiondef(oid)
+FROM pg_proc
+WHERE proname IN ('get_interleaved_products', 'count_interleaved_products')
+  AND pronamespace = 'public'::regnamespace;
+
+-- Exact argument-type string — needed for the DROP FUNCTION statement
+SELECT proname, pg_get_function_identity_arguments(oid)
 FROM pg_proc
 WHERE proname IN ('get_interleaved_products', 'count_interleaved_products')
   AND pronamespace = 'public'::regnamespace;
 ```
 
-Copy both definitions to a local scratch file.
+Copy both function definitions AND the exact argument-type strings to a local scratch file. Expected argument types for `get_interleaved_products`: `text, text, text, text, integer, integer` (store, category, search, brand, limit, offset). For `count_interleaved_products`: `text, text, text, text`. **If your live signatures differ, use what `pg_proc` returned, not what's written here.**
 
 - [ ] **Step 2: Modify both definitions**
 
-For each function, add the parameter `p_subcategory text DEFAULT NULL` right after `p_category text`. Inside the function body, add the same kind of `string_to_array` filter that the existing `p_category` handler uses:
+For each function, **append** the parameter `p_subcategory text DEFAULT NULL` after all existing parameters (not in the middle). Inside the function body, add the same kind of `string_to_array` filter that the existing `p_category` handler uses:
 
 ```sql
 AND (
@@ -922,32 +987,106 @@ AND (
 )
 ```
 
-Mirror the placement of the existing `p_category` filter. **Preserve all other logic** — interleaving, brand `unaccent` + ILIKE, parameter positions for non-modified params.
+Mirror the placement of the existing `p_category` filter inside the WHERE/JOIN clause. **Preserve all other logic** — interleaving, brand `unaccent` + ILIKE, parameter positions and names for all non-modified params.
 
-- [ ] **Step 3: Write the SQL file**
+Appending (rather than inserting in the middle) is convention for additive parameters and avoids any concern if a future SQL caller ever uses positional form. The actual production safety mechanism is the DROP-then-CREATE in Step 3 below, not the position of the new parameter.
 
-`scripts/sql/2026-05-21-interleaved-rpcs.sql`: paste both updated `CREATE OR REPLACE FUNCTION` statements (full bodies).
+- [ ] **Step 3: Write the SQL file with DROP-then-CREATE in a transaction**
+
+`scripts/sql/2026-05-21-interleaved-rpcs.sql`: wrap both function updates in a single transaction, dropping each old signature before creating the new one. Skeleton:
+
+```sql
+-- Update interleaved RPCs to accept p_subcategory. DROP-then-CREATE is
+-- required to avoid overload ambiguity on production main's named-arg
+-- calls — see Phase 3 preamble. Single transaction so neither function
+-- visibly disappears (Postgres DDL is transactional).
+
+BEGIN;
+
+DROP FUNCTION IF EXISTS public.get_interleaved_products(text, text, text, text, integer, integer);
+CREATE OR REPLACE FUNCTION public.get_interleaved_products(
+  -- ... existing params in original order and names ...
+  p_subcategory text DEFAULT NULL
+) RETURNS ...
+AS $$
+  -- ... existing body, with the new subcategory filter applied ...
+$$;
+
+DROP FUNCTION IF EXISTS public.count_interleaved_products(text, text, text, text);
+CREATE OR REPLACE FUNCTION public.count_interleaved_products(
+  -- ... existing params in original order and names ...
+  p_subcategory text DEFAULT NULL
+) RETURNS ...
+AS $$
+  -- ... existing body, with the new subcategory filter applied ...
+$$;
+
+COMMIT;
+```
+
+**Verify the DROP argument types against Step 1's `pg_get_function_identity_arguments` output before pasting.** If they don't match, the DROP becomes a no-op and the new function becomes a stray overload — `function call is ambiguous` errors will follow.
 
 - [ ] **Step 4: Apply in the SQL Editor**
 
 Paste contents → Run.
 
-- [ ] **Step 5: Smoke-test backwards compat AND new behaviour**
+- [ ] **Step 5: Smoke-test backwards compat AND new behaviour — using NAMED-ARG calls**
+
+Production `main` calls these RPCs in named-argument form via PostgREST. The smoke test must mirror that exact call shape; positional and named dispatch take different code paths and only named calls surface the overload-ambiguity error this migration is engineered to avoid.
 
 ```sql
--- Old-style call (no p_subcategory) must still work for production main
-SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', NULL, NULL, 10000, 0);
+-- Old-style 6-named-arg call (no p_subcategory) — exactly what main sends to get_interleaved_products
+SELECT COUNT(*) FROM get_interleaved_products(
+  p_store    := NULL,
+  p_category := 'Tops',
+  p_search   := NULL,
+  p_brand    := NULL,
+  p_limit    := 10000,
+  p_offset   := 0
+);
 
--- New-style call with p_subcategory
-SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', NULL, NULL, NULL, 10000, 0);
+-- Same for count_interleaved_products (4-named-arg, no p_subcategory)
+SELECT count_interleaved_products(
+  p_store    := NULL,
+  p_category := 'Tops',
+  p_search   := NULL,
+  p_brand    := NULL
+);
 
--- Leaf filter — should return 0 (no rows have subcategory populated yet)
-SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', 'tees', NULL, NULL, 10000, 0);
+-- New-style call with p_subcategory explicitly NULL (acts as no-filter)
+SELECT COUNT(*) FROM get_interleaved_products(
+  p_store       := NULL,
+  p_category    := 'Tops',
+  p_search      := NULL,
+  p_brand       := NULL,
+  p_limit       := 10000,
+  p_offset      := 0,
+  p_subcategory := NULL
+);
+
+-- Leaf filter — should return 0 until Task 12 wet backfill runs
+SELECT COUNT(*) FROM get_interleaved_products(
+  p_store       := NULL,
+  p_category    := 'Tops',
+  p_search      := NULL,
+  p_brand       := NULL,
+  p_limit       := 10000,
+  p_offset      := 0,
+  p_subcategory := 'tees'
+);
+
+-- Confirm exactly one signature exists for each function post-migration
+SELECT proname, pg_get_function_identity_arguments(oid)
+FROM pg_proc
+WHERE proname IN ('get_interleaved_products', 'count_interleaved_products')
+  AND pronamespace = 'public'::regnamespace;
 ```
 
-Expected: first count matches pre-deploy Tops count, second matches (NULL subcategory acts as no-filter), third is 0 until Task 12 wet backfill runs.
-
-**Note on parameter order:** the new `p_subcategory` is positional argument #3. If existing callers use positional 5-arg form, the `DEFAULT NULL` on the new parameter only helps if it's the LAST parameter or named. **Verify the current call sites on `main` use named-argument form** (`p_category := …`); if they use positional 4-arg or 5-arg form, the addition shifts positions and breaks main. The Supabase JS client uses named-arg form by default — this is the safe case. Confirm before pasting.
+Expected:
+- First two queries succeed with NO `function call is ambiguous` error. Counts match pre-deploy.
+- Third query matches the first (NULL subcategory acts as no-filter).
+- Fourth query returns 0 until Task 12 backfills the leaves.
+- `pg_proc` shows exactly one row per function — `get_interleaved_products` with 7 args, `count_interleaved_products` with 5 args. If you see two rows for either, the DROP in Step 3 didn't match the live signature: investigate and drop the stray overload before continuing.
 
 - [ ] **Step 6: Commit (stay local — do not push)**
 
@@ -1539,6 +1678,11 @@ Per CLAUDE.md: "Do not push directly to `main`. Branch + Vercel preview every ch
 - Deployment-order hazard between Task 8 (was: route.js) and Task 16 (was: wet backfill) — FIXED by reordering into 5 phases. Phase 3 (DB) completes fully before Phase 4 (JS) starts, and explicit no-push gate spans Phase 1–4.
 - Spec/plan ordering contradiction — FIXED. Plan now matches spec's "DB before code-that-depends-on-DB" sequencing.
 - Two adjacent hazards Codex understated (RPC parameter mismatch in `/api/enrich`, column-missing error in route filter) — also FIXED by the same reorder + the explicit "production main stays working throughout" note in Phase 3.
+
+**Codex adversarial findings (2026-05-21, second pass):**
+- RPC migration trap: `CREATE OR REPLACE FUNCTION` with a new parameter creates a NEW overload alongside the OLD function, and production `main`'s named-arg calls then become ambiguous (`function call is ambiguous`). Codex flagged this as a "positional argument shift" concern; the Dépôt codebase uses named-arg RPC calls exclusively (Supabase JS via PostgREST), so the actual mechanism is overload ambiguity, not positional shifting.
+- FIXED in Tasks 9 and 10: each RPC migration now begins with `DROP FUNCTION IF EXISTS <exact-old-signature>` inside a `BEGIN; ... COMMIT;` transaction, so there's only ever one function in flight; the smoke tests in those tasks now use NAMED-arg call shapes (matching what production sends) and verify exactly one signature exists in `pg_proc` post-migration.
+- New explicit warning added to Phase 3's preamble explaining the overload-ambiguity mechanism, so future RPC migrations follow the DROP-then-CREATE pattern.
 
 **Placeholder scan:** No "TBD" / "TODO" / "fill in later" / "similar to". Every step has actual code or commands.
 
