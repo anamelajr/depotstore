@@ -12,6 +12,31 @@
 
 ---
 
+## ⚠️ Push gate — read this before executing any task
+
+**Do NOT push the branch to the remote until Task 17, Step 1.** Every commit in Tasks 1–16 stays local.
+
+Reasons (each independently fatal if violated):
+
+1. **Task 5 changes `assignCategory()`'s return shape from string to object.** Before Task 13 lands the matching caller updates, the production `/api/enrich` cron path would pass an object where `p_category` expects text — Postgres would reject every call.
+2. **Tasks 13 and 15 pass `p_subcategory` to RPCs.** Until Tasks 9–10 add that parameter (with `DEFAULT NULL` so old callers keep working), any call carrying `p_subcategory` errors with "function does not exist with this signature."
+3. **Task 15 filters on the `subcategory` column.** Until Task 8 adds the column, the query errors with "column does not exist."
+4. **Task 15 + Task 12 timing.** Even after the column and RPCs exist, leaf filter URLs like `/feed?category=tops_tees` will return empty until the wet backfill in Task 12 has populated rows.
+
+The reordered phases below are designed so the **database** can advance through Tasks 8–12 without breaking the live `main` branch (new RPC parameters are `DEFAULT NULL`; the new column is nullable; old code on `main` never references either). Only the JS branch needs the no-push discipline.
+
+**Phase summary** (full task list follows):
+
+| Phase | Tasks | Where | Push-safe individually? |
+|---|---|---|---|
+| 1. Local setup + classifier (TDD) | 1–5 | Local repo | No (Task 5 breaks live enrich if pushed) |
+| 2. Dry-run + human review | 6–7 | Local (reads prod DB read-only) | No |
+| 3. DB schema + RPC + wet backfill | 8–12 | Supabase SQL Editor | **Yes** — DB only, `main` unaffected |
+| 4. JS code that depends on DB state | 13–16 | Local repo | No (only safe in aggregate after Phase 3) |
+| 5. Push, verify, PR | 17 | Remote / Vercel | Push happens here |
+
+---
+
 ## File Structure
 
 **Create:**
@@ -34,6 +59,8 @@
 - `app/components/MoreFromStore.js`, PDP page, homepage — audit only; they should not filter by category directly
 
 ---
+
+# Phase 1 — Local setup + classifier (TDD)
 
 ## Task 1: Set up Vitest
 
@@ -88,7 +115,7 @@ npm test
 
 Expected: Vitest reports "No test files found" or "0 passed". Exits clean.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit (stay local — do not push)**
 
 ```bash
 git add package.json package-lock.json vitest.config.js
@@ -102,7 +129,7 @@ git commit -m "chore(test): add vitest for unit testing"
 **Files:**
 - Create: `app/lib/__tests__/stores.test.js`
 
-These tests fail until Tasks 6–8 land. They document the expected behaviour of the new `{ category, subcategory }` shape from `assignCategory()`.
+These tests fail until Task 5 lands. They document the expected behaviour of the new `{ category, subcategory }` shape from `assignCategory()`.
 
 - [ ] **Step 1: Create the test file with Tops cases**
 
@@ -137,23 +164,13 @@ describe("assignCategory — Tops leaves", () => {
     ["Knit",                           "Tops", "knitwear"],
     ["Knitwear",                       "Tops", "knitwear"],
     ["Top",                            "Tops", null],
-    ["Comme des Garçons Special Piece","Tops", null],
+    ["Comme des Garçons Special Piece", null, null],
   ];
   it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
     const result = classify(title);
-    // For NULL-subcategory rows that still classify to Tops via broad rule,
-    // category must be Tops. For "Top" alone the broad classifier returns
-    // Tops via rule 7's `tops?` token, so we still expect Tops.
     expect(result).toEqual({ category, subcategory });
   });
 });
-```
-
-Note on "Comme des Garçons Special Piece": no garment noun in the title, so the broad classifier returns null and `assignCategory` also returns `{ category: null, subcategory: null }`. The test expects `{ category: "Tops", subcategory: null }`, so this case actually documents that **without a garment noun the row stays uncategorised at both levels**. Adjust expected to `{ category: null, subcategory: null }`:
-
-Replace the last row of the `cases` array with:
-```js
-["Comme des Garçons Special Piece", null, null],
 ```
 
 - [ ] **Step 2: Run the test — confirm failure**
@@ -164,7 +181,7 @@ npm test -- stores
 
 Expected: every Tops case fails. Either `assignCategory` returns a string (current behaviour) instead of an object, or returns `null` where we expect Tops with a leaf. The failure messages confirm we're targeting the right contract.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Commit (stay local — do not push)**
 
 ```bash
 git add app/lib/__tests__/stores.test.js
@@ -225,7 +242,7 @@ npm test -- stores
 
 Expected: all J&C cases fail. Parent category may already be right for some titles, but the return shape is still a string, not an object.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Commit (stay local — do not push)**
 
 ```bash
 git add app/lib/__tests__/stores.test.js
@@ -307,7 +324,7 @@ npm test -- stores
 
 Expected: every case still fails (return shape mismatch).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit (stay local — do not push)**
 
 ```bash
 git add app/lib/__tests__/stores.test.js
@@ -320,6 +337,8 @@ git commit -m "test(stores): bags/accessories + flat-bucket leaf tests (failing)
 
 **Files:**
 - Modify: `app/lib/stores.js` (add three helper functions just above `assignCategory`, and change `assignCategory`'s return)
+
+⚠️ **From this task forward, the branch is NOT push-safe.** Production `/api/enrich` on `main` calls `assignCategory` and uses the old string return — if this commit goes live, every enrich call breaks. Stay local through Task 16.
 
 - [ ] **Step 1: Add the three leaf-classifier helpers above `assignCategory`**
 
@@ -376,9 +395,7 @@ function classifyLeaf(parent, text) {
 
 - [ ] **Step 2: Change `assignCategory`'s return shape**
 
-Replace every `return result;` and `return null;` inside `assignCategory` with the new shape. Specifically, in `app/lib/stores.js` lines 461–496, the function currently returns either the parent string or `null`. Update so every return path yields `{ category, subcategory }`.
-
-Replace the body of `assignCategory` (everything inside the function after the variable declarations) with this exact code, preserving the variable setup above it:
+Replace the body of `assignCategory` (everything inside the function after the variable declarations at lines 425–454) with this exact code:
 
 ```js
   // Early swim guard.
@@ -442,7 +459,7 @@ If any case fails, the regex needs adjusting. Common pitfalls:
 - "Card Holder" requires `card[\s-]?holders?`.
 - "Knit Polo" must NOT hit `knitwear` first — the `polo` rule (in shirts_blouses) runs earlier; verify by tracing the order.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit (stay local — do not push)**
 
 ```bash
 git add app/lib/stores.js
@@ -451,14 +468,592 @@ git commit -m "feat(stores): classify leaf subcategory in assignCategory"
 
 ---
 
-## Task 6: Update enrich route to thread subcategory through
+# Phase 2 — Dry-run + human review
+
+The dry-run script imports `assignCategory` from local source, so it can run as soon as Task 5 is committed. No DB changes yet — fully read-only.
+
+## Task 6: Write the dry-run backfill script
+
+**Files:**
+- Create: `scripts/backfillSubcategory.mjs`
+
+- [ ] **Step 1: Create the script**
+
+`scripts/backfillSubcategory.mjs`:
+
+```js
+#!/usr/bin/env node
+// Dry-run subcategory backfill. Reads every Tops / Jackets & Coats /
+// Bags & Accessories row from Supabase, runs the new assignCategory()
+// against the row's existing fields, and prints a distribution report.
+//
+// Usage:
+//   node scripts/backfillSubcategory.mjs                  # report only
+//   node scripts/backfillSubcategory.mjs --emit-sql FILE  # write wet-backfill SQL
+
+import "dotenv/config";
+import { createClient } from "@supabase/supabase-js";
+import { writeFileSync } from "node:fs";
+import { assignCategory } from "../app/lib/stores.js";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SERVICE_ROLE) {
+  console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  process.exit(1);
+}
+
+const args = process.argv.slice(2);
+const emitSqlIdx = args.indexOf("--emit-sql");
+const sqlOutPath = emitSqlIdx >= 0 ? args[emitSqlIdx + 1] : null;
+
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
+  auth: { persistSession: false },
+});
+
+const TARGET_CATEGORIES = ["Tops", "Jackets & Coats", "Bags & Accessories"];
+
+// Page through every matching row. PostgREST caps at 1000 per request.
+// Note: `subcategory` is selected only if the column already exists on
+// the DB. Before Task 8, it doesn't — guard with COALESCE-style select.
+async function fetchAll() {
+  const rows = [];
+  const pageSize = 1000;
+  let from = 0;
+  // Try selecting subcategory; fall back to no-subcategory select if column
+  // doesn't exist yet. This lets the dry-run run BEFORE Task 8's schema add.
+  const colsWithSub = "id, store_domain, handle, name, title, brand, category, description, editorial_description, subcategory";
+  const colsNoSub   = "id, store_domain, handle, name, title, brand, category, description, editorial_description";
+  let selectCols = colsWithSub;
+  while (true) {
+    const { data, error } = await supabase
+      .from("products")
+      .select(selectCols)
+      .eq("available", true)
+      .eq("hidden", false)
+      .in("category", TARGET_CATEGORIES)
+      .range(from, from + pageSize - 1)
+      .order("id", { ascending: true });
+    if (error) {
+      if (error.message?.includes("subcategory") && selectCols === colsWithSub) {
+        // Column doesn't exist yet — re-try without it
+        selectCols = colsNoSub;
+        continue;
+      }
+      console.error("Supabase error:", error.message);
+      process.exit(1);
+    }
+    rows.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return rows;
+}
+
+function classifyRow(row) {
+  return assignCategory({
+    title: row.title,
+    name: row.name,
+    brand: row.brand,
+    description: row.description,
+    editorial_description: row.editorial_description,
+  });
+}
+
+function bucket(rows) {
+  const dist = {};
+  const byStore = {};
+  const detail = [];
+
+  for (const row of rows) {
+    const { category, subcategory } = classifyRow(row);
+    const reportedParent = category ?? "(null)";
+    const leaf = subcategory ?? null;
+    dist[reportedParent] ??= {};
+    dist[reportedParent][leaf ?? "null"] = (dist[reportedParent][leaf ?? "null"] ?? 0) + 1;
+    byStore[row.store_domain] ??= {};
+    byStore[row.store_domain][reportedParent] ??= {};
+    byStore[row.store_domain][reportedParent][leaf ?? "null"] =
+      (byStore[row.store_domain][reportedParent][leaf ?? "null"] ?? 0) + 1;
+    detail.push({
+      id: row.id,
+      store_domain: row.store_domain,
+      handle: row.handle,
+      name: row.name,
+      title: row.title,
+      current_category: row.category,
+      current_subcategory: row.subcategory ?? null,
+      proposed_parent: category,
+      proposed_subcategory: subcategory,
+    });
+  }
+  return { dist, byStore, detail };
+}
+
+function printDistribution(dist) {
+  console.log("\n=== Distribution by proposed parent / leaf ===");
+  for (const parent of Object.keys(dist).sort()) {
+    const sub = dist[parent];
+    const total = Object.values(sub).reduce((a, b) => a + b, 0);
+    console.log(`\n${parent}  (n=${total})`);
+    for (const leaf of Object.keys(sub).sort()) {
+      console.log(`  ${leaf.padEnd(24)}  ${sub[leaf]}`);
+    }
+  }
+}
+
+function printPerStore(byStore) {
+  console.log("\n=== Distribution by store ===");
+  for (const store of Object.keys(byStore).sort()) {
+    console.log(`\n${store}`);
+    const parents = byStore[store];
+    for (const parent of Object.keys(parents).sort()) {
+      const total = Object.values(parents[parent]).reduce((a, b) => a + b, 0);
+      console.log(`  ${parent}  (n=${total})`);
+      for (const leaf of Object.keys(parents[parent]).sort()) {
+        console.log(`    ${leaf.padEnd(22)}  ${parents[parent][leaf]}`);
+      }
+    }
+  }
+}
+
+function printSamples(detail) {
+  const byLeaf = {};
+  for (const d of detail) {
+    const k = `${d.proposed_parent ?? "(null)"}::${d.proposed_subcategory ?? "null"}`;
+    byLeaf[k] ??= [];
+    byLeaf[k].push(d);
+  }
+  console.log("\n=== Random samples ===");
+  for (const key of Object.keys(byLeaf).sort()) {
+    const rows = byLeaf[key];
+    const isNullLeaf = key.endsWith("::null");
+    const n = isNullLeaf ? 20 : 10;
+    const sample = [...rows].sort(() => Math.random() - 0.5).slice(0, n);
+    console.log(`\n  ${key}  (showing ${sample.length} of ${rows.length})`);
+    for (const r of sample) {
+      console.log(`    ${r.store_domain.padEnd(28)} ${r.handle.slice(0, 50).padEnd(52)} title="${r.title ?? ""}"`);
+    }
+  }
+}
+
+function emitSql(detail, path) {
+  const groups = {};
+  for (const d of detail) {
+    if (!d.proposed_subcategory) continue;
+    groups[d.proposed_subcategory] ??= [];
+    groups[d.proposed_subcategory].push(d.id);
+  }
+  const lines = [
+    "-- Wet backfill: subcategory assignments computed " + new Date().toISOString(),
+    "BEGIN;",
+    "",
+    "-- Snapshot for rollback",
+    "CREATE TABLE IF NOT EXISTS products_subcategory_backfill_snapshot AS",
+    "  SELECT id, category, subcategory FROM products",
+    "  WHERE category IN ('Tops','Jackets & Coats','Bags & Accessories');",
+    "",
+  ];
+  for (const leaf of Object.keys(groups).sort()) {
+    const ids = groups[leaf];
+    const chunkSize = 500;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      lines.push(`UPDATE products SET subcategory = '${leaf}' WHERE id IN (${chunk.join(",")});`);
+    }
+  }
+  lines.push("", "COMMIT;");
+  writeFileSync(path, lines.join("\n") + "\n");
+  console.log(`\nWet-backfill SQL written to ${path} (${detail.length} rows considered, ${Object.values(groups).flat().length} UPDATEs across ${Object.keys(groups).length} leaves).`);
+}
+
+const rows = await fetchAll();
+console.log(`Fetched ${rows.length} rows.`);
+const { dist, byStore, detail } = bucket(rows);
+printDistribution(dist);
+printPerStore(byStore);
+printSamples(detail);
+if (sqlOutPath) emitSql(detail, sqlOutPath);
+```
+
+- [ ] **Step 2: Sanity-check (parse only)**
+
+```bash
+node --check scripts/backfillSubcategory.mjs
+```
+
+Expected: no syntax errors.
+
+- [ ] **Step 3: Commit (stay local — do not push)**
+
+```bash
+git add scripts/backfillSubcategory.mjs
+git commit -m "feat(scripts): dry-run subcategory backfill with distribution report"
+```
+
+---
+
+## Task 7: Run dry-run, generate report, PAUSE for user review
+
+**Files:**
+- No code changes. Gathers data and pauses.
+
+- [ ] **Step 1: Run the dry-run**
+
+```bash
+node scripts/backfillSubcategory.mjs 2>&1 | tee /tmp/subcategory-dryrun-$(date +%Y%m%d).log
+```
+
+Expected output:
+- "Fetched ~4775 rows." (number from the investigation; may drift slightly between runs)
+- Distribution table per parent and per leaf
+- Per-store breakdown
+- ~80–100 lines of random samples
+
+- [ ] **Step 2: Report the distribution back to the user**
+
+Summarise in the PR / chat:
+- Per parent: count per leaf, including NULL
+- Outliers per store (e.g. "dolcevitahub has 200 Tops with NULL subcategory")
+- 5–10 example titles per leaf that the user can quickly judge
+- 10 example titles of NULL-subcategory rows so the user can see what's slipping through
+
+**PAUSE.** The user reviews. If they flag patterns ("X should be classified as Y", "the NULL rate on knitwear is too high"), iterate: tweak the leaf regex in Task 5's helpers, re-run tests, re-run dry-run.
+
+- [ ] **Step 3: Once approved, proceed to Phase 3**
+
+No commit here — the script and dry-run output don't change the repo.
+
+---
+
+# Phase 3 — DB schema + RPC + wet backfill (push-safe in isolation)
+
+These four tasks happen in the Supabase SQL Editor. They DO NOT touch the JS repo. Production `main` continues serving with its old code; the new column is nullable and the new RPC parameters default to NULL, so old callers keep working.
+
+**Why this phase is safe to advance through fully before any JS pushes:** the new RPC signatures are strictly additive (`p_subcategory text DEFAULT NULL`), the new column is nullable, and no `main` code reads it. The DB is "ready" but production `main` doesn't know yet — and doesn't care.
+
+## Task 8: Apply schema change in Supabase (column + CHECK)
+
+**Files:**
+- Create: `scripts/sql/2026-05-21-add-subcategory.sql`
+
+MCP is read-only — apply via the SQL Editor. Commit the SQL file for audit trail.
+
+- [ ] **Step 1: Write the SQL file**
+
+`scripts/sql/2026-05-21-add-subcategory.sql`:
+
+```sql
+-- Add subcategory column + CHECK constraint enforcing leaf-parent agreement.
+-- Apply via Supabase SQL Editor (MCP is read-only).
+
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS subcategory text NULL;
+
+ALTER TABLE public.products
+  DROP CONSTRAINT IF EXISTS products_subcategory_matches_category;
+
+ALTER TABLE public.products
+  ADD CONSTRAINT products_subcategory_matches_category
+  CHECK (
+    subcategory IS NULL
+    OR (category = 'Tops' AND subcategory IN ('tees','hoodies_sweaters','shirts_blouses','knitwear'))
+    OR (category = 'Jackets & Coats' AND subcategory IN ('jackets','coats'))
+    OR (category = 'Bags & Accessories' AND subcategory IN ('bags','accessories'))
+  );
+```
+
+- [ ] **Step 2: Snapshot before applying**
+
+In the Supabase SQL Editor:
+```sql
+CREATE TABLE IF NOT EXISTS products_pre_subcategory_snapshot AS
+  SELECT * FROM products;
+```
+
+Per CLAUDE.md "Snapshot before destructive runs."
+
+- [ ] **Step 3: Apply the SQL file in the Supabase SQL Editor**
+
+Open Supabase dashboard → SQL Editor → paste contents of `scripts/sql/2026-05-21-add-subcategory.sql` → Run.
+
+Expected: "Success. No rows returned."
+
+- [ ] **Step 4: Verify**
+
+```sql
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema='public' AND table_name='products' AND column_name='subcategory';
+
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid = 'public.products'::regclass
+  AND conname = 'products_subcategory_matches_category';
+```
+
+Expected: column exists, type `text`, nullable. CHECK constraint present.
+
+- [ ] **Step 5: Commit the SQL file (stay local — do not push)**
+
+```bash
+git add scripts/sql/2026-05-21-add-subcategory.sql
+git commit -m "ops(supabase): add subcategory column + CHECK constraint"
+```
+
+---
+
+## Task 9: Update `enrich_product` RPC in Supabase
+
+**Files:**
+- Create: `scripts/sql/2026-05-21-enrich-product-rpc.sql`
+
+- [ ] **Step 1: Write the SQL file**
+
+`scripts/sql/2026-05-21-enrich-product-rpc.sql`:
+
+```sql
+-- Update enrich_product to COALESCE-write subcategory alongside category.
+-- p_subcategory DEFAULT NULL keeps old callers (on main) working unchanged.
+-- Apply via Supabase SQL Editor.
+
+CREATE OR REPLACE FUNCTION public.enrich_product(
+  p_handle        text,
+  p_store_domain  text,
+  p_brand         text,
+  p_title         text,
+  p_category      text,
+  p_subcategory   text DEFAULT NULL
+) RETURNS void
+LANGUAGE sql
+AS $$
+  UPDATE public.products SET
+    brand       = COALESCE(brand,       p_brand),
+    title       = COALESCE(title,       p_title),
+    category    = COALESCE(category,    p_category),
+    subcategory = COALESCE(subcategory, p_subcategory)
+  WHERE handle = p_handle AND store_domain = p_store_domain;
+$$;
+```
+
+- [ ] **Step 2: Apply in the Supabase SQL Editor**
+
+Paste contents → Run.
+
+- [ ] **Step 3: Verify**
+
+```sql
+SELECT pg_get_functiondef(oid)
+FROM pg_proc
+WHERE proname = 'enrich_product' AND pronamespace = 'public'::regnamespace;
+```
+
+Expected: definition includes `p_subcategory text DEFAULT NULL` parameter and `subcategory = COALESCE(subcategory, p_subcategory)` line.
+
+- [ ] **Step 4: Smoke-test against one row**
+
+```sql
+SELECT id, handle, store_domain, brand, title, category, subcategory
+FROM products
+WHERE category = 'Tops' AND brand IS NOT NULL AND title IS NOT NULL
+LIMIT 1;
+
+SELECT enrich_product(
+  '<that-handle>',
+  '<that-store-domain>',
+  'WRONG_BRAND',
+  'WRONG_TITLE',
+  'WRONG_CATEGORY',
+  'tees'
+);
+
+SELECT id, handle, store_domain, brand, title, category, subcategory
+FROM products
+WHERE handle = '<that-handle>' AND store_domain = '<that-store-domain>';
+```
+
+Expected: brand/title/category unchanged; subcategory now `'tees'`. Roll back: `UPDATE products SET subcategory = NULL WHERE id = X;`.
+
+- [ ] **Step 5: Verify old-style calls still work (backwards compat)**
+
+```sql
+-- 5-argument call (no p_subcategory) should still resolve — DEFAULT NULL covers it
+SELECT enrich_product('<some-handle>', '<some-domain>', 'X', 'Y', 'Z');
+```
+
+Expected: succeeds (no "function does not exist" error). Production `main` still uses 5-arg calls — this must work or main breaks.
+
+- [ ] **Step 6: Commit (stay local — do not push)**
+
+```bash
+git add scripts/sql/2026-05-21-enrich-product-rpc.sql
+git commit -m "ops(supabase): enrich_product RPC writes subcategory via COALESCE"
+```
+
+---
+
+## Task 10: Update the two interleaved RPCs in Supabase
+
+**Files:**
+- Create: `scripts/sql/2026-05-21-interleaved-rpcs.sql`
+
+The interleaved RPCs are not in git. Pull live definitions, add `p_subcategory text DEFAULT NULL`, commit updated DDL.
+
+- [ ] **Step 1: Pull current RPC bodies**
+
+In the Supabase SQL Editor:
+```sql
+SELECT pg_get_functiondef(oid)
+FROM pg_proc
+WHERE proname IN ('get_interleaved_products', 'count_interleaved_products')
+  AND pronamespace = 'public'::regnamespace;
+```
+
+Copy both definitions to a local scratch file.
+
+- [ ] **Step 2: Modify both definitions**
+
+For each function, add the parameter `p_subcategory text DEFAULT NULL` right after `p_category text`. Inside the function body, add the same kind of `string_to_array` filter that the existing `p_category` handler uses:
+
+```sql
+AND (
+  p_subcategory IS NULL
+  OR subcategory = ANY(string_to_array(p_subcategory, ','))
+)
+```
+
+Mirror the placement of the existing `p_category` filter. **Preserve all other logic** — interleaving, brand `unaccent` + ILIKE, parameter positions for non-modified params.
+
+- [ ] **Step 3: Write the SQL file**
+
+`scripts/sql/2026-05-21-interleaved-rpcs.sql`: paste both updated `CREATE OR REPLACE FUNCTION` statements (full bodies).
+
+- [ ] **Step 4: Apply in the SQL Editor**
+
+Paste contents → Run.
+
+- [ ] **Step 5: Smoke-test backwards compat AND new behaviour**
+
+```sql
+-- Old-style call (no p_subcategory) must still work for production main
+SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', NULL, NULL, 10000, 0);
+
+-- New-style call with p_subcategory
+SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', NULL, NULL, NULL, 10000, 0);
+
+-- Leaf filter — should return 0 (no rows have subcategory populated yet)
+SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', 'tees', NULL, NULL, 10000, 0);
+```
+
+Expected: first count matches pre-deploy Tops count, second matches (NULL subcategory acts as no-filter), third is 0 until Task 12 wet backfill runs.
+
+**Note on parameter order:** the new `p_subcategory` is positional argument #3. If existing callers use positional 5-arg form, the `DEFAULT NULL` on the new parameter only helps if it's the LAST parameter or named. **Verify the current call sites on `main` use named-argument form** (`p_category := …`); if they use positional 4-arg or 5-arg form, the addition shifts positions and breaks main. The Supabase JS client uses named-arg form by default — this is the safe case. Confirm before pasting.
+
+- [ ] **Step 6: Commit (stay local — do not push)**
+
+```bash
+git add scripts/sql/2026-05-21-interleaved-rpcs.sql
+git commit -m "ops(supabase): interleaved RPCs accept p_subcategory filter"
+```
+
+---
+
+## Task 11: Generate the wet-backfill SQL
+
+**Files:**
+- Create: `scripts/sql/2026-05-21-subcategory-backfill.sql`
+
+- [ ] **Step 1: Regenerate with `--emit-sql`**
+
+```bash
+node scripts/backfillSubcategory.mjs --emit-sql scripts/sql/2026-05-21-subcategory-backfill.sql
+```
+
+Expected: distribution report prints (same as Task 7) plus a SQL file is written.
+
+- [ ] **Step 2: Spot-check the SQL file**
+
+```bash
+head -20 scripts/sql/2026-05-21-subcategory-backfill.sql
+wc -l scripts/sql/2026-05-21-subcategory-backfill.sql
+grep -c "^UPDATE" scripts/sql/2026-05-21-subcategory-backfill.sql
+```
+
+Expected:
+- Starts with `-- Wet backfill: …` and `BEGIN;`
+- Includes `CREATE TABLE IF NOT EXISTS products_subcategory_backfill_snapshot AS …`
+- Ends with `COMMIT;`
+- ~20–40 UPDATE statements
+
+- [ ] **Step 3: Commit (stay local — do not push)**
+
+```bash
+git add scripts/sql/2026-05-21-subcategory-backfill.sql
+git commit -m "ops(supabase): wet-backfill SQL generated from dry-run"
+```
+
+---
+
+## Task 12: Apply wet backfill in Supabase SQL Editor
+
+**Files:**
+- No code changes. Applies the SQL from Task 11.
+
+- [ ] **Step 1: Confirm snapshot from Task 8 still exists**
+
+```sql
+SELECT COUNT(*) FROM products_pre_subcategory_snapshot;
+```
+
+Expected: row count matches `products`. If missing, recreate:
+```sql
+CREATE TABLE products_pre_subcategory_snapshot_v2 AS SELECT * FROM products;
+```
+
+- [ ] **Step 2: Paste `scripts/sql/2026-05-21-subcategory-backfill.sql` into the SQL Editor**
+
+Wrapped in `BEGIN; … COMMIT;` already.
+
+- [ ] **Step 3: Run**
+
+Expected: "Success. No rows returned." Runtime ~5–30 seconds.
+
+If the CHECK constraint rejects an UPDATE, the whole transaction rolls back — investigate which leaf disagreed with which parent. Fix the source data or the leaf assignment, regenerate SQL, retry.
+
+- [ ] **Step 4: Verify distribution matches the dry-run report**
+
+```sql
+SELECT category, subcategory, COUNT(*)
+FROM products
+WHERE available = true AND hidden = false
+GROUP BY category, subcategory
+ORDER BY category, subcategory NULLS LAST;
+```
+
+Expected: per-leaf counts match the dry-run.
+
+- [ ] **Step 5: Verify production `main` still works**
+
+Hit the live site (production, not preview):
+- `/feed?category=tops` — should still return the same rows as before (parent slug unaffected by backfill).
+- `/feed` (no filter) — should still return rows.
+
+The `enrich_runs` table's latest row should show `succeeded > 0` on the next cron tick (proves the live enrich is still calling `enrich_product` successfully despite the new optional parameter).
+
+- [ ] **Step 6: No commit (DB-side change, no repo change)**
+
+---
+
+# Phase 4 — JS code that depends on DB state
+
+The DB now has the column, the RPCs accept the parameter, and the rows are populated. The JS code in this phase calls into that state — once these commits land in a deploy, the leaf filters Just Work.
+
+## Task 13: Update enrich route to thread subcategory through
 
 **Files:**
 - Modify: `app/api/enrich/route.js` (both `assignCategory` call sites)
 
-The current code does `const newCategory = assignCategory(row) ?? null;` and passes `p_category: newCategory` to the RPC. The new shape is an object, so we destructure and pass both fields.
-
-- [ ] **Step 1: Update the fast-path call site (around line 131–147)**
+- [ ] **Step 1: Update the fast-path call site (around lines 131–147)**
 
 Replace:
 ```js
@@ -503,7 +1098,7 @@ if (row.brand && row.title) {
   });
 ```
 
-- [ ] **Step 2: Update the full-enrichment call site (around line 254–269)**
+- [ ] **Step 2: Update the full-enrichment call site (around lines 254–269)**
 
 Replace:
 ```js
@@ -536,15 +1131,15 @@ const { error: rpcErr } = await supabaseAdmin.rpc("enrich_product", {
 });
 ```
 
-- [ ] **Step 3: Sanity-check syntax**
+- [ ] **Step 3: Sanity-check**
 
 ```bash
-npm run lint
+npm run lint && npm test
 ```
 
-Expected: no new lint errors. ESLint should be clean.
+Expected: lint clean, all tests still pass.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit (stay local — do not push)**
 
 ```bash
 git add app/api/enrich/route.js
@@ -553,16 +1148,12 @@ git commit -m "feat(enrich): pass subcategory through to enrich_product RPC"
 
 ---
 
-## Task 7: Replace `CATEGORY_SLUG_TO_DB` with a leaf-aware resolver
+## Task 14: Replace `CATEGORY_SLUG_TO_DB` with a leaf-aware resolver
 
 **Files:**
 - Modify: `app/lib/categories.js`
 
-`CATEGORY_SLUG_TO_DB` today maps every slug (parent or child) to the parent's `dbName`. We need a function that distinguishes: parent slugs select a category filter; leaf slugs select BOTH category and subcategory. Keep `CATEGORY_SLUG_TO_DB` exported for backward compatibility during the transition (it's only used in one file, but be explicit), and add a new resolver.
-
 - [ ] **Step 1: Extend the leaf data in `CATEGORIES`**
-
-Currently leaves only carry `{ slug, label }`. Add `subcategory: <slug-string>` so the resolver has a single source of truth.
 
 Replace `CATEGORIES` (lines 14–51) with:
 
@@ -639,7 +1230,6 @@ export function resolveCategoryFilter(slugs) {
   for (const slug of slugs) {
     const entry = SLUG_TO_FILTER[slug];
     if (!entry) {
-      // Unknown slug — preserve legacy passthrough behaviour
       cats.add(slug);
       continue;
     }
@@ -653,7 +1243,7 @@ export function resolveCategoryFilter(slugs) {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Commit (stay local — do not push)**
 
 ```bash
 git add app/lib/categories.js
@@ -662,12 +1252,12 @@ git commit -m "feat(categories): add resolveCategoryFilter for leaf-aware slugs"
 
 ---
 
-## Task 8: Update `/api/products/route.js` to use the resolver
+## Task 15: Update `/api/products/route.js` to use the resolver
 
 **Files:**
 - Modify: `app/api/products/route.js`
 
-Three places filter on category today. All three need to apply both `category` and (optionally) `subcategory`. The RPC path additionally needs to thread `p_subcategory` to the interleaved RPCs.
+Three places filter on category. All three need to apply both `category` and (optionally) `subcategory`. RPC path also passes `p_subcategory`.
 
 - [ ] **Step 1: Swap the import and resolver call**
 
@@ -694,7 +1284,7 @@ With:
 const categoryRaw = searchParams.get("category");
 const categorySlugs = categoryRaw ? categoryRaw.split(",").filter(Boolean) : [];
 const { categoryDbValues, subcategorySlugs } = resolveCategoryFilter(categorySlugs);
-const categories = categoryDbValues; // alias to keep the existing variable name in scope
+const categories = categoryDbValues;
 ```
 
 - [ ] **Step 2: Pass `p_subcategory` to the interleaved RPCs**
@@ -710,7 +1300,7 @@ const categoryDbParam = categories.length > 0 ? categories.join(",") : null;
 const subcategoryParam = subcategorySlugs.length > 0 ? subcategorySlugs.join(",") : null;
 ```
 
-Around lines 41–48 and 49–54, add `p_subcategory: subcategoryParam` as a parameter on both `supabase.rpc` calls:
+Around lines 41–48 and 49–54, add `p_subcategory: subcategoryParam` to both `supabase.rpc` calls:
 
 ```js
 supabase.rpc("get_interleaved_products", {
@@ -733,7 +1323,7 @@ supabase.rpc("count_interleaved_products", {
 
 - [ ] **Step 3: Add subcategory to the price-sort branch**
 
-Around lines 89–99, after the existing `categories` filter logic, add the subcategory filter. Replace:
+Around lines 89–99, replace:
 
 ```js
 if (store) priceQuery = priceQuery.eq("store_domain", store);
@@ -785,9 +1375,9 @@ query = applySearchFilter(query, search);
 npm run lint && npm test
 ```
 
-Expected: lint clean. Tests still pass (we haven't changed classifier code, only the route).
+Expected: lint clean. Tests still pass.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit (stay local — do not push)**
 
 ```bash
 git add app/api/products/route.js
@@ -796,29 +1386,26 @@ git commit -m "feat(products): filter feed by subcategory when leaf slug is sele
 
 ---
 
-## Task 9: Audit MoreFromStore, PDP, homepage for category filters
+## Task 16: Audit MoreFromStore, PDP, homepage for category filters
 
 **Files:**
-- Read-only audit: `app/components/MoreFromStore.js`, `app/[store]/[handle]/page.js` (or wherever PDP lives), `app/page.js`
-
-The CLAUDE.md "Before editing" rule requires touching every read surface that filters by category. These three direct-Supabase readers were called out. Spot-check that none of them filter by `category`.
+- Read-only audit: `app/components/MoreFromStore.js`, the PDP page, `app/page.js`
 
 - [ ] **Step 1: Search the codebase for direct category filters**
 
-Run:
 ```bash
 grep -rn 'eq("category"\|\.in("category"' app/ --include="*.js"
 ```
 
-Expected: returns hits in `app/api/products/route.js` (already updated) and possibly nowhere else. If hits appear in MoreFromStore / PDP / homepage / anywhere unexpected, those files need the same subcategory-filter treatment as Task 8.
+Expected: hits in `app/api/products/route.js` (already updated). If hits appear in MoreFromStore / PDP / homepage / anywhere unexpected, apply the same `subcategory` filter pattern as Task 15.
 
-- [ ] **Step 2: Document findings inline in the PR**
+- [ ] **Step 2: Document findings**
 
-If no extra hits → add a one-line comment to the PR body or commit message: "Audited MoreFromStore/PDP/homepage — neither filters by category; no further changes."
+If no extra hits → note in PR body: "Audited MoreFromStore/PDP/homepage — none filter by category; no further changes."
 
-If hits appear → add a follow-up step here to apply the same pattern. For each file, mirror the `subcategory` filter logic from Task 8 Step 3.
+If hits → add tasks here mirroring Task 15's filter pattern.
 
-- [ ] **Step 3: Commit (only if any file was changed)**
+- [ ] **Step 3: Commit (only if any file was changed; stay local — do not push)**
 
 ```bash
 git add <files>
@@ -827,595 +1414,43 @@ git commit -m "feat(reads): thread subcategory filter through direct Supabase re
 
 ---
 
-## Task 10: Write the dry-run backfill script
-
-**Files:**
-- Create: `scripts/backfillSubcategory.mjs`
-
-This script runs the new `assignCategory()` against every Tops / J&C / B&A row in production and prints a distribution report. Read-only against Supabase. Optionally emits a SQL file for the wet backfill.
-
-- [ ] **Step 1: Create the script**
-
-`scripts/backfillSubcategory.mjs`:
-
-```js
-#!/usr/bin/env node
-// Dry-run subcategory backfill. Reads every Tops / Jackets & Coats /
-// Bags & Accessories row from Supabase, runs the new assignCategory()
-// against the row's existing fields, and prints a distribution report.
-//
-// Usage:
-//   node scripts/backfillSubcategory.mjs                  # report only
-//   node scripts/backfillSubcategory.mjs --emit-sql FILE  # write wet-backfill SQL
-
-import "dotenv/config";
-import { createClient } from "@supabase/supabase-js";
-import { writeFileSync } from "node:fs";
-import { assignCategory } from "../app/lib/stores.js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!SUPABASE_URL || !SERVICE_ROLE) {
-  console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-
-const args = process.argv.slice(2);
-const emitSqlIdx = args.indexOf("--emit-sql");
-const sqlOutPath = emitSqlIdx >= 0 ? args[emitSqlIdx + 1] : null;
-
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
-  auth: { persistSession: false },
-});
-
-const TARGET_CATEGORIES = ["Tops", "Jackets & Coats", "Bags & Accessories"];
-
-// Page through every matching row. PostgREST caps at 1000 per request.
-async function fetchAll() {
-  const rows = [];
-  const pageSize = 1000;
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, store_domain, handle, name, title, brand, category, description, editorial_description, subcategory")
-      .eq("available", true)
-      .eq("hidden", false)
-      .in("category", TARGET_CATEGORIES)
-      .range(from, from + pageSize - 1)
-      .order("id", { ascending: true });
-    if (error) {
-      console.error("Supabase error:", error.message);
-      process.exit(1);
-    }
-    rows.push(...data);
-    if (data.length < pageSize) break;
-    from += pageSize;
-  }
-  return rows;
-}
-
-function classifyRow(row) {
-  // Mirror the inputs the live enrich path passes — title + name + brand +
-  // description + editorial_description. productType is not present on
-  // DB rows; assignCategory tolerates its absence.
-  return assignCategory({
-    title: row.title,
-    name: row.name,
-    brand: row.brand,
-    description: row.description,
-    editorial_description: row.editorial_description,
-  });
-}
-
-function bucket(rows) {
-  // { parent -> { leaf|null -> count } }
-  const dist = {};
-  // { store_domain -> { parent -> { leaf|null -> count } } }
-  const byStore = {};
-  // [{ id, store_domain, handle, name, title, current_category, current_subcategory, proposed_subcategory }]
-  const detail = [];
-
-  for (const row of rows) {
-    const { category, subcategory } = classifyRow(row);
-    const reportedParent = category ?? "(null)";
-    const leaf = subcategory ?? null;
-    dist[reportedParent] ??= {};
-    dist[reportedParent][leaf ?? "null"] = (dist[reportedParent][leaf ?? "null"] ?? 0) + 1;
-    byStore[row.store_domain] ??= {};
-    byStore[row.store_domain][reportedParent] ??= {};
-    byStore[row.store_domain][reportedParent][leaf ?? "null"] =
-      (byStore[row.store_domain][reportedParent][leaf ?? "null"] ?? 0) + 1;
-    detail.push({
-      id: row.id,
-      store_domain: row.store_domain,
-      handle: row.handle,
-      name: row.name,
-      title: row.title,
-      current_category: row.category,
-      current_subcategory: row.subcategory,
-      proposed_parent: category,
-      proposed_subcategory: subcategory,
-    });
-  }
-  return { dist, byStore, detail };
-}
-
-function printDistribution(dist) {
-  console.log("\n=== Distribution by proposed parent / leaf ===");
-  for (const parent of Object.keys(dist).sort()) {
-    const sub = dist[parent];
-    const total = Object.values(sub).reduce((a, b) => a + b, 0);
-    console.log(`\n${parent}  (n=${total})`);
-    for (const leaf of Object.keys(sub).sort()) {
-      console.log(`  ${leaf.padEnd(24)}  ${sub[leaf]}`);
-    }
-  }
-}
-
-function printPerStore(byStore) {
-  console.log("\n=== Distribution by store ===");
-  for (const store of Object.keys(byStore).sort()) {
-    console.log(`\n${store}`);
-    const parents = byStore[store];
-    for (const parent of Object.keys(parents).sort()) {
-      const total = Object.values(parents[parent]).reduce((a, b) => a + b, 0);
-      console.log(`  ${parent}  (n=${total})`);
-      for (const leaf of Object.keys(parents[parent]).sort()) {
-        console.log(`    ${leaf.padEnd(22)}  ${parents[parent][leaf]}`);
-      }
-    }
-  }
-}
-
-function printSamples(detail) {
-  // 10 random samples per leaf, plus 20 random NULL samples per parent.
-  const byLeaf = {};
-  for (const d of detail) {
-    const k = `${d.proposed_parent ?? "(null)"}::${d.proposed_subcategory ?? "null"}`;
-    byLeaf[k] ??= [];
-    byLeaf[k].push(d);
-  }
-  console.log("\n=== Random samples ===");
-  for (const key of Object.keys(byLeaf).sort()) {
-    const rows = byLeaf[key];
-    const isNullLeaf = key.endsWith("::null");
-    const n = isNullLeaf ? 20 : 10;
-    const sample = [...rows].sort(() => Math.random() - 0.5).slice(0, n);
-    console.log(`\n  ${key}  (showing ${sample.length} of ${rows.length})`);
-    for (const r of sample) {
-      console.log(`    ${r.store_domain.padEnd(28)} ${r.handle.slice(0, 50).padEnd(52)} title="${r.title ?? ""}"`);
-    }
-  }
-}
-
-function emitSql(detail, path) {
-  const groups = {};
-  for (const d of detail) {
-    if (!d.proposed_subcategory) continue; // NULL stays NULL — no UPDATE needed
-    groups[d.proposed_subcategory] ??= [];
-    groups[d.proposed_subcategory].push(d.id);
-  }
-  const lines = [
-    "-- Wet backfill: subcategory assignments computed " + new Date().toISOString(),
-    "BEGIN;",
-    "",
-    "-- Snapshot for rollback",
-    "CREATE TABLE IF NOT EXISTS products_subcategory_backfill_snapshot AS",
-    "  SELECT id, category, subcategory FROM products",
-    "  WHERE category IN ('Tops','Jackets & Coats','Bags & Accessories');",
-    "",
-  ];
-  for (const leaf of Object.keys(groups).sort()) {
-    const ids = groups[leaf];
-    // Chunk to 500 ids per statement to keep each UPDATE comfortably bounded
-    const chunkSize = 500;
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
-      lines.push(`UPDATE products SET subcategory = '${leaf}' WHERE id IN (${chunk.join(",")});`);
-    }
-  }
-  lines.push("", "COMMIT;");
-  writeFileSync(path, lines.join("\n") + "\n");
-  console.log(`\nWet-backfill SQL written to ${path} (${detail.length} rows considered, ${Object.values(groups).flat().length} UPDATEs across ${Object.keys(groups).length} leaves).`);
-}
-
-const rows = await fetchAll();
-console.log(`Fetched ${rows.length} rows.`);
-const { dist, byStore, detail } = bucket(rows);
-printDistribution(dist);
-printPerStore(byStore);
-printSamples(detail);
-if (sqlOutPath) emitSql(detail, sqlOutPath);
-```
-
-- [ ] **Step 2: Sanity-check (the script doesn't execute yet — checking imports only)**
-
-Run:
-```bash
-node --check scripts/backfillSubcategory.mjs
-```
-
-Expected: no syntax errors. (`node --check` parses without running.)
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add scripts/backfillSubcategory.mjs
-git commit -m "feat(scripts): dry-run subcategory backfill with distribution report"
-```
-
----
-
-## Task 11: Run dry-run, generate report, PAUSE for user review
-
-**Files:**
-- No code changes. This task gathers data and pauses.
-
-- [ ] **Step 1: Run the dry-run**
-
-```bash
-node scripts/backfillSubcategory.mjs 2>&1 | tee /tmp/subcategory-dryrun-$(date +%Y%m%d).log
-```
-
-Expected output:
-- "Fetched ~4775 rows." (number from the investigation; may drift slightly between runs)
-- Distribution table per parent and per leaf
-- Per-store breakdown
-- ~80–100 lines of random samples
-
-- [ ] **Step 2: Report the distribution back to the user**
-
-Summarise in the PR / chat:
-- Per parent: count per leaf, including NULL
-- Outliers per store (e.g. "dolcevitahub has 200 Tops with NULL subcategory")
-- 5–10 example titles per leaf that the user can quickly judge
-- 10 example titles of NULL-subcategory rows so the user can see what's slipping through
-
-**PAUSE.** The user reviews. If they flag patterns ("X should be classified as Y", "the NULL rate on knitwear is too high — add `knit shirt` to knitwear keywords"), iterate: tweak the leaf regex in Task 5's helpers, re-run tests, re-run dry-run.
-
-- [ ] **Step 3: Once approved, proceed to Task 12**
-
-No commit here — the script and dry-run output don't change the repo.
-
----
-
-## Task 12: Apply schema change in Supabase (column + CHECK)
-
-**Files:**
-- Create: `scripts/sql/2026-05-21-add-subcategory.sql`
-
-This task touches production Supabase. **MCP is read-only — apply via the SQL Editor.** Commit the SQL file for audit trail.
-
-- [ ] **Step 1: Write the SQL file**
-
-`scripts/sql/2026-05-21-add-subcategory.sql`:
-
-```sql
--- Add subcategory column + CHECK constraint enforcing leaf-parent agreement.
--- Apply via Supabase SQL Editor (MCP is read-only).
-
-ALTER TABLE public.products
-  ADD COLUMN IF NOT EXISTS subcategory text NULL;
-
-ALTER TABLE public.products
-  DROP CONSTRAINT IF EXISTS products_subcategory_matches_category;
-
-ALTER TABLE public.products
-  ADD CONSTRAINT products_subcategory_matches_category
-  CHECK (
-    subcategory IS NULL
-    OR (category = 'Tops' AND subcategory IN ('tees','hoodies_sweaters','shirts_blouses','knitwear'))
-    OR (category = 'Jackets & Coats' AND subcategory IN ('jackets','coats'))
-    OR (category = 'Bags & Accessories' AND subcategory IN ('bags','accessories'))
-  );
-```
-
-- [ ] **Step 2: Snapshot before applying**
-
-In the Supabase SQL Editor, run:
-```sql
-CREATE TABLE IF NOT EXISTS products_pre_subcategory_snapshot AS
-  SELECT * FROM products;
-```
-
-Per CLAUDE.md's "Snapshot before destructive runs" rule. (Schema changes are not directly destructive but the CHECK constraint can reject existing offending data — snapshot first.)
-
-- [ ] **Step 3: Apply the SQL file in the Supabase SQL Editor**
-
-Open the Supabase dashboard → SQL Editor → paste the contents of `scripts/sql/2026-05-21-add-subcategory.sql` → Run.
-
-Expected: "Success. No rows returned." The constraint should hold because every existing row has `subcategory = NULL`, which satisfies the first clause.
-
-- [ ] **Step 4: Verify in the SQL Editor**
-
-```sql
-SELECT column_name, data_type, is_nullable
-FROM information_schema.columns
-WHERE table_schema='public' AND table_name='products' AND column_name='subcategory';
-
-SELECT conname, pg_get_constraintdef(oid)
-FROM pg_constraint
-WHERE conrelid = 'public.products'::regclass
-  AND conname = 'products_subcategory_matches_category';
-```
-
-Expected: column exists, type `text`, nullable. Constraint exists with the leaf-list CHECK.
-
-- [ ] **Step 5: Commit the SQL file**
-
-```bash
-git add scripts/sql/2026-05-21-add-subcategory.sql
-git commit -m "ops(supabase): add subcategory column + CHECK constraint"
-```
-
----
-
-## Task 13: Update `enrich_product` RPC in Supabase
-
-**Files:**
-- Create: `scripts/sql/2026-05-21-enrich-product-rpc.sql`
-
-Per the CLAUDE.md, the RPC's DDL is the COALESCE-write that enforces editorial protection. We extend it to also COALESCE-write subcategory.
-
-- [ ] **Step 1: Write the SQL file**
-
-`scripts/sql/2026-05-21-enrich-product-rpc.sql`:
-
-```sql
--- Update enrich_product to COALESCE-write subcategory alongside category.
--- Apply via Supabase SQL Editor.
-
-CREATE OR REPLACE FUNCTION public.enrich_product(
-  p_handle        text,
-  p_store_domain  text,
-  p_brand         text,
-  p_title         text,
-  p_category      text,
-  p_subcategory   text DEFAULT NULL
-) RETURNS void
-LANGUAGE sql
-AS $$
-  UPDATE public.products SET
-    brand       = COALESCE(brand,       p_brand),
-    title       = COALESCE(title,       p_title),
-    category    = COALESCE(category,    p_category),
-    subcategory = COALESCE(subcategory, p_subcategory)
-  WHERE handle = p_handle AND store_domain = p_store_domain;
-$$;
-```
-
-- [ ] **Step 2: Apply in the Supabase SQL Editor**
-
-Paste contents → Run. Expected: "Success. No rows returned."
-
-- [ ] **Step 3: Verify**
-
-In the SQL Editor:
-```sql
-SELECT pg_get_functiondef(oid)
-FROM pg_proc
-WHERE proname = 'enrich_product' AND pronamespace = 'public'::regnamespace;
-```
-
-Expected: definition includes `p_subcategory` parameter and `subcategory = COALESCE(subcategory, p_subcategory)` line.
-
-- [ ] **Step 4: Smoke-test against one row**
-
-In the SQL Editor:
-```sql
--- Find a row that's already enriched (brand & title NOT NULL, category NOT NULL)
-SELECT id, handle, store_domain, brand, title, category, subcategory
-FROM products
-WHERE category = 'Tops' AND brand IS NOT NULL AND title IS NOT NULL
-LIMIT 1;
-
--- Call enrich_product with subcategory only — COALESCE should leave brand/title/category alone
-SELECT enrich_product(
-  '<that-handle>',
-  '<that-store-domain>',
-  'WRONG_BRAND',
-  'WRONG_TITLE',
-  'WRONG_CATEGORY',
-  'tees'
-);
-
--- Verify only subcategory changed
-SELECT id, handle, store_domain, brand, title, category, subcategory
-FROM products
-WHERE handle = '<that-handle>' AND store_domain = '<that-store-domain>';
-```
-
-Expected: brand, title, category unchanged; subcategory now `'tees'`. (Roll back manually if you want to clear it: `UPDATE products SET subcategory = NULL WHERE id = X;`)
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add scripts/sql/2026-05-21-enrich-product-rpc.sql
-git commit -m "ops(supabase): enrich_product RPC writes subcategory via COALESCE"
-```
-
----
-
-## Task 14: Update the two interleaved RPCs in Supabase
-
-**Files:**
-- Create: `scripts/sql/2026-05-21-interleaved-rpcs.sql`
-
-The interleaved RPCs are not in git (per CLAUDE.md). We need their full current definitions before editing. Pull them from production, modify to add `p_subcategory text DEFAULT NULL`, commit the updated DDL.
-
-- [ ] **Step 1: Pull the current RPC bodies**
-
-In the Supabase SQL Editor:
-```sql
-SELECT pg_get_functiondef(oid)
-FROM pg_proc
-WHERE proname IN ('get_interleaved_products', 'count_interleaved_products')
-  AND pronamespace = 'public'::regnamespace;
-```
-
-Copy both definitions to a local scratch file. (Don't trust memory — pull the live definition.)
-
-- [ ] **Step 2: Modify both definitions to add subcategory support**
-
-For each function, add the parameter:
-```sql
-p_subcategory text DEFAULT NULL
-```
-right after `p_category text`. Inside the function body, add the same kind of `string_to_array` filter that the existing `p_category` handler uses:
-
-```sql
-AND (
-  p_subcategory IS NULL
-  OR subcategory = ANY(string_to_array(p_subcategory, ','))
-)
-```
-
-The exact placement depends on where `p_category` is filtered in the current definitions — mirror the same shape. **DO NOT** rewrite the rest of the RPC; preserve the interleaving logic, the parameter order, the brand `unaccent` + ILIKE pattern, etc.
-
-- [ ] **Step 3: Write the SQL file**
-
-`scripts/sql/2026-05-21-interleaved-rpcs.sql`: paste the two updated `CREATE OR REPLACE FUNCTION` statements (full bodies). This is the audit trail.
-
-- [ ] **Step 4: Apply in the SQL Editor**
-
-Paste contents → Run. Expected: two "Success. No rows returned." results.
-
-- [ ] **Step 5: Smoke-test**
-
-```sql
--- Parent slug behaviour unchanged
-SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', NULL, NULL, NULL, 10000, 0);
-
--- Leaf slug filters
-SELECT COUNT(*) FROM get_interleaved_products(NULL, 'Tops', 'tees', NULL, NULL, 10000, 0);
-```
-
-Expected: first count matches the pre-deploy Tops count. Second count is 0 (no rows have `subcategory = 'tees'` yet — the wet backfill in Task 16 fixes that).
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add scripts/sql/2026-05-21-interleaved-rpcs.sql
-git commit -m "ops(supabase): interleaved RPCs accept p_subcategory filter"
-```
-
----
-
-## Task 15: Generate the wet-backfill SQL
-
-**Files:**
-- Create: `scripts/sql/2026-05-21-subcategory-backfill.sql` (output of the script, but committed for audit)
-
-- [ ] **Step 1: Regenerate the dry-run with `--emit-sql`**
-
-```bash
-node scripts/backfillSubcategory.mjs --emit-sql scripts/sql/2026-05-21-subcategory-backfill.sql
-```
-
-Expected: same distribution report as Task 11 prints to the terminal, plus a SQL file written to the path.
-
-- [ ] **Step 2: Spot-check the SQL file**
-
-```bash
-head -20 scripts/sql/2026-05-21-subcategory-backfill.sql
-wc -l scripts/sql/2026-05-21-subcategory-backfill.sql
-grep -c "^UPDATE" scripts/sql/2026-05-21-subcategory-backfill.sql
-```
-
-Expected:
-- Starts with `-- Wet backfill: ...` and `BEGIN;`
-- Has a `CREATE TABLE IF NOT EXISTS products_subcategory_backfill_snapshot AS ...` snapshot
-- Ends with `COMMIT;`
-- `grep -c` should report a small number of UPDATE statements (one per ~500 ids per leaf, so ~20–40 total depending on chunking)
-
-- [ ] **Step 3: Commit the generated SQL for audit**
-
-```bash
-git add scripts/sql/2026-05-21-subcategory-backfill.sql
-git commit -m "ops(supabase): wet-backfill SQL generated from dry-run"
-```
-
----
-
-## Task 16: Apply wet backfill in Supabase SQL Editor
-
-**Files:**
-- No code changes. This applies the SQL from Task 15.
-
-- [ ] **Step 1: Confirm snapshot from Task 12 still exists**
-
-In the SQL Editor:
-```sql
-SELECT COUNT(*) FROM products_pre_subcategory_snapshot;
-```
-
-Expected: row count matches `products`. If this fails, recreate the snapshot before proceeding:
-```sql
-CREATE TABLE products_pre_subcategory_snapshot_v2 AS SELECT * FROM products;
-```
-
-- [ ] **Step 2: Open `scripts/sql/2026-05-21-subcategory-backfill.sql` and paste contents into the SQL Editor**
-
-The script already wraps everything in `BEGIN; … COMMIT;` and creates its own snapshot table.
-
-- [ ] **Step 3: Run**
-
-Expected: "Success. No rows returned." Runtime should be ~5–30 seconds for ~4775 rows in 20–40 chunked UPDATEs.
-
-If the CHECK constraint rejects an UPDATE, the whole transaction rolls back — investigate which leaf disagreed with which parent (the CHECK error message names the row). Most likely cause: a row whose `category` drifted (e.g. brand-from-handle changed) but whose previously-assigned subcategory still maps to the old parent. Fix the source data or the leaf assignment in Task 5, regenerate the SQL, retry.
-
-- [ ] **Step 4: Verify distribution in the DB matches the dry-run report**
-
-```sql
-SELECT category, subcategory, COUNT(*)
-FROM products
-WHERE available = true AND hidden = false
-GROUP BY category, subcategory
-ORDER BY category, subcategory NULLS LAST;
-```
-
-Expected: per-leaf counts match the dry-run report from Task 11.
-
-- [ ] **Step 5: No commit (DB-side change, no repo change)**
-
----
+# Phase 5 — Push, verify, PR
 
 ## Task 17: End-to-end verification on Vercel preview
 
 **Files:**
 - No code changes. Final verification.
 
-- [ ] **Step 1: Push the branch and open a preview**
+- [ ] **Step 1: Push the branch (now safe — DB is ready, code is complete)**
 
 ```bash
 git push -u origin claude/friendly-cerf-47658a
 ```
 
-Wait for Vercel to build the preview. Per CLAUDE.md: "Verify on Vercel, not localhost."
+Wait for Vercel to build the preview.
 
 - [ ] **Step 2: Verify the leaf filters narrow correctly**
 
 In the Vercel preview, open:
-- `/feed?category=tops_tees` — count should be ~283 (the dry-run "tees" count, ± classifier improvements). Spot-check: every visible title should be tee-shaped.
-- `/feed?category=tops_hoodies_sweaters` — count matches dry-run "hoodies_sweaters". Spot-check: hoodies, sweatshirts, sweaters, crewnecks, cardigans.
-- `/feed?category=tops_shirts_blouses` — shirts, blouses, polos, tanks.
-- `/feed?category=tops_knitwear` — knits, turtlenecks.
-- `/feed?category=jackets` — only jacket-shaped pieces, no coats.
-- `/feed?category=coats` — only coat-shaped pieces, no jackets.
-- `/feed?category=bags` — only bag-shaped pieces, no accessories.
-- `/feed?category=accessories` — only wearable accessories, no bags.
+- `/feed?category=tops_tees` — count should match the dry-run "tees" count. Every visible title tee-shaped.
+- `/feed?category=tops_hoodies_sweaters` — matches dry-run; hoodies/sweatshirts/sweaters/crewnecks/cardigans only.
+- `/feed?category=tops_shirts_blouses` — shirts/blouses/polos/tanks only.
+- `/feed?category=tops_knitwear` — knits/turtlenecks only.
+- `/feed?category=jackets` — jacket-shaped pieces only.
+- `/feed?category=coats` — coat-shaped pieces only.
+- `/feed?category=bags` — bag-shaped pieces only.
+- `/feed?category=accessories` — wearable accessories only.
 
-- [ ] **Step 3: Verify the parent filters are unchanged**
+- [ ] **Step 3: Verify parent filters unchanged**
 
-- `/feed?category=tops` — count should match `(tees + hoodies_sweaters + shirts_blouses + knitwear + Tops-NULL)`. Visually indistinguishable from the pre-deploy `/feed?category=tops` result set (same rows, same order under default `interleaved` sort).
+- `/feed?category=tops` — count = `tees + hoodies_sweaters + shirts_blouses + knitwear + Tops-NULL`. Visually indistinguishable from pre-deploy.
 - `/feed?category=jackets_coats` — same logic.
 - `/feed?category=bags_accessories` — same logic.
 
-- [ ] **Step 4: Verify NULL-subcategory rows still appear under parent**
+- [ ] **Step 4: Verify NULL-subcategory rows appear under parent**
 
-- `/feed?category=jackets_coats` should include the "Puffer" / "Shearling" / "Cape" / "Caban" rows (NULL leaf).
-- `/feed?category=jackets` and `/feed?category=coats` should both EXCLUDE them.
+- `/feed?category=jackets_coats` should include "Puffer" / "Shearling" / "Cape" / "Caban" rows.
+- `/feed?category=jackets` and `/feed?category=coats` must EXCLUDE them.
 
 In the SQL Editor:
 ```sql
@@ -1425,26 +1460,26 @@ WHERE category = 'Jackets & Coats' AND subcategory IS NULL
   AND available = true AND hidden = false
 LIMIT 10;
 ```
-Open each of these in the feed under `/feed?category=jackets_coats` (parent) and confirm visible; under `/feed?category=jackets` confirm invisible.
+Confirm these visible under parent, invisible under leaves.
 
-- [ ] **Step 5: Verify the CHECK constraint blocks bad writes**
+- [ ] **Step 5: Verify CHECK constraint blocks bad writes**
 
-In the SQL Editor:
 ```sql
--- Should reject — Tops doesn't allow 'jackets' subcategory
 UPDATE products SET subcategory = 'jackets' WHERE category = 'Tops' LIMIT 1;
 ```
 Expected: `ERROR: new row for relation "products" violates check constraint "products_subcategory_matches_category"`.
 
-- [ ] **Step 6: Verify the enrich pipeline still works**
+- [ ] **Step 6: Verify enrich pipeline still works**
 
-Trigger a manual cron pulse (or wait for next hourly tick). Inspect logs:
 ```bash
-# In a separate shell
 curl -X GET "$VERCEL_PREVIEW_URL/api/cron" -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-Or in the Supabase SQL Editor, check the most recent `enrich_runs` row has `succeeded > 0` and no new error patterns. Existing enriched rows should not have their subcategory clobbered (`COALESCE` protection).
+Or wait for next hourly tick. Check `enrich_runs`:
+```sql
+SELECT * FROM enrich_runs ORDER BY created_at DESC LIMIT 1;
+```
+Expected: `succeeded > 0`, no new error patterns. Existing subcategory values not clobbered (COALESCE protection).
 
 - [ ] **Step 7: Open the PR**
 
@@ -1456,6 +1491,10 @@ gh pr create --title "feat(category): leaf-grained subcategory column for accura
 - Extend `assignCategory()` to return `{ category, subcategory }` with three leaf helpers (`classifyTopsLeaf`, `classifyJacketsCoatsLeaf`, `classifyBagsAccessoriesLeaf`).
 - Update `/api/products/route.js`, the two interleaved RPCs, and `enrich_product` RPC to filter and write subcategory.
 - Backfill ~4,775 existing rows via SQL Editor (auditable wet-backfill file in `scripts/sql/`).
+
+## Sequencing notes
+
+Phases 1–2 ran locally. Phase 3 (schema + RPCs + wet backfill) was applied to production Supabase before any JS code was pushed — new RPC params default to NULL so `main` stayed live throughout. Phase 4 JS code was committed locally during Phase 3 then pushed as one branch in Phase 5.
 
 ## Test plan
 
@@ -1482,24 +1521,27 @@ Per CLAUDE.md: "Do not push directly to `main`. Branch + Vercel preview every ch
 
 ## Self-Review
 
-**Spec coverage check:**
+**Spec coverage:**
 
 | Spec section | Task(s) |
 |---|---|
-| Schema change (column + CHECK) | Task 12 |
+| Schema change (column + CHECK) | Task 8 |
 | Classifier rule decomposition (Tops/J&C/B&A) | Task 5 + tests in Tasks 2–4 |
 | Test cases written FIRST | Tasks 2–4 precede Task 5 |
-| enrich_product RPC update | Task 13 + caller updates in Task 6 |
-| Dry-run backfill with review gate | Tasks 10–11 |
-| Wet backfill via SQL file | Tasks 15–16 |
-| Read-site updates (route + RPCs + direct reads) | Tasks 7 (categories.js), 8 (route.js), 9 (audit), 14 (RPCs) |
-| Sequencing per CLAUDE.md | Tasks 12–14 (DB) before Task 16 (wet backfill); Task 8 (read-side) gated on Task 14 |
+| enrich_product RPC update | Task 9 + caller updates in Task 13 (after RPC lands) |
+| Dry-run backfill with review gate | Tasks 6–7 |
+| Wet backfill via SQL file | Tasks 11–12 |
+| Read-site updates (route + RPCs + direct reads) | Task 14 (categories.js), Task 15 (route.js), Task 16 (audit), Task 10 (RPCs) |
+| Sequencing per CLAUDE.md | Phase 3 (DB) before Phase 4 (JS code that depends on DB); Phase 5 push gated until everything ready |
 | Verification | Task 17 |
 
-All spec sections have a task. No gaps.
+**Codex adversarial findings (2026-05-21):**
+- Deployment-order hazard between Task 8 (was: route.js) and Task 16 (was: wet backfill) — FIXED by reordering into 5 phases. Phase 3 (DB) completes fully before Phase 4 (JS) starts, and explicit no-push gate spans Phase 1–4.
+- Spec/plan ordering contradiction — FIXED. Plan now matches spec's "DB before code-that-depends-on-DB" sequencing.
+- Two adjacent hazards Codex understated (RPC parameter mismatch in `/api/enrich`, column-missing error in route filter) — also FIXED by the same reorder + the explicit "production main stays working throughout" note in Phase 3.
 
-**Placeholder scan:** No "TBD", "TODO", "fill in later", or "similar to". Every step has actual code or actual commands.
+**Placeholder scan:** No "TBD" / "TODO" / "fill in later" / "similar to". Every step has actual code or commands.
 
-**Type consistency:** `assignCategory` returns `{ category, subcategory }` everywhere — Task 5 defines it, Tasks 6 destructures it, Tasks 2–4 assert against it. Helper names (`classifyTopsLeaf` / `classifyJacketsCoatsLeaf` / `classifyBagsAccessoriesLeaf` / `classifyLeaf`) are consistent across the plan. `resolveCategoryFilter` returns `{ categoryDbValues, subcategorySlugs }` in Task 7 and is destructured with that exact shape in Task 8.
+**Type consistency:** `assignCategory` returns `{ category, subcategory }` everywhere. `resolveCategoryFilter` returns `{ categoryDbValues, subcategorySlugs }` consistently. Helper names (`classifyTopsLeaf` / `classifyJacketsCoatsLeaf` / `classifyBagsAccessoriesLeaf` / `classifyLeaf`) consistent across plan.
 
-**Scope:** 17 tasks for one feature spanning classifier + schema + backfill + read sites. Cohesive, single deployable change.
+**Scope:** 17 tasks across 5 phases for one feature. Each phase is internally cohesive; phase boundaries are natural pause/review points.
