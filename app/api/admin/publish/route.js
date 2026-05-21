@@ -199,13 +199,27 @@ export async function POST(request) {
         );
       }
       await runGit(["checkout", "-b", branchName]);
-      await runGit(["stash", "pop"]);
-      stashed = false;
     } catch (err) {
       if (stashed) {
         await runGit(["stash", "pop"]).catch(() => {});
       }
       return refuse(500, `branch setup failed: ${firstStderrLine(err)}`);
+    }
+
+    // Stash-pop has its own try/catch: on conflict the stash stays on
+    // the stack, the user is left on `branchName` with conflict markers,
+    // and another `stash pop` would just fail with the same conflict.
+    // Surface a directive error instead of retrying.
+    try {
+      await runGit(["stash", "pop"]);
+      stashed = false;
+    } catch (err) {
+      return refuse(
+        500,
+        `stash pop conflicted on new branch ${branchName}: ${firstStderrLine(err)}. ` +
+          `Your edits are still in the stash — run 'git status' and 'git stash list', ` +
+          `resolve the conflicts in the working tree, then 'git stash drop' once committed.`
+      );
     }
   } else {
     // use-current
@@ -280,8 +294,14 @@ export async function POST(request) {
         prBody,
       ]);
       prUrl = stdout.trim().split("\n").pop();
-      const numMatch = prUrl.match(/\/pull\/(\d+)/);
-      prNumber = numMatch ? Number(numMatch[1]) : null;
+      const numMatch = prUrl ? prUrl.match(/\/pull\/(\d+)/) : null;
+      if (!numMatch) {
+        return refuse(
+          500,
+          `gh pr create returned an unparseable URL — preview polling would never start. stdout last line: ${prUrl || "(empty)"}`
+        );
+      }
+      prNumber = Number(numMatch[1]);
       prAction = "created";
     } catch (err) {
       return refuse(500, `gh pr create failed: ${firstStderrLine(err)}`);
