@@ -178,16 +178,17 @@ async function main() {
 
     for (const row of data) {
       const oldCat = norm(row.category);
-      const newCat = norm(
-        assignCategory({
-          // productType is deliberately omitted — not stored in the DB.
-          name: row.name,
-          title: row.title,
-          brand: row.brand,
-          description: row.description,
-          editorial_description: row.editorial_description,
-        })
-      );
+      // assignCategory now returns { category, subcategory }; this script
+      // only updates the parent category column, so we destructure category.
+      const { category } = assignCategory({
+        // productType is deliberately omitted — not stored in the DB.
+        name: row.name,
+        title: row.title,
+        brand: row.brand,
+        description: row.description,
+        editorial_description: row.editorial_description,
+      });
+      const newCat = norm(category);
 
       if (oldCat !== newCat) {
         changes.push({
