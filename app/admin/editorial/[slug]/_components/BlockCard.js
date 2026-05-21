@@ -1,5 +1,7 @@
 "use client";
 
+import ImageFilenameInput from "./ImageFilenameInput.js";
+
 const inputStyle = {
   width: "100%",
   background: "#0f0f10",
@@ -33,7 +35,7 @@ function Pill({ label, active, onClick }) {
   );
 }
 
-export default function BlockCard({ block, index, total, onChange, onMoveUp, onMoveDown, onDelete }) {
+export default function BlockCard({ block, index, total, onChange, onMoveUp, onMoveDown, onDelete, slug }) {
   const update = (patch) => onChange({ ...block, ...patch });
 
   return (
@@ -120,11 +122,11 @@ export default function BlockCard({ block, index, total, onChange, onMoveUp, onM
 
       {block.type === "image" && (
         <>
-          <input
-            style={inputStyle}
-            value={block.src ?? ""}
-            onChange={(e) => update({ src: e.target.value })}
-            placeholder="filename in public/editorial/<slug>/"
+          <ImageFilenameInput
+            slug={slug}
+            value={block.src}
+            onChange={(v) => update({ src: v })}
+            placeholder="filename"
           />
           <input
             style={{ ...inputStyle, marginTop: 6 }}
@@ -145,12 +147,12 @@ export default function BlockCard({ block, index, total, onChange, onMoveUp, onM
         <>
           {[0, 1].map((i) => (
             <div key={i} style={{ marginBottom: 6 }}>
-              <input
-                style={inputStyle}
+              <ImageFilenameInput
+                slug={slug}
                 value={block.images?.[i]?.src ?? ""}
-                onChange={(e) => {
+                onChange={(v) => {
                   const next = [...(block.images ?? [{}, {}])];
-                  next[i] = { ...next[i], src: e.target.value };
+                  next[i] = { ...next[i], src: v };
                   update({ images: next });
                 }}
                 placeholder={`image ${i + 1} filename`}

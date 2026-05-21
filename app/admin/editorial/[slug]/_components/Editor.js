@@ -254,6 +254,7 @@ export default function Editor({ initialEntry, slug }) {
               block={block}
               index={i}
               total={entry.blocks.length}
+              slug={effectiveSlug}
               onChange={(next) => updateBlock(i, next)}
               onMoveUp={() => moveBlock(i, -1)}
               onMoveDown={() => moveBlock(i, +1)}

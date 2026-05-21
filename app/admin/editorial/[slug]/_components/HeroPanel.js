@@ -1,5 +1,7 @@
 "use client";
 
+import ImageFilenameInput from "./ImageFilenameInput.js";
+
 const LAYOUTS = ["image-right", "image-left", "image-below", "image-pair-top"];
 
 function Field({ label, children, hint }) {
@@ -114,10 +116,11 @@ export default function HeroPanel({ hero, onChange, slug, brandFilter, onBrandFi
       </Field>
 
       <Field label="Hero image filename" hint={`File goes in public/editorial/${slug}/`}>
-        <input
-          style={inputStyle}
+        <ImageFilenameInput
+          slug={slug}
           value={hero.images?.[0] ?? ""}
-          onChange={(e) => update({ images: [e.target.value] })}
+          onChange={(v) => update({ images: [v] })}
+          placeholder="hero image filename"
         />
       </Field>
 
