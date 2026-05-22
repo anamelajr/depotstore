@@ -3,6 +3,7 @@ import { resolveCategoryFilter } from "../../lib/categories.js";
 import {
   fetchInterleavedProducts,
   countInterleavedProducts,
+  withVisibility,
 } from "../../lib/productQueries.js";
 
 export const dynamic = "force-dynamic";
@@ -124,11 +125,9 @@ export async function GET(request) {
   // Price is stored as TEXT ("€29.99") so DB ordering is lexicographic.
   // For price sorts: fetch all matching rows, sort numerically in JS, then paginate.
   if (sort === "price_asc" || sort === "price_desc") {
-    let priceQuery = supabase
-      .from("products")
-      .select(selectCols, { count: "exact" })
-      .eq("available", true)
-      .eq("hidden", false);
+    let priceQuery = withVisibility(
+      supabase.from("products").select(selectCols, { count: "exact" }),
+    );
 
     if (store) priceQuery = priceQuery.eq("store_domain", store);
     priceQuery = applyCategoryOrFilter(priceQuery, { parentCategories, leafFilters });
@@ -170,12 +169,9 @@ export async function GET(request) {
 
   // Default newest-first ordering; covers explicit oldest/newest sorts AND
   // the leaf-bypass-of-interleaved fallback.
-  let query = supabase
-    .from("products")
-    .select(selectCols, { count: "exact" })
-    .eq("available", true)
-    .eq("hidden", false)
-    .range(from, to);
+  let query = withVisibility(
+    supabase.from("products").select(selectCols, { count: "exact" }),
+  ).range(from, to);
 
   if (store) query = query.eq("store_domain", store);
   query = applyCategoryOrFilter(query, { parentCategories, leafFilters });

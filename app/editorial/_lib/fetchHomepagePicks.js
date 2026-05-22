@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { chunkArray } from "../../lib/chunk.js";
+import { withVisibility } from "../../lib/productQueries.js";
 
 function pairKey(p) {
   return `${p.storeDomain}::${p.handle}`;
@@ -26,15 +27,14 @@ export async function fetchHomepagePicks(picks, { client } = {}) {
   const all = [];
   for (const [storeDomain, handles] of byStore) {
     for (const chunk of chunkArray(handles, 100)) {
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          "id, handle, store_domain, name, title, brand, price, image_url, store_name, product_url, available"
-        )
-        .eq("store_domain", storeDomain)
-        .eq("available", true)
-        .eq("hidden", false)
-        .in("handle", chunk);
+      const { data, error } = await withVisibility(
+        supabase
+          .from("products")
+          .select(
+            "id, handle, store_domain, name, title, brand, price, image_url, store_name, product_url, available"
+          )
+          .eq("store_domain", storeDomain),
+      ).in("handle", chunk);
       if (error) {
         console.warn(`[fetchHomepagePicks] ${storeDomain}: ${error.message}`);
         continue;

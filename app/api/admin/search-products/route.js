@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertDev } from "../_gate.js";
+import { withVisibility } from "../../../lib/productQueries.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -22,13 +23,13 @@ export async function GET(request) {
   const escaped = q.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const pattern = `"%${escaped}%"`;
 
-  const { data, error } = await supabase
-    .from("products")
-    .select(
-      "id, handle, store_domain, name, title, brand, price, image_url, store_name, available"
-    )
-    .eq("available", true)
-    .eq("hidden", false)
+  const { data, error } = await withVisibility(
+    supabase
+      .from("products")
+      .select(
+        "id, handle, store_domain, name, title, brand, price, image_url, store_name, available"
+      ),
+  )
     .or(`name.ilike.${pattern},title.ilike.${pattern},brand.ilike.${pattern}`)
     .limit(30);
 

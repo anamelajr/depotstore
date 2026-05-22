@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
+import { withVisibility } from "../lib/productQueries.js";
 
 async function fetchMore(storeDomain) {
-  const { data, error } = await supabase
-    .from("products")
-    .select("name, title, brand, price, image_url, store_domain, product_url, available, handle")
-    .eq("store_domain", storeDomain)
-    .eq("available", true)
-    .eq("hidden", false)
+  const { data, error } = await withVisibility(
+    supabase
+      .from("products")
+      .select("name, title, brand, price, image_url, store_domain, product_url, available, handle")
+      .eq("store_domain", storeDomain),
+  )
     .order("synced_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(5);
