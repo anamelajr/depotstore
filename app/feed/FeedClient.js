@@ -203,9 +203,11 @@ export default function FeedClient({ stores = [] }) {
     const controller = new AbortController();
     setLoadingMore(true);
 
-    const page = Math.floor(loadMoreOffset / LOAD_SIZE) + 1;
+    // Use explicit offset, not page math: loadMoreOffset isn't guaranteed
+    // to be a multiple of LOAD_SIZE after a restore from the final partial
+    // batch when new rows have been synced in between.
     const params = new URLSearchParams();
-    params.set("page", String(page));
+    params.set("offset", String(loadMoreOffset));
     params.set("limit", String(LOAD_SIZE));
     if (selectedStore !== ALL_STORES_VALUE) params.set("store", selectedStore);
     if (categoriesKey) params.set("category", categoriesKey);

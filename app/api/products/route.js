@@ -65,7 +65,15 @@ export async function GET(request) {
   const search = searchParams.get("search");
   const brand = searchParams.get("brand");
   const sort = searchParams.get("sort");
-  const offset = (page - 1) * limit;
+  // Explicit offset wins over (page - 1) * limit so FeedClient's Load More
+  // can resume at a precise position when products.length isn't a multiple
+  // of its page size (e.g., restore after the final partial batch + a cron
+  // tick adding new rows; page math would silently snap to the wrong grid
+  // and produce duplicate cards).
+  const offsetParam = searchParams.get("offset");
+  const offset = offsetParam !== null
+    ? Math.max(0, parseInt(offsetParam) || 0)
+    : (page - 1) * limit;
 
   // Interleaved RPC only works for parent-only selections — its WHERE clause
   // ANDs the category and subcategory filters, which silently drops parent
