@@ -3,6 +3,7 @@ import {
   fetchInterleavedProducts,
   countInterleavedProducts,
   INTERLEAVED_RPC_RETURN_COLUMNS,
+  withVisibility,
 } from "../productQueries.js";
 
 function makeClient() {
@@ -86,5 +87,24 @@ describe("countInterleavedProducts", () => {
 describe("INTERLEAVED_RPC_RETURN_COLUMNS", () => {
   it("includes `name` (ProductCard falls back to it when title is null)", () => {
     expect(INTERLEAVED_RPC_RETURN_COLUMNS).toContain("name");
+  });
+});
+
+describe("withVisibility", () => {
+  it("applies available=true and hidden=false to the passed query", () => {
+    const eq = vi.fn();
+    const query = { eq };
+    eq.mockReturnValue(query);
+    const result = withVisibility(query);
+    expect(eq).toHaveBeenNthCalledWith(1, "available", true);
+    expect(eq).toHaveBeenNthCalledWith(2, "hidden", false);
+    expect(result).toBe(query);
+  });
+
+  it("returns the chained builder so callers can keep composing", () => {
+    const final = { sentinel: true };
+    const chain = { eq: vi.fn() };
+    chain.eq.mockReturnValueOnce(chain).mockReturnValueOnce(final);
+    expect(withVisibility(chain)).toBe(final);
   });
 });

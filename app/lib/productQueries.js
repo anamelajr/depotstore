@@ -7,6 +7,16 @@ async function getDefaultClient() {
   return supabase;
 }
 
+// Pure query transformer applying the visibility invariant from CLAUDE.md:
+// every `available = true` read must also filter `hidden = false`. Wrapping
+// the pair behind one helper means a future visibility rule (e.g.,
+// `archived = false`) is a one-line change, not a sweep across every product
+// read. Caller passes any PostgREST query builder mid-chain; the .eq() calls
+// compose cleanly with .from().select(), .order(), .range(), .in(), etc.
+export function withVisibility(query) {
+  return query.eq("available", true).eq("hidden", false);
+}
+
 // Columns returned by both get_interleaved_products and
 // count_interleaved_products. Source of truth lives in
 // scripts/sql/2026-05-21-interleaved-rpcs.sql (RETURNS TABLE block, ~lines

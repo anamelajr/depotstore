@@ -1,5 +1,6 @@
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
+import { withVisibility } from "../../lib/productQueries.js";
 import { cleanTitle } from "../../lib/cleanTitle.js";
 import {
   assignCategory,
@@ -89,11 +90,11 @@ export async function POST(request) {
   const url = new URL(request.url);
   const depth = parseInt(url.searchParams.get("depth") ?? "0", 10);
 
-  const { data: rows, error: selErr } = await supabaseAdmin
-    .from("products")
-    .select("id, handle, store_domain, name, brand, title, category, description, editorial_description, enrich_attempts")
-    .eq("available", true)
-    .eq("hidden", false)
+  const { data: rows, error: selErr } = await withVisibility(
+    supabaseAdmin
+      .from("products")
+      .select("id, handle, store_domain, name, brand, title, category, description, editorial_description, enrich_attempts"),
+  )
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null")
     .order("id", { ascending: false })
@@ -305,11 +306,11 @@ export async function POST(request) {
     await sleep(Math.max(0, CYCLE_MS - elapsed));
   }
 
-  const { count: remaining } = await supabaseAdmin
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("available", true)
-    .eq("hidden", false)
+  const { count: remaining } = await withVisibility(
+    supabaseAdmin
+      .from("products")
+      .select("*", { count: "exact", head: true }),
+  )
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null");
 

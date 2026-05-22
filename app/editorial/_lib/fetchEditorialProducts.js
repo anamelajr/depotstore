@@ -1,5 +1,8 @@
 import { chunkArray } from "../../lib/chunk.js";
-import { fetchInterleavedProducts } from "../../lib/productQueries.js";
+import {
+  fetchInterleavedProducts,
+  withVisibility,
+} from "../../lib/productQueries.js";
 
 async function getDefaultClient() {
   const { supabase } = await import("../../lib/supabase.js");
@@ -46,13 +49,12 @@ async function fetchCurated(client, curatedProducts) {
 
   for (const [domain, handles] of byDomain.entries()) {
     for (const chunk of chunkArray(handles, 100)) {
-      const { data, error } = await client
-        .from("products")
-        .select(ROW_SELECT)
-        .eq("store_domain", domain)
-        .eq("available", true)
-        .eq("hidden", false)
-        .in("handle", chunk);
+      const { data, error } = await withVisibility(
+        client
+          .from("products")
+          .select(ROW_SELECT)
+          .eq("store_domain", domain),
+      ).in("handle", chunk);
       if (error) {
         console.error("[fetchEditorialProducts] curated fetch error:", error.message);
         continue;
