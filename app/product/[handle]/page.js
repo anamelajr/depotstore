@@ -3,125 +3,21 @@ import ProductGallery from "../../components/ProductGallery";
 import Accordion from "../../components/Accordion";
 import SaveShareRow from "../../components/SaveShareRow";
 import MoreFromStore from "../../components/MoreFromStore";
-import { generateDescription } from "../../lib/generateDescription";
-import { supabase, supabaseAdmin } from "../../lib/supabase.js";
+import { resolveProductDetail } from "../../lib/resolveProductDetail";
 import Link from "next/link";
-
-
-async function getProduct(handle, storeDomain) {
-  try {
-    const res = await fetch(
-      `https://${storeDomain}/products/${handle}.json?country=FR`,
-      { next: { revalidate: 300 } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.product ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function stripHtml(html) {
-  if (!html) return null;
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function nonEmpty(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function formatSizes(variants) {
-  if (!Array.isArray(variants) || variants.length === 0) return null;
-  const labels = variants
-    .map((v) => nonEmpty(v?.title))
-    .filter(Boolean)
-    .filter((label) => label.toLowerCase() !== "default title");
-  if (labels.length === 0) return null;
-  if (labels.length === 1) return labels[0];
-  return labels.join(", ");
-}
 
 export default async function ProductPage({ params, searchParams }) {
   const { handle } = await params;
   const { store: storeDomain, available: availableParam } = await searchParams;
   const available = availableParam !== "false";
 
-  if (!handle || !storeDomain) {
+  const detail = await resolveProductDetail({ handle, storeDomain });
+
+  if (!detail) {
     return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
   }
 
-  const product = await getProduct(handle, storeDomain);
-
-  if (!product) {
-    return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
-  }
-
-  const images = Array.isArray(product.images)
-    ? product.images.map((img) => img?.src).filter(Boolean)
-    : [];
-
-  const variants = Array.isArray(product.variants) ? product.variants : [];
-
-  const minPrice = variants.reduce((min, v) => {
-    const n = parseFloat(v?.price ?? "");
-    if (!isFinite(n)) return min;
-    return min === null ? n : Math.min(min, n);
-  }, null);
-  const price = minPrice !== null ? `€${minPrice.toFixed(2)}` : null;
-
-  const sizes = formatSizes(variants);
-
-  const rawDescription = stripHtml(product.body_html);
-  const tags = Array.isArray(product.tags) ? product.tags :
-    typeof product.tags === "string" ? product.tags.split(",").map(t => t.trim()) : [];
-
-  const [{ data: dbRow }, { data: storeRow }] = await Promise.all([
-    supabase
-      .from("products")
-      .select("brand, title, editorial_description")
-      .eq("store_domain", storeDomain)
-      .eq("handle", handle)
-      .maybeSingle(),
-    supabase
-      .from("stores")
-      .select("store_name, display_name, location")
-      .eq("domain", storeDomain)
-      .maybeSingle(),
-  ]);
-
-  const brand = nonEmpty(dbRow?.brand) ?? nonEmpty(product.vendor);
-  const title = nonEmpty(dbRow?.title) ?? nonEmpty(product.title) ?? product.title;
-  const storeName = nonEmpty(storeRow?.display_name) ?? nonEmpty(storeRow?.store_name) ?? storeDomain;
-
-  const productData = {
-    name: product.title,
-    vendor: product.vendor ?? null,
-    rawDescription,
-    tags,
-    price,
-    storeName,
-  };
-
-  let description = dbRow?.editorial_description || null;
-
-  if (!description) {
-    const generated = await generateDescription(productData);
-    description = generated;
-    if (generated) {
-      try {
-        await supabaseAdmin
-          .from("products")
-          .update({ editorial_description: generated })
-          .eq("store_domain", storeDomain)
-          .eq("handle", handle);
-      } catch {
-        // Write failure: page still renders with the generated description
-      }
-    }
-  }
+  const { images, sizes, price, brand, title, storeName, storeLocation, description } = detail;
 
   const productUrl = `https://${storeDomain}/products/${handle}`;
   const storeFeedHref = `/feed?store=${encodeURIComponent(storeDomain)}`;
@@ -199,8 +95,8 @@ export default async function ProductPage({ params, searchParams }) {
                   <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-zinc-900">
                     {storeName}
                   </p>
-                  {storeRow?.location && (
-                    <p className="mt-2">{storeRow.location}</p>
+                  {storeLocation && (
+                    <p className="mt-2">{storeLocation}</p>
                   )}
                   <Link
                     href={storeFeedHref}
