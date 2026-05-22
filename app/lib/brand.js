@@ -1,0 +1,118 @@
+import BRANDS from "../brands.js";
+
+// Normalizes brand strings for reliable comparison
+// Handles accents, punctuation, slashes, spacing differences
+export function normalizeBrand(value) {
+  if (!value || typeof value !== "string") return null;
+
+  const ALIASES = {
+    "MARGIELA": "MAISON MARGIELA",
+    "MARTIN MARGIELA": "MAISON MARGIELA",
+    "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
+    "A.P.C": "A.P.C.",
+    "ALAIA": "ALAÏA",
+    "AZZEDINE ALAÏA": "ALAÏA",
+    "AZZEDINE ALAIA": "ALAÏA",
+    "ALEXANDER MCQUEEN": "ALEXANDER MCQUEEN",
+    "BELLEVILLE SASSOON": "BELLVILLE SASSOON",
+    "CÉLINE": "CELINE",
+    "COURREGES": "COURRÈGES",
+    "FAYCAL AMOR": "FAYÇAL AMOR",
+    "GIANFRANCO FERRE": "GIANFRANCO FERRÉ",
+    "CHRISTIAN DIOR": "DIOR",
+    "DIOR HOMME": "DIOR",
+    "GIANNI VERSACE": "VERSACE",
+    "GUCCI BY TOM FORD": "GUCCI",
+    "CAVALLI CLASS": "CAVALLI",
+    "BIKKEMBERGS": "DIRK BIKKEMBERGS",
+  };
+
+  const upper = value.trim().toUpperCase();
+  const resolved = ALIASES[upper] !== undefined ? ALIASES[upper] : value;
+
+  const result = resolved
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return result || null;
+}
+
+export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
+
+// Whitespace-stripped variants of every allowlist entry. Catches vendors
+// that drop the space between brand tokens — e.g. "MiuMiu" vs "Miu Miu",
+// "APC" vs "A.P.C.", "Acne Studios" vs "AcneStudios". Without this, those
+// vendors fail the exact-normalized match and end up in /api/enrich, where
+// each one consumes ~750 input tokens just to be deleted by the allowlist
+// gate. Cheap to maintain — derived from BRANDS, no separate source of truth.
+const BRAND_SET_COMPACT = new Set(
+  BRANDS
+    .map((b) => normalizeBrand(b)?.replace(/\s+/g, ""))
+    .filter(Boolean)
+);
+
+// Allowlist membership check that survives whitespace differences.
+// Use this in place of `BRAND_SET_NORMALIZED.has(...)` whenever the input
+// is a vendor field or LLM-extracted brand — i.e. anywhere a single brand
+// string is being checked against the curated list. Two passes:
+//   1. exact normalized match (covers diacritics, punctuation, casing)
+//   2. whitespace-stripped match (covers the "MiuMiu" class of bugs)
+// Returns false on null/empty/non-string input.
+export function isAllowedBrand(value) {
+  const normalized = normalizeBrand(value);
+  if (!normalized) return false;
+  if (BRAND_SET_NORMALIZED.has(normalized)) return true;
+  return BRAND_SET_COMPACT.has(normalized.replace(/\s+/g, ""));
+}
+
+// Check if a raw title string contains an allowed brand name
+export function titleContainsAllowedBrand(rawTitle) {
+  if (!rawTitle) return false;
+  const normalizedTitle = normalizeBrand(rawTitle);
+  for (const brand of BRAND_SET_NORMALIZED) {
+    if (normalizedTitle.includes(brand)) return true;
+  }
+  return false;
+}
+
+// Precomputed brand → handle-slug map. Each brand emits up to two slug
+// variants: dashed (`miu-miu`) and compact (`miumiu`). The compact variant
+// mirrors the BRAND_SET_COMPACT path that isAllowedBrand already trusts —
+// without it, the fallback would silently miss handles like `apc-jacket`
+// or `miumiu-bag` even though those brand strings are accepted everywhere
+// else. Sorted by slug length descending so the most specific match wins
+// (e.g. "maison-margiela" before "margiela").
+const BRAND_HANDLE_SLUGS = BRANDS
+  .flatMap((b) => {
+    const dashed = b
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!dashed) return [];
+    const compact = dashed.replace(/-/g, "");
+    const out = [{ brand: b, slug: dashed }];
+    if (compact && compact !== dashed) out.push({ brand: b, slug: compact });
+    return out;
+  })
+  .sort((a, b) => b.slug.length - a.slug.length);
+
+// Extracts an allowlisted brand from a Shopify handle slug. Used by the
+// enrich route as a deterministic fallback when cleanTitle returns null —
+// e.g. At Dawn Paris listings strip the brand from the public name but
+// keep it in the URL slug ("fendi-jacket" / name "WOOL BLAZER").
+// Hyphen-bounded match so short slugs don't pick up incidental tokens
+// (`ami` won't match `ceramic-shirt`). Iterates the precomputed slug list
+// rather than building a regex set so the longest-wins ordering is explicit.
+export function brandFromHandle(handle) {
+  if (!handle || typeof handle !== "string") return null;
+  const lower = handle.toLowerCase();
+  for (const { brand, slug } of BRAND_HANDLE_SLUGS) {
+    if (new RegExp(`(^|-)${slug}(-|$)`).test(lower)) return brand;
+  }
+  return null;
+}
