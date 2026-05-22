@@ -1,4 +1,5 @@
 import { chunkArray } from "../../lib/chunk.js";
+import { fetchInterleavedProducts } from "../../lib/productQueries.js";
 
 async function getDefaultClient() {
   const { supabase } = await import("../../lib/supabase.js");
@@ -73,13 +74,13 @@ async function fetchCurated(client, curatedProducts) {
 
 async function fetchBrandPool(client, brandFilter, excludeKeys, limit) {
   if (!brandFilter || limit <= 0) return [];
-  const { data, error } = await client.rpc("get_interleaved_products", {
-    p_store: null,
-    p_category: null,
-    p_search: null,
-    p_brand: brandFilter,
-    p_limit: limit + excludeKeys.size + 4,
-    p_offset: 0,
+  // Overfetch by excludeKeys.size + 4 so post-dedupe we still have `limit`
+  // candidates even if curated handles dominate the top of the brand pool.
+  const { data, error } = await fetchInterleavedProducts({
+    brand: brandFilter,
+    limit: limit + excludeKeys.size + 4,
+    offset: 0,
+    client,
   });
   if (error) {
     console.error("[fetchEditorialProducts] brand-pool RPC error:", error.message);

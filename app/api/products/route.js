@@ -1,5 +1,9 @@
 import { supabase } from "../../lib/supabase.js";
 import { resolveCategoryFilter } from "../../lib/categories.js";
+import {
+  fetchInterleavedProducts,
+  countInterleavedProducts,
+} from "../../lib/productQueries.js";
 
 export const dynamic = "force-dynamic";
 
@@ -72,21 +76,19 @@ export async function GET(request) {
   if (useInterleavedRpc) {
     const categoryDbParam = parentCategories.length > 0 ? parentCategories.join(",") : null;
     const [{ data, error }, { data: countData, error: countError }] = await Promise.all([
-      supabase.rpc("get_interleaved_products", {
-        p_store: store || null,
-        p_category: categoryDbParam,
-        p_subcategory: null,
-        p_search: search || null,
-        p_brand: brand || null,
-        p_limit: limit,
-        p_offset: offset,
+      fetchInterleavedProducts({
+        store: store || null,
+        category: categoryDbParam,
+        search: search || null,
+        brand: brand || null,
+        limit,
+        offset,
       }),
-      supabase.rpc("count_interleaved_products", {
-        p_store: store || null,
-        p_category: categoryDbParam,
-        p_subcategory: null,
-        p_search: search || null,
-        p_brand: brand || null,
+      countInterleavedProducts({
+        store: store || null,
+        category: categoryDbParam,
+        search: search || null,
+        brand: brand || null,
       }),
     ]);
 
