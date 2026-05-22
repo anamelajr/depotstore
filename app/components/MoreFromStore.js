@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
-import { withVisibility } from "../lib/productQueries.js";
+import {
+  withVisibility,
+  PRODUCT_ROW_SELECT,
+  mapProductRow,
+} from "../lib/productQueries.js";
 
 async function fetchMore(storeDomain) {
   const { data, error } = await withVisibility(
     supabase
       .from("products")
-      .select("name, title, brand, price, image_url, store_domain, product_url, available, handle")
+      .select(PRODUCT_ROW_SELECT)
       .eq("store_domain", storeDomain),
   )
     .order("synced_at", { ascending: false })
@@ -17,16 +21,7 @@ async function fetchMore(storeDomain) {
     console.error("[MoreFromStore] Supabase fetch error:", error.message);
     return [];
   }
-  return (data || []).map((row) => ({
-    title: row.title,
-    name: row.name,
-    brand: row.brand,
-    price: row.price,
-    imageUrl: row.image_url,
-    storeDomain: row.store_domain,
-    available: row.available,
-    handle: row.handle,
-  }));
+  return (data || []).map(mapProductRow);
 }
 
 export default async function MoreFromStore({ storeDomain, currentHandle, storeName }) {

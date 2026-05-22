@@ -2,30 +2,13 @@ import { chunkArray } from "../../lib/chunk.js";
 import {
   fetchInterleavedProducts,
   withVisibility,
+  PRODUCT_ROW_SELECT,
+  mapProductRow,
 } from "../../lib/productQueries.js";
 
 async function getDefaultClient() {
   const { supabase } = await import("../../lib/supabase.js");
   return supabase;
-}
-
-const ROW_SELECT =
-  "id, name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle";
-
-function mapRow(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    title: row.title,
-    brand: row.brand,
-    price: row.price,
-    imageUrl: row.image_url,
-    storeName: row.store_name,
-    storeDomain: row.store_domain,
-    productUrl: row.product_url,
-    available: row.available,
-    handle: row.handle,
-  };
 }
 
 function pairKey(p) {
@@ -52,7 +35,7 @@ async function fetchCurated(client, curatedProducts) {
       const { data, error } = await withVisibility(
         client
           .from("products")
-          .select(ROW_SELECT)
+          .select(PRODUCT_ROW_SELECT)
           .eq("store_domain", domain),
       ).in("handle", chunk);
       if (error) {
@@ -60,7 +43,7 @@ async function fetchCurated(client, curatedProducts) {
         continue;
       }
       for (const row of data || []) {
-        const mapped = mapRow(row);
+        const mapped = mapProductRow(row);
         if (wanted.has(pairKey(mapped))) rows.push(mapped);
       }
     }
@@ -90,7 +73,7 @@ async function fetchBrandPool(client, brandFilter, excludeKeys, limit) {
   }
   const out = [];
   for (const row of data || []) {
-    const mapped = mapRow(row);
+    const mapped = mapProductRow(row);
     if (excludeKeys.has(pairKey(mapped))) continue;
     out.push(mapped);
     if (out.length >= limit) break;

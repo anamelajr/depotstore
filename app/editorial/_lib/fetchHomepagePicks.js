@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { chunkArray } from "../../lib/chunk.js";
-import { withVisibility } from "../../lib/productQueries.js";
+import {
+  withVisibility,
+  PRODUCT_ROW_SELECT,
+  mapProductRow,
+} from "../../lib/productQueries.js";
 
 function pairKey(p) {
   return `${p.storeDomain}::${p.handle}`;
@@ -30,9 +34,7 @@ export async function fetchHomepagePicks(picks, { client } = {}) {
       const { data, error } = await withVisibility(
         supabase
           .from("products")
-          .select(
-            "id, handle, store_domain, name, title, brand, price, image_url, store_name, product_url, available"
-          )
+          .select(PRODUCT_ROW_SELECT)
           .eq("store_domain", storeDomain),
       ).in("handle", chunk);
       if (error) {
@@ -43,25 +45,13 @@ export async function fetchHomepagePicks(picks, { client } = {}) {
     }
   }
 
+  // Sort raw rows by curated order before mapping; the snake_case keys
+  // come from the SELECT, the camelCase ones from mapProductRow below.
   all.sort((a, b) => {
     const ai = orderIndex.get(`${a.store_domain}::${a.handle}`) ?? 1e9;
     const bi = orderIndex.get(`${b.store_domain}::${b.handle}`) ?? 1e9;
     return ai - bi;
   });
 
-  return all
-    .slice(0, 8)
-    .map((p) => ({
-      id: p.id,
-      handle: p.handle,
-      storeDomain: p.store_domain,
-      name: p.name,
-      title: p.title,
-      brand: p.brand,
-      price: p.price,
-      imageUrl: p.image_url,
-      storeName: p.store_name,
-      productUrl: p.product_url,
-      available: p.available,
-    }));
+  return all.slice(0, 8).map(mapProductRow);
 }
