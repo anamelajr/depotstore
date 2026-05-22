@@ -4,6 +4,8 @@ import {
   fetchInterleavedProducts,
   countInterleavedProducts,
   withVisibility,
+  PRODUCT_ROW_SELECT_WITH_CATEGORY,
+  mapProductRow,
 } from "../../lib/productQueries.js";
 
 export const dynamic = "force-dynamic";
@@ -99,19 +101,7 @@ export async function GET(request) {
       return Response.json({ error: "Failed to fetch products", detail: msg }, { status: 500 });
     }
 
-    const products = (data || []).map((row) => ({
-      name: row.name,
-      title: row.title,
-      brand: row.brand,
-      price: row.price,
-      imageUrl: row.image_url,
-      storeName: row.store_name,
-      storeDomain: row.store_domain,
-      productUrl: row.product_url,
-      available: row.available,
-      handle: row.handle,
-      category: row.category,
-    }));
+    const products = (data || []).map(mapProductRow);
 
     return Response.json({ products, total: Number(countData), page, limit });
   }
@@ -120,13 +110,16 @@ export async function GET(request) {
   const from = offset;
   const to = from + limit - 1;
 
-  const selectCols = "id, name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle, category, subcategory";
-
   // Price is stored as TEXT ("€29.99") so DB ordering is lexicographic.
   // For price sorts: fetch all matching rows, sort numerically in JS, then paginate.
   if (sort === "price_asc" || sort === "price_desc") {
+    // `id` is selected only for the tiebreaker below; it's stripped by
+    // mapProductRow on the way out so the JSON response shape matches the
+    // other surfaces.
     let priceQuery = withVisibility(
-      supabase.from("products").select(selectCols, { count: "exact" }),
+      supabase
+        .from("products")
+        .select(`${PRODUCT_ROW_SELECT_WITH_CATEGORY}, id`, { count: "exact" }),
     );
 
     if (store) priceQuery = priceQuery.eq("store_domain", store);
@@ -149,20 +142,7 @@ export async function GET(request) {
     });
 
     const paged = data.slice(from, from + limit);
-
-    const products = paged.map((row) => ({
-      name: row.name,
-      title: row.title,
-      brand: row.brand,
-      price: row.price,
-      imageUrl: row.image_url,
-      storeName: row.store_name,
-      storeDomain: row.store_domain,
-      productUrl: row.product_url,
-      available: row.available,
-      handle: row.handle,
-      category: row.category,
-    }));
+    const products = paged.map(mapProductRow);
 
     return Response.json({ products, total: count, page, limit });
   }
@@ -170,7 +150,9 @@ export async function GET(request) {
   // Default newest-first ordering; covers explicit oldest/newest sorts AND
   // the leaf-bypass-of-interleaved fallback.
   let query = withVisibility(
-    supabase.from("products").select(selectCols, { count: "exact" }),
+    supabase
+      .from("products")
+      .select(PRODUCT_ROW_SELECT_WITH_CATEGORY, { count: "exact" }),
   ).range(from, to);
 
   if (store) query = query.eq("store_domain", store);
@@ -191,19 +173,7 @@ export async function GET(request) {
     return Response.json({ error: "Failed to fetch products", detail: error.message }, { status: 500 });
   }
 
-  const products = data.map((row) => ({
-    name: row.name,
-    title: row.title,
-    brand: row.brand,
-    price: row.price,
-    imageUrl: row.image_url,
-    storeName: row.store_name,
-    storeDomain: row.store_domain,
-    productUrl: row.product_url,
-    available: row.available,
-    handle: row.handle,
-    category: row.category,
-  }));
+  const products = data.map(mapProductRow);
 
   return Response.json({ products, total: count, page, limit });
 }

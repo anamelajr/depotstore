@@ -17,6 +17,52 @@ export function withVisibility(query) {
   return query.eq("available", true).eq("hidden", false);
 }
 
+// Canonical SELECT for direct `.from("products").select(...)` reads. Every
+// product-read surface used to spell out its own column list; the lists
+// drifted (some included `id`, some included `category`, none agreed on
+// what the feed actually returns). Locking the column set here is the
+// counterpart to `mapProductRow` below: one constant on the way in, one
+// mapper on the way out, no room for shape drift between sites.
+//
+// Distinct from INTERLEAVED_RPC_RETURN_COLUMNS — that array documents what
+// the RPC returns (source of truth: the SQL migration). This string is
+// for callers building their own SELECT against the `products` table. They
+// overlap heavily, but unifying them would tangle the SQL contract with
+// the JS read contract.
+export const PRODUCT_ROW_SELECT =
+  "name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle";
+
+// Feed surfaces (`/api/products`) need `category` for filtering chips on
+// the card. Editorial / homepage / MoreFromStore surfaces don't render it.
+// Append rather than fork the list so the base stays the single source of
+// truth.
+export const PRODUCT_ROW_SELECT_WITH_CATEGORY = `${PRODUCT_ROW_SELECT}, category`;
+
+// Single mapper that snake_case → camelCase for every product row,
+// regardless of which SELECT the caller used. Columns the caller didn't
+// SELECT come back `undefined`, which `JSON.stringify` drops — so the API
+// JSON shape stays identical to today even though the mapper is uniform.
+//
+// Deliberately NOT emitting `id` or `subcategory`: `id` was emitted by
+// editorial mappers but no consumer reads it; `subcategory` was selected
+// by the feed's direct-query path but never made it into the response.
+// Both drop out by omission here.
+export function mapProductRow(row) {
+  return {
+    name: row.name,
+    title: row.title,
+    brand: row.brand,
+    price: row.price,
+    imageUrl: row.image_url,
+    storeName: row.store_name,
+    storeDomain: row.store_domain,
+    productUrl: row.product_url,
+    available: row.available,
+    handle: row.handle,
+    category: row.category,
+  };
+}
+
 // Columns returned by both get_interleaved_products and
 // count_interleaved_products. Source of truth lives in
 // scripts/sql/2026-05-21-interleaved-rpcs.sql (RETURNS TABLE block, ~lines
