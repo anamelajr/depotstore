@@ -106,42 +106,73 @@ The 10 currently-wrong rows have `category` set, so the COALESCE write in
 the `enrich_product` RPC will NOT overwrite them on next cron run. NULL
 them out so the next enrich pass re-classifies via the fixed rules.
 
-The IDs are derivable from this query (verified in investigation):
+Target rows by `(store_domain, handle)` — the table's UNIQUE constraint,
+the same key the `enrich_product` RPC writes against, and what the app
+treats as product identity. Title-based predicates were rejected in
+adversarial review: `title` has no uniqueness constraint, so a PDP edit
+or a same-titled sibling row syncing in between writing and running the
+SQL could silently mutate the wrong row (and the `enrich_attempts = 0`
+reset would burn OpenAI quota on it next cron).
 
 ```sql
--- Preview first:
-SELECT id, handle, store_domain, brand, title, category, subcategory
+-- Preview first — confirm exactly 10 rows are listed before running the UPDATE.
+SELECT id, store_domain, handle, brand, title, category, subcategory
 FROM products
-WHERE category = 'Bags & Accessories'
-  AND hidden = false
-  AND available = true
-  AND (
-    -- belt hijacks (8 rows)
-    title IN (
-      '2004 Baggy Pants With Sleeve Belt',
-      'Velvet Skirt With Braid Belt',
-      'SS98 Strapless Gown Logo Belt',
-      'Nylon Dress With Belt',
-      'White Karate Belt Dress',
-      'Tweed Jacket With Belt',
-      'FW1999 Wool Belt Jacket',
-      '2012 Belt Leather Jacket'
-    )
-    -- bow tie hijacks (2 rows)
-    OR title IN (
-      'SS2008 Bow Tie Top',
-      '2012 White Bow Tie Shirt'
-    )
-  );
+WHERE (store_domain, handle) IN (
+  ('dolcevitahub.com',    '2004-dolce-gabbana-sleeve-belt-pants'),
+  ('dolcevitahub.com',    '2012-maison-martin-margiela-x-h-m-belt-leather-jacket'),
+  ('dolcevitahub.com',    '2012-maison-margiela-h-m-white-bow-tie-trompe-l-oeil-shirt'),
+  ('graindesell.shop',    'gucci-fw1999-wool-belt-jacket'),
+  ('graindesell.shop',    'prada-ss2000-nylon-dress-with-belt'),
+  ('dolcevitahub.com',    'ss2008-gucci-black-propaganda-bow-tie-top'),
+  ('yourgarmentz.com',    'gucci-tom-ford-1998-black-strapless-gown-logo-belt'),
+  ('yourgarmentz.com',    'dolce-gabbana-swarovski-tweed-jacket-special-piece'),
+  ('lesarchivesparis.com','gucci-by-tom-ford-fw-2002-velvet-skirt-with-braid-belt'),
+  ('www.dotcomme.net',    'yohji-yamamoto-white-karate-belt-dress')
+);
 
--- Then NULL out:
-UPDATE products
-SET category = NULL, subcategory = NULL, enrich_attempts = 0
-WHERE … -- same predicate
+-- Then NULL out, transactionally, with an explicit row-count guard.
+-- Inspect `rows_updated` from the final SELECT before COMMIT; if it is
+-- not 10, ROLLBACK and investigate.
+BEGIN;
+
+WITH targets(store_domain, handle) AS (VALUES
+  ('dolcevitahub.com',    '2004-dolce-gabbana-sleeve-belt-pants'),
+  ('dolcevitahub.com',    '2012-maison-martin-margiela-x-h-m-belt-leather-jacket'),
+  ('dolcevitahub.com',    '2012-maison-margiela-h-m-white-bow-tie-trompe-l-oeil-shirt'),
+  ('graindesell.shop',    'gucci-fw1999-wool-belt-jacket'),
+  ('graindesell.shop',    'prada-ss2000-nylon-dress-with-belt'),
+  ('dolcevitahub.com',    'ss2008-gucci-black-propaganda-bow-tie-top'),
+  ('yourgarmentz.com',    'gucci-tom-ford-1998-black-strapless-gown-logo-belt'),
+  ('yourgarmentz.com',    'dolce-gabbana-swarovski-tweed-jacket-special-piece'),
+  ('lesarchivesparis.com','gucci-by-tom-ford-fw-2002-velvet-skirt-with-braid-belt'),
+  ('www.dotcomme.net',    'yohji-yamamoto-white-karate-belt-dress')
+),
+updated AS (
+  UPDATE products p
+  SET category = NULL, subcategory = NULL, enrich_attempts = 0
+  FROM targets t
+  WHERE p.store_domain = t.store_domain
+    AND p.handle       = t.handle
+    AND p.category     = 'Bags & Accessories'  -- defensive: skip if already corrected
+  RETURNING p.id, p.store_domain, p.handle
+)
+SELECT count(*) AS rows_updated, array_agg(id ORDER BY id) AS updated_ids
+FROM updated;
+
+-- COMMIT only if rows_updated = 10 and ids match the preview.
+COMMIT;
 ```
 
-Resetting `enrich_attempts = 0` ensures these rows are picked up by the
-next enrich drain even if they had previously maxed out.
+Why these specifics:
+- `(store_domain, handle)` is the table's UNIQUE constraint, so each pair
+  matches at most one row by definition — no silent multi-row mutations.
+- The defensive `p.category = 'Bags & Accessories'` clause makes the
+  statement idempotent: a re-run after a partial fix is a no-op.
+- The `BEGIN/COMMIT` wrapper plus `RETURNING count(*)` lets you verify
+  the row count before committing and ROLLBACK if anything looks off.
+- `enrich_attempts = 0` ensures the cron drain picks these up even if
+  they had previously maxed out the attempt counter.
 
 ## Verification
 
