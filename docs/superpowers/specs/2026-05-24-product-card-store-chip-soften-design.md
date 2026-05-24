@@ -100,6 +100,16 @@ is purely visual.
    (~115px) because `px-2` padding and the border are removed — so
    this change reduces, not increases, horizontal-fit risk relative
    to current behavior.
+
+   **DB-verified worst case (2026-05-24):** queried live
+   `products` (visible, available rows) — the longest *rendered*
+   `store_name` after `SHORT_NAMES` mapping is `DOLCE VITA HUB`
+   (14 chars, 5,459 product rows). The two raw names that exceed
+   it (`Les Archives Paris` 18, `Numero 13 Vintage` 17) are both
+   covered by `SHORT_NAMES` and never render at full length. Any
+   future store added with a name longer than 14 uppercased chars
+   would need a corresponding `SHORT_NAMES` entry — same constraint
+   that already exists today with the bordered chip.
 4. **Contrast / legibility threshold.** Color stays `text-zinc-500`
    (`#71717a`) — unchanged from the current chip. On the dark feed
    background (`#000`), that's **≈4.92:1** contrast — passes WCAG AA
