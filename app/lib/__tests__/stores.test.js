@@ -26,6 +26,9 @@ describe("assignCategory — Tops leaves", () => {
     ["Knit",                           "Tops", "knitwear"],
     ["Knitwear",                       "Tops", "knitwear"],
     ["Top",                            "Tops", null],
+    ["Bow Tie Top",                    "Tops", null],
+    ["Bow Tie Shirt",                  "Tops", "shirts_blouses"],
+    ["Tie Dye Shirt",                  "Tops", "shirts_blouses"],
     ["Comme des Garçons Special Piece", null, null],
   ];
   it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
@@ -54,10 +57,12 @@ describe("assignCategory — Jackets & Coats leaves", () => {
     ["Overcoat",           "Jackets & Coats", "coats"],
     ["Puffer Coat",        "Jackets & Coats", "coats"],
     ["Shearling Coat",     "Jackets & Coats", "coats"],
-    ["Puffer",             "Jackets & Coats", null],
-    ["Shearling",          "Jackets & Coats", null],
-    ["Cape",               "Jackets & Coats", null],
-    ["Caban",              "Jackets & Coats", null],
+    ["Puffer",                  "Jackets & Coats", null],
+    ["Shearling",               "Jackets & Coats", null],
+    ["Cape",                    "Jackets & Coats", null],
+    ["Caban",                   "Jackets & Coats", null],
+    ["Belt Leather Jacket",     "Jackets & Coats", "jackets"],
+    ["Tweed Jacket With Belt",  "Jackets & Coats", "jackets"],
   ];
   it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
     const result = classify(title);
@@ -82,6 +87,9 @@ describe("assignCategory — Bags & Accessories leaves", () => {
     ["Necktie",      "Bags & Accessories", "accessories"],
     ["Bracelet",     "Bags & Accessories", "accessories"],
     ["Watch",        "Bags & Accessories", "accessories"],
+    ["Bow Tie",      "Bags & Accessories", "accessories"],
+    ["Silk Bow Tie", "Bags & Accessories", "accessories"],
+    ["Tie Dye Bag",  "Bags & Accessories", "bags"],
   ];
   it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
     const result = classify(title);
@@ -91,14 +99,17 @@ describe("assignCategory — Bags & Accessories leaves", () => {
 
 describe("assignCategory — flat buckets (subcategory must be null)", () => {
   const cases = [
-    ["Denim Jeans",   "Bottoms",          null],
-    ["Cargo Pants",   "Bottoms",          null],
-    ["Sneakers",      "Footwear",         null],
-    ["Boots",         "Footwear",         null],
-    ["Maxi Dress",    "Dresses & Skirts", null],
-    ["Skirt",         "Dresses & Skirts", null],
-    ["Wool Set",      "Sets",             null],
-    ["Tracksuit",     "Sets",             null],
+    ["Denim Jeans",     "Bottoms",          null],
+    ["Cargo Pants",     "Bottoms",          null],
+    ["Sneakers",        "Footwear",         null],
+    ["Boots",           "Footwear",         null],
+    ["Maxi Dress",      "Dresses & Skirts", null],
+    ["Skirt",           "Dresses & Skirts", null],
+    ["Wool Set",        "Sets",             null],
+    ["Tracksuit",       "Sets",             null],
+    ["Belt Dress",      "Dresses & Skirts", null],
+    ["Belt Skirt",      "Dresses & Skirts", null],
+    ["Pants With Belt", "Bottoms",          null],
   ];
   it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
     const result = classify(title);
