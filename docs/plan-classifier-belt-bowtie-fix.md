@@ -43,25 +43,24 @@ Move `belts?` and `bow[\s-]?tie | bowtie` out of rule 2's
 
 **Rule 7.5 (line 130):** extend the existing regex from
 `/\b(neckties?|ties?)\b(?![\s-]?dye)/` to also catch `belts?` and
-`bow[\s-]?tie | bowtie`. Two reasonable shapes — pick one:
+`bow[\s-]?tie | bowtie`. Keep the `tie-dye` lookahead scoped to the
+`ties?` arm only — split the regex into two alternations rather than
+folding `belts?` and `bow tie` under the same lookahead:
 
 ```js
-// option A: one combined alternation
-if (/\b(neckties?|ties?|belts?|bow[\s-]?tie|bowtie)\b(?![\s-]?dye)/.test(text)) {
-  return "Bags & Accessories";
-}
-
-// option B: keep the lookahead scoped to ties only (slightly clearer intent)
 if (/\b(neckties?|ties?)\b(?![\s-]?dye)/.test(text) ||
     /\b(belts?|bow[\s-]?tie|bowtie)\b/.test(text)) {
   return "Bags & Accessories";
 }
 ```
 
-Option B is preferable — the `(?![\s-]?dye)` lookahead was only there for
-`tie-dye`, and there is no analogous concern for `belt` or `bow tie`. Keeping
-them in separate alternations also makes the intent obvious to a future
-reader.
+Why split: a single combined alternation
+`/\b(neckties?|ties?|belts?|bow[\s-]?tie|bowtie)\b(?![\s-]?dye)/`
+would semantically extend the `-dye` exclusion to `belt-dye` and
+`bow-tie-dye` too. Those aren't real fashion terms today, so the
+behavioral impact is zero — but a future reader sees the lookahead
+and reasonably assumes it applies only to `ties?`. The split form
+makes the scope of the exclusion obvious.
 
 **Leaf classifiers — no changes needed:**
 - [classifyBagsAccessoriesLeaf:180-185](app/lib/category-classifier.js:180)
@@ -87,6 +86,7 @@ behavior** in the relevant describe blocks:
 // in "Tops leaves":
 ["Bow Tie Top",   "Tops", "shirts_blouses"],
 ["Bow Tie Shirt", "Tops", "shirts_blouses"],
+["Tie Dye Shirt", "Tops", "shirts_blouses"], // lookahead boundary: rule 4b wins before 7.5
 
 // in "flat buckets":
 ["Belt Dress", "Dresses & Skirts", null],
@@ -98,6 +98,7 @@ behavior** in the relevant describe blocks:
 // in "Bags & Accessories leaves":
 ["Bow Tie",     "Bags & Accessories", "accessories"],
 ["Silk Bow Tie","Bags & Accessories", "accessories"],
+["Tie Dye Bag", "Bags & Accessories", "bags"],   // lookahead boundary: rule 2 `bags?` wins
 ```
 
 ### 3. One-time DB cleanup (Supabase SQL Editor — MCP is read-only)
@@ -115,7 +116,7 @@ SQL could silently mutate the wrong row (and the `enrich_attempts = 0`
 reset would burn OpenAI quota on it next cron).
 
 ```sql
--- Preview first — confirm exactly 10 rows are listed before running the UPDATE.
+-- Step 1 — Preview. Run this on its own and confirm exactly 10 rows.
 SELECT id, store_domain, handle, brand, title, category, subcategory
 FROM products
 WHERE (store_domain, handle) IN (
@@ -131,37 +132,47 @@ WHERE (store_domain, handle) IN (
   ('www.dotcomme.net',    'yohji-yamamoto-white-karate-belt-dress')
 );
 
--- Then NULL out, transactionally, with an explicit row-count guard.
--- Inspect `rows_updated` from the final SELECT before COMMIT; if it is
--- not 10, ROLLBACK and investigate.
-BEGIN;
+-- Step 2 — Apply. The DO block is atomic: if RAISE EXCEPTION fires,
+-- the UPDATE rolls back automatically. No operator vigilance required.
+-- A previous version of this script used BEGIN/COMMIT with a SELECT
+-- count(*) "guard" and a "COMMIT only if ..." comment — that guard
+-- was advisory only and would still commit on a wrong row count.
+DO $$
+DECLARE
+  affected     INT;
+  updated_ids  BIGINT[];
+BEGIN
+  WITH updated AS (
+    UPDATE products p
+    SET category = NULL, subcategory = NULL, enrich_attempts = 0
+    FROM (VALUES
+      ('dolcevitahub.com',    '2004-dolce-gabbana-sleeve-belt-pants'),
+      ('dolcevitahub.com',    '2012-maison-martin-margiela-x-h-m-belt-leather-jacket'),
+      ('dolcevitahub.com',    '2012-maison-margiela-h-m-white-bow-tie-trompe-l-oeil-shirt'),
+      ('graindesell.shop',    'gucci-fw1999-wool-belt-jacket'),
+      ('graindesell.shop',    'prada-ss2000-nylon-dress-with-belt'),
+      ('dolcevitahub.com',    'ss2008-gucci-black-propaganda-bow-tie-top'),
+      ('yourgarmentz.com',    'gucci-tom-ford-1998-black-strapless-gown-logo-belt'),
+      ('yourgarmentz.com',    'dolce-gabbana-swarovski-tweed-jacket-special-piece'),
+      ('lesarchivesparis.com','gucci-by-tom-ford-fw-2002-velvet-skirt-with-braid-belt'),
+      ('www.dotcomme.net',    'yohji-yamamoto-white-karate-belt-dress')
+    ) AS t(store_domain, handle)
+    WHERE p.store_domain = t.store_domain
+      AND p.handle       = t.handle
+      AND p.category     = 'Bags & Accessories'  -- defensive: skip if already corrected
+    RETURNING p.id
+  )
+  SELECT count(*), array_agg(id ORDER BY id)
+    INTO affected, updated_ids
+    FROM updated;
 
-WITH targets(store_domain, handle) AS (VALUES
-  ('dolcevitahub.com',    '2004-dolce-gabbana-sleeve-belt-pants'),
-  ('dolcevitahub.com',    '2012-maison-martin-margiela-x-h-m-belt-leather-jacket'),
-  ('dolcevitahub.com',    '2012-maison-margiela-h-m-white-bow-tie-trompe-l-oeil-shirt'),
-  ('graindesell.shop',    'gucci-fw1999-wool-belt-jacket'),
-  ('graindesell.shop',    'prada-ss2000-nylon-dress-with-belt'),
-  ('dolcevitahub.com',    'ss2008-gucci-black-propaganda-bow-tie-top'),
-  ('yourgarmentz.com',    'gucci-tom-ford-1998-black-strapless-gown-logo-belt'),
-  ('yourgarmentz.com',    'dolce-gabbana-swarovski-tweed-jacket-special-piece'),
-  ('lesarchivesparis.com','gucci-by-tom-ford-fw-2002-velvet-skirt-with-braid-belt'),
-  ('www.dotcomme.net',    'yohji-yamamoto-white-karate-belt-dress')
-),
-updated AS (
-  UPDATE products p
-  SET category = NULL, subcategory = NULL, enrich_attempts = 0
-  FROM targets t
-  WHERE p.store_domain = t.store_domain
-    AND p.handle       = t.handle
-    AND p.category     = 'Bags & Accessories'  -- defensive: skip if already corrected
-  RETURNING p.id, p.store_domain, p.handle
-)
-SELECT count(*) AS rows_updated, array_agg(id ORDER BY id) AS updated_ids
-FROM updated;
+  IF affected <> 10 THEN
+    RAISE EXCEPTION
+      'Expected 10 rows updated, got % (ids=%)', affected, updated_ids;
+  END IF;
 
--- COMMIT only if rows_updated = 10 and ids match the preview.
-COMMIT;
+  RAISE NOTICE 'Cleanup OK: % rows updated, ids=%', affected, updated_ids;
+END $$;
 ```
 
 Why these specifics:
@@ -169,8 +180,10 @@ Why these specifics:
   matches at most one row by definition — no silent multi-row mutations.
 - The defensive `p.category = 'Bags & Accessories'` clause makes the
   statement idempotent: a re-run after a partial fix is a no-op.
-- The `BEGIN/COMMIT` wrapper plus `RETURNING count(*)` lets you verify
-  the row count before committing and ROLLBACK if anything looks off.
+- The DO block is implicitly transactional in Postgres. `RAISE EXCEPTION`
+  aborts the block and rolls back the UPDATE — so a wrong row count
+  cannot commit. The `RAISE NOTICE` on success surfaces the count and IDs
+  in the SQL Editor output for after-the-fact verification.
 - `enrich_attempts = 0` ensures the cron drain picks these up even if
   they had previously maxed out the attempt counter.
 
