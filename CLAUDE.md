@@ -6,11 +6,11 @@ price, search.
 
 ## Before editing
 
-Filter/query/sort changes need a parallel pass over every product-read
-surface: `/api/products/route.js`, the `get_interleaved_products` /
-`count_interleaved_products` RPCs, direct Supabase reads (`MoreFromStore.js`,
-PDP, homepage, `fetchEditorialProducts`), and the category taxonomy +
-`resolveCategoryFilter` in `app/lib/categories.js`.
+Product-read changes go through `app/lib/productQueries.js` (visibility
+filter, row select + mapper, interleaved-RPC call shape) — all five
+consumers compose it. Category-filter changes still need a parallel pass
+over the interleaved RPCs + `resolveCategoryFilter` in
+`app/lib/categories.js`.
 
 ## Invariants
 
@@ -46,8 +46,9 @@ PDP, homepage, `fetchEditorialProducts`), and the category taxonomy +
   Use `escapePostgrestValue` in `/api/products/route.js`; `search-products`
   has an inline equivalent.
 - **Enrich batch SELECT and remaining-count query must carry identical
-  filters** (`available`, `!hidden`, `enrich_attempts < MAX`,
-  `brand|title|category IS NULL`). A mismatch pins `remaining > 0` forever,
+  filters.** Both already share `withVisibility` for `available`/`!hidden`;
+  the drift risk is the hand-replicated pair: `enrich_attempts < MAX` and
+  `brand|title|category IS NULL`. A mismatch pins `remaining > 0` forever,
   burning all 30 self-chain hops on no-ops.
 - **In-loop `row.X` reads require X in the batch SELECT projection.**
   PostgREST filters and projections are independent: `.lt("enrich_attempts",
@@ -65,6 +66,8 @@ PDP, homepage, `fetchEditorialProducts`), and the category taxonomy +
 - **`hidden` is `NOT NULL` (default `false`); every `available = true` read
   must also filter `hidden = false`.** `.eq("hidden", false)` excludes
   NULL, so if the column drifts nullable, hide-aware filters silently leak.
+  Use `withVisibility` from `app/lib/productQueries.js`; all callers
+  compose it.
 - **`get_interleaved_products` RPC must return `name`.** `ProductCard` falls
   back to it when `title` is null.
 - **Price is stored as TEXT** (`'€29.99'`). DB ordering is lexicographic, so
@@ -84,17 +87,11 @@ PDP, homepage, `fetchEditorialProducts`), and the category taxonomy +
   reintroduces the RESET→APPLY race.
 - **Single sources of truth:** category taxonomy + `resolveCategoryFilter`
   + `CATEGORY_SLUG_TO_DB` → `app/lib/categories.js`; sort options →
-  `app/lib/sort-options.js`.
+  `app/lib/sort-options.js`; product reads (visibility filter, row select
+  + mapper, interleaved-RPC call shape) → `app/lib/productQueries.js`.
 - **Editorial entries are registered manually in
   `content/editorial/index.js`'s hardcoded `ENTRIES` array.** No
   filesystem auto-discovery — new entries are imported + pushed.
-- **Editorial entry pages set `revalidate = 3600`.** Without it,
-  `generateStaticParams` freezes Supabase reads into the build artifact
-  and the "Live inventory · N in stock" header lies between deploys.
-- **`fetchEditorialProducts` preserves curated order via an `orderIndex`
-  Map.** Supabase `.in()` returns arbitrary order; the helper rehydrates
-  the editorial sequence. A naive flatten silently reshuffles curated
-  grids.
 - **Never `import` `content/homepage-edit.json` statically.**
   `app/lib/loadHomepagePicks.js` reads it via `fs.readFile` + `JSON.parse`
   inside try/catch (returns `[]` on any failure), with a date-seeded
