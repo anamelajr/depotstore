@@ -79,7 +79,7 @@ export default function ProductCard({ product }) {
               {price ?? "—"}
             </div>
             {storeName ? (
-              <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-500 whitespace-nowrap">
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
                 {badgeName}
               </span>
             ) : null}
@@ -103,7 +103,7 @@ export default function ProductCard({ product }) {
               {price ?? "—"}
             </div>
             {storeName ? (
-              <span className="inline-flex items-center rounded border border-zinc-800/70 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-500 whitespace-nowrap">
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
                 {badgeName}
               </span>
             ) : null}
