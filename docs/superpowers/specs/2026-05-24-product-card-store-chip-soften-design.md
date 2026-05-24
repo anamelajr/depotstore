@@ -81,14 +81,41 @@ is purely visual.
 2. **Mobile + desktop breakpoints** — resize the browser past the `md`
    breakpoint (768px). Both layouts should look the same: no chip
    outline, baseline-aligned with the price, no layout shift.
-3. **Spot-check long store names** — load `/feed?store=seys-wardrobe`
-   (and any other store with a longer name like `Les Archives`) to
-   confirm `whitespace-nowrap` still prevents wrapping. Card height
-   should not change.
-4. **Editorial PiecesFeatured consistency** — open an editorial entry
+3. **Worst-case store name — horizontal fit, not just wrapping.**
+   The longest store name after the `SHORT_NAMES` shortening is
+   **`DOLCE VITA HUB`** (14 uppercased chars). Filter the feed to
+   Dolce Vita Hub (and Seys Wardrobe / At Dawn Paris / Grain de Sell
+   at 13 chars) at the narrowest mobile viewport (≤375px, 2-col grid).
+   Confirm:
+   - caption does not collide with or visually crowd the `€XXX` price
+     on the same row (`flex items-baseline justify-between gap-2`);
+   - caption does not push the desktop right column wider than its
+     `shrink-0` content (i.e. brand+title on the left still has room);
+   - card height unchanged.
+
+   Width sanity-check at the proposed sizing: mono 9px text +
+   `tracking-[0.12em]` for "DOLCE VITA HUB" is ~91px, comfortably
+   inside a ~170px-wide mobile card after the price (~30px) and gap
+   (8px). The new caption is **narrower** than today's bordered chip
+   (~115px) because `px-2` padding and the border are removed — so
+   this change reduces, not increases, horizontal-fit risk relative
+   to current behavior.
+4. **Contrast / legibility threshold.** Color stays `text-zinc-500`
+   (`#71717a`) — unchanged from the current chip. On the dark feed
+   background (`#000`), that's **≈4.92:1** contrast — passes WCAG AA
+   for small text (≥4.5:1). The only typography variable moving is
+   size (10px → 9px); both fall into the same "small text" WCAG
+   bucket, so this is a perceptual change, not a contrast regression.
+   The exact target classes are already in production on a light
+   background via
+   [PiecesFeatured](app/editorial/_components/PiecesFeatured.js:32),
+   which gives precedent for the typographic treatment. Acceptance:
+   the caption must remain readable on a real mobile device at arm's
+   length on the dark feed bg.
+5. **Editorial PiecesFeatured consistency** — open an editorial entry
    that uses `PiecesFeatured` and confirm the product-card caption now
    matches the editorial caption visually.
-5. **Deploy to Vercel preview** (per CLAUDE.md: verify on Vercel, not
+6. **Deploy to Vercel preview** (per CLAUDE.md: verify on Vercel, not
    localhost) and review on a real device before merging to main.
 
 No tests, no schema changes, no DB work. Single-file CSS-class swap.
