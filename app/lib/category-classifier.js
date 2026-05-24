@@ -44,14 +44,14 @@ function tryClassify(text, { strict = false } = {}) {
   //    detail", "perfect with a silk scarf") inside descriptions of
   //    actual garments. We defer B&A in strict mode so garment rules
   //    (3/4/4b/5) get first claim — see rule 5.5 below.
-  const bagsAccessoriesRx = /\b(bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|belts?|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|bowtie|bow[\s-]?tie|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|card[\s-]?holders?|pouchettes?|baguettes?|compact[\s-]?mirrors?|chapkas?|accessor(?:y|ies))\b/;
+  const bagsAccessoriesRx = /\b(bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|card[\s-]?holders?|pouchettes?|baguettes?|compact[\s-]?mirrors?|chapkas?|accessor(?:y|ies))\b/;
   if (!strict && bagsAccessoriesRx.test(text)) {
     return "Bags & Accessories";
   }
-  // Bare `ties?` is checked LATE (after Tops/Bottoms/Sets) — see rule 7.5.
-  // If we ran it here, "Tie Blouse" / "Floral Tie Blouse" / "Sleeveless Tie
-  // Sweater" would all be hijacked into B&A before rule 4b's `blouses?` /
-  // `sweaters?` could classify them.
+  // Bare `ties?`, `belts?`, and `bow[\s-]?tie` are checked LATE (after all
+  // garment rules) — see rule 7.5. Running them here hijacks titles like
+  // "Belt Leather Jacket", "Bow Tie Top", and "Tie Blouse" into B&A before
+  // the garment rules can claim them.
 
   // 3. Jackets & Coats. Includes bolero (short jacket), perfecto (leather
   //    motorcycle jacket), cape, caban (peacoat).
@@ -120,14 +120,17 @@ function tryClassify(text, { strict = false } = {}) {
     return "Tops";
   }
 
-  // 7.5. Late `ties?` / `necktie(s)` clause — runs AFTER Tops so
-  //      "Tie Blouse", "Floral Tie Blouse", and "Sleeveless Tie Sweater"
-  //      classify as Tops via rule 4b/7. Standalone "Tie", "Silk Tie",
-  //      "Necktie" still route here. `(?![\s-]?dye)` keeps "tie-dye" prose
-  //      out. Note: "Knit Tie" (knitted necktie) is shadowed by rule 7's
-  //      `knits?` and resolves to Tops — acceptable tradeoff vs. recovering
-  //      the much larger "Tie <garment>" Tops bucket.
-  if (/\b(neckties?|ties?)\b(?![\s-]?dye)/.test(text)) {
+  // 7.5. Late `ties?` / `neckties?` / `belts?` / `bow[\s-]?tie` clause —
+  //      runs AFTER all garment rules so "Belt Leather Jacket", "Bow Tie
+  //      Top", and "Tie Blouse" classify correctly via rules 3/4b/7.
+  //      Standalone "Belt", "Bow Tie", "Tie", "Necktie" still route here.
+  //      `(?![\s-]?dye)` keeps "tie-dye" out; it is scoped to the `ties?`
+  //      arm only — the split keeps the exclusion scope legible for future
+  //      readers. Note: "Knit Tie" is shadowed by rule 7's `knits?` →
+  //      Tops — acceptable tradeoff vs. recovering the larger "Tie <garment>"
+  //      Tops bucket.
+  if (/\b(neckties?|ties?)\b(?![\s-]?dye)/.test(text) ||
+      /\b(belts?|bow[\s-]?tie|bowtie)\b/.test(text)) {
     return "Bags & Accessories";
   }
 
