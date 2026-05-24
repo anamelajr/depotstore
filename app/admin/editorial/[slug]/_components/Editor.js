@@ -7,6 +7,7 @@ import BlockCard from "./BlockCard.js";
 import AddBlockMenu from "./AddBlockMenu.js";
 import PreviewPane from "./PreviewPane.js";
 import GenerateModal from "./GenerateModal.js";
+import PublishButton from "../../../_components/PublishButton.js";
 
 function mergeGeneratedBlocks(currentBlocks, generatedBlocks, expectedTextCount) {
   const isImage = (b) => b.type === "image" || b.type === "image-pair";
@@ -189,6 +190,11 @@ export default function Editor({ initialEntry, slug }) {
         >
           Save
         </button>
+        <PublishButton
+          files={effectiveSlug ? [`content/editorial/${effectiveSlug}.js`, "content/editorial/index.js", `public/editorial/${effectiveSlug}/`] : []}
+          label={effectiveSlug}
+          disabled={!effectiveSlug}
+        />
       </header>
     <div
       style={{
