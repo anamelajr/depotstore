@@ -10,64 +10,11 @@ import {
   isSelfBranded,
   brandFromHandle,
 } from "../../lib/stores.js";
-
-// Token-aware title case for the handle-fallback. Preserves canonical
-// casing for season codes (FW1998, SS99, AW2000) and decade markers
-// (2000s, 1990s) per cleanTitle's prompt examples. Other tokens get
-// standard title case (first letter upper, rest lower). Only used by
-// the handle-fallback path — no other call sites.
-export function toTitleCase(s) {
-  return s
-    .split(/\s+/)
-    .map((token) => {
-      if (!token) return token;
-      if (/^(FW|SS|AW)\d{2,4}$/i.test(token)) return token.toUpperCase();
-      if (/^\d{4}s$/i.test(token)) return token.toLowerCase();
-      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
-    })
-    .join(" ");
-}
-
-// Mirror cleanTitle's prompt rule "remove collection names in quotes,
-// parentheticals" so the deterministic fallback writes a title that
-// meets the same editorial bar. Stripping is delimiter-class greedy
-// (each class runs once over the string); collapse whitespace and
-// trim afterward. No-op on titles without quotes/parens.
-export function sanitizeFallbackTitle(s) {
-  return s
-    .replace(/«[^»]*»/g, " ")
-    .replace(/"[^"]*"/g, " ")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\[[^\]]*\]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Removes the brand from the raw name before title-casing, so a row whose
-// Shopify name *does* include the brand (e.g. "HELMUT LANG DRESS") doesn't
-// produce a redundant title that echoes the brand line on the product card —
-// the same failure mode cleanTitle's `brandInTitle` guard exists to prevent.
-// Match is whole-word, case-insensitive, and accent-insensitive against the
-// full brand phrase; if no match, original name is returned untouched.
-export function nameWithoutBrand(name, brand) {
-  const accentStrip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const tokens = accentStrip(brand).split(/[^A-Za-z0-9]+/).filter(Boolean);
-  if (tokens.length === 0) return name;
-  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const re = new RegExp(
-    `(^|[^A-Za-z0-9])${escaped.join("[^A-Za-z0-9]+")}([^A-Za-z0-9]|$)`,
-    "gi"
-  );
-  const stripped = accentStrip(name);
-  const after = stripped.replace(re, "$1$2");
-  if (after === stripped) return name;
-  // Strip leading/trailing non-alphanumerics so a name like "FENDI - WOOL"
-  // doesn't leave a dangling delimiter ("- Wool") in the resulting title.
-  return after
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
-}
+import {
+  toTitleCase,
+  sanitizeFallbackTitle,
+  nameWithoutBrand,
+} from "../../lib/handleFallback.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -307,51 +254,48 @@ export async function POST(request) {
       } else {
         failed++;
         await tally(row);
-        // Self-brand null-branch gate: only hide once the row has burned
-        // every retry. cleanTitle() returns null on transient OpenAI 5xx,
-        // rate limits, and 8 s timeouts as well as on genuinely
-        // unidentifiable rows, so an early hide would permanently kill
-        // legitimate-brand rows on a single OpenAI hiccup. Defer until
-        // attempts is about to reach MAX, at which point the row is
-        // genuinely un-enrichable and the store's policy treats it as
-        // self-branded/unbranded.
+        // Null-branch terminal hides. cleanTitle() returns null on transient
+        // OpenAI 5xx, rate limits, and 8 s timeouts as well as on genuinely
+        // unidentifiable rows, so we defer hiding until attempts is about to
+        // reach MAX — an early hide would permanently kill legitimate-brand
+        // rows on a single OpenAI hiccup. Chained with `else if` so each row
+        // counts at most once toward `rejected`; the subsequent UPDATE would
+        // be a no-op on `hidden = true` anyway but the metric double-count
+        // would pollute enrich_runs.allowlist_rejected.
+        //
+        // Order matters: store-policy hides come first so their intent
+        // shows up in logs/telemetry distinctly from the generic catch-all.
         if (
-          SELF_BRANDED_STORES.has(row.store_domain) &&
-          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS &&
+          SELF_BRANDED_STORES.has(row.store_domain)
         ) {
+          // Store opted in to "don't surface house-line inventory."
           await supabaseAdmin
             .from("products")
             .update({ hidden: true })
             .eq("id", row.id);
           rejected++;
-        }
-
-        // FILTER_BY_BRAND null-branch terminal hide. Mirrors the success-
-        // branch allowlist gate above: if no brand resolved from either
-        // cleanTitle or brandFromHandle by MAX retries, there's no allowlist
-        // check the row could pass, so it doesn't belong in the curated feed.
-        if (
-          FILTER_BY_BRAND.has(row.store_domain) &&
-          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+        } else if (
+          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS &&
+          FILTER_BY_BRAND.has(row.store_domain)
         ) {
+          // Store opted in to "only surface allowlisted brands." Mirrors
+          // the success-branch allowlist gate above: no brand resolved from
+          // either cleanTitle or brandFromHandle means no allowlist check
+          // could pass, so the row doesn't belong in the curated feed.
           await supabaseAdmin
             .from("products")
             .update({ hidden: true })
             .eq("id", row.id);
           rejected++;
-        }
-
-        // Generic title-null terminal hide. The homepage invariant is that
-        // we never surface a row whose editorial title is NULL — ProductCard
-        // falls back to row.name and leaks the raw uppercase Shopify string.
-        // If we exhausted attempts and still have no title, hide. Subsumes
-        // the two policy hides above in their common case; kept separate so
-        // the per-store policy intent stays explicit. Also covers stores in
-        // NEITHER policy list (e.g. seyswardrobe.fr's HYSTERIC GLAMOUR row).
-        if (
-          row.title === null &&
-          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+        } else if (
+          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS &&
+          row.title === null
         ) {
+          // Homepage invariant: never surface a row whose editorial title is
+          // NULL — ProductCard falls back to row.name and leaks the raw
+          // uppercase Shopify string. Covers stores in NEITHER policy list
+          // (e.g. seyswardrobe.fr's HYSTERIC GLAMOUR row).
           await supabaseAdmin
             .from("products")
             .update({ hidden: true })

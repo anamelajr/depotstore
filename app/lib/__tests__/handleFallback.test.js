@@ -3,8 +3,8 @@ import {
   toTitleCase,
   sanitizeFallbackTitle,
   nameWithoutBrand,
-} from "../route.js";
-import { brandFromHandle } from "../../../lib/brand.js";
+} from "../handleFallback.js";
+import { brandFromHandle } from "../brand.js";
 
 // Compose the helpers the same way enrich/route.js does at the fallback
 // site so the tests exercise the actual integrated behavior, not just each
