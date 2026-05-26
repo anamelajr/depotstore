@@ -75,42 +75,73 @@ export async function GET(request) {
     ? Math.max(0, parseInt(offsetParam) || 0)
     : (page - 1) * limit;
 
-  // Interleaved RPC only works for parent-only selections — its WHERE clause
-  // ANDs the category and subcategory filters, which silently drops parent
-  // rows when leaf filters are present. Mixed or leaf-only requests fall
-  // through to the direct-query path, which uses OR semantics. The cost
-  // is losing store-interleaving for those requests; newest-first is the
-  // pragmatic substitute order.
-  const hasLeafFilters = leafFilters.length > 0;
-  const useInterleavedRpc = (!sort || sort === "interleaved") && !hasLeafFilters;
+  // Drop leaf filters whose category is already covered by a parent
+  // selection — they're redundant (the parent subsumes them) and must
+  // not push this request onto the newest-first fallback. UI lets users
+  // toggle "All <Group>" and a child of the same group independently;
+  // categories.test.js:53-61 documents `?category=tops,tops_tees` as a
+  // supported shape.
+  const effectiveLeafFilters = leafFilters.filter(
+    (lf) => !parentCategories.includes(lf.category),
+  );
+
+  // The RPC's WHERE ANDs category and subcategory; that only drops rows
+  // when a request mixes parent-only entries with leaf pairs IN A
+  // DIFFERENT PARENT. Pure-leaf, multi-leaf, and same-parent parent+leaf
+  // (post-normalization) all work because the
+  // products_subcategory_matches_category CHECK constraint binds each
+  // subcategory to one category, so AND'd ANY() lists across both axes
+  // still return the right rows.
+  const hasMixedShape =
+    parentCategories.length > 0 && effectiveLeafFilters.length > 0;
+  const useInterleavedRpc = (!sort || sort === "interleaved") && !hasMixedShape;
 
   if (useInterleavedRpc) {
-    const categoryDbParam = parentCategories.length > 0 ? parentCategories.join(",") : null;
-    const [{ data, error }, { data: countData, error: countError }] = await Promise.all([
-      fetchInterleavedProducts({
-        store: store || null,
-        category: categoryDbParam,
-        search: search || null,
-        brand: brand || null,
-        limit,
-        offset,
-      }),
-      countInterleavedProducts({
-        store: store || null,
-        category: categoryDbParam,
-        search: search || null,
-        brand: brand || null,
-      }),
-    ]);
+    // Backfill effective leaves' parent categories into p_category so the
+    // row set is constrained on category before subcategory matching.
+    // Dedup keeps the CSV tidy; ANY() handles repeats either way.
+    const categoryParts = [
+      ...parentCategories,
+      ...effectiveLeafFilters.map((lf) => lf.category),
+    ];
+    const subcategoryParts = effectiveLeafFilters.map((lf) => lf.subcategory);
+    const categoryDbParam = categoryParts.length
+      ? [...new Set(categoryParts)].join(",")
+      : null;
+    const subcategoryDbParam = subcategoryParts.length
+      ? subcategoryParts.join(",")
+      : null;
+
+    const [{ data, error }, { data: countData, error: countError }] =
+      await Promise.all([
+        fetchInterleavedProducts({
+          store: store || null,
+          category: categoryDbParam,
+          subcategory: subcategoryDbParam,
+          search: search || null,
+          brand: brand || null,
+          limit,
+          offset,
+        }),
+        countInterleavedProducts({
+          store: store || null,
+          category: categoryDbParam,
+          subcategory: subcategoryDbParam,
+          search: search || null,
+          brand: brand || null,
+        }),
+      ]);
 
     if (error || countError) {
       const msg = error?.message || countError?.message;
       console.error("RPC error:", msg);
-      return Response.json({ error: "Failed to fetch products", detail: msg }, { status: 500 });
+      return Response.json(
+        { error: "Failed to fetch products", detail: msg },
+        { status: 500 },
+      );
     }
 
     const products = (data || []).map(mapProductRow);
-
     return Response.json({ products, total: Number(countData), page, limit });
   }
 
