@@ -71,7 +71,7 @@ export default function ProductCard({ product }) {
               {brand}
             </div>
           ) : null}
-          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
+          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2 min-h-[2lh]${brand ? " mt-0.5" : ""}`}>
             {displayTitle}
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2">
