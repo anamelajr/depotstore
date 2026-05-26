@@ -14,8 +14,15 @@ monopolises the first N pages until its inventory is exhausted. Dolce
 Vita dominates the hoodies filter today; the same will happen for any
 leaf where one store has deep recent inventory.
 
-Goal: filtered feeds use the same 6-per-store rotation the unfiltered
-feed already uses. Match today's pattern, no new behavior.
+Goal: every filter shape **except parent + cross-group leaf** uses the
+same 6-per-store rotation the unfiltered feed already uses. Specifically
+in scope: pure-leaf filters, multi-leaf filters (same parent or across
+parents), and redundant same-parent mixes (`?category=tops,tops_tees`).
+Explicitly out of scope: `?category=tops,jackets` and other parent +
+cross-group-leaf shapes — they stay on the existing newest-first
+direct-query path and may still exhibit store dominance until a future
+OR-aware v2 RPC. Acceptance criteria match this scope, not the broader
+"all filters interleave" framing.
 
 ## Root cause
 
@@ -200,10 +207,32 @@ Existing tests:
 - [app/lib/__tests__/productQueries.test.js](app/lib/__tests__/productQueries.test.js)
   covers the RPC wrapper shape and continues to pass unchanged.
 
-A small route-level test asserting RPC vs direct routing decisions for
-the four shapes (pure leaf, multi-leaf, redundant same-parent mix, true
-cross-group mix) would tighten the safety net but is optional given the
-preview-URL verification list above.
+### Required new test coverage
+
+Route-level routing-decision test is a **required** deliverable, not
+optional. The guard condition is the load-bearing part of this change;
+a small mistake (off-by-one in `hasMixedShape`, wrong dedup,
+`leafFilters` leaking into the RPC path instead of `effectiveLeafFilters`)
+silently degrades to newest-first or drops rows, neither of which
+preview spot-checks reliably catch.
+
+Add tests covering each routing decision and the params passed:
+
+| Input slug list | Expected path | Expected `p_category` | Expected `p_subcategory` |
+|---|---|---|---|
+| `[]` (unfiltered) | RPC | `null` | `null` |
+| `["tops"]` (parent only) | RPC | `"Tops"` | `null` |
+| `["tops_hoodies_sweaters"]` (pure leaf) | RPC | `"Tops"` | `"hoodies_sweaters"` |
+| `["tops_hoodies_sweaters","tops_knitwear"]` (multi-leaf same parent) | RPC | `"Tops"` | `"hoodies_sweaters,knitwear"` |
+| `["tops_hoodies_sweaters","coats"]` (multi-leaf cross-parent) | RPC | `"Tops,Jackets & Coats"` | `"hoodies_sweaters,coats"` |
+| `["tops","tops_tees"]` (redundant same-parent) | RPC | `"Tops"` | `null` (leaf normalized away) |
+| `["tops","jackets"]` (true cross-group mix) | direct fallback | n/a | n/a |
+| `["tops_hoodies_sweaters"]` + `sort=price_asc` | direct fallback | n/a | n/a |
+
+Stub `fetchInterleavedProducts` / `countInterleavedProducts` (or
+`supabase.from`) and assert which one is called and with which params,
+mirroring the mocking pattern in `productQueries.test.js`. Preview
+verification supplements these tests; it does not replace them.
 
 ## Risks
 
@@ -226,7 +255,18 @@ preview-URL verification list above.
 
 ## Deliverables
 
-- One PR against `main`, branch `claude/angry-swartz-89fa4e`.
-- This spec file, committed to the branch.
-- One code change in `app/api/products/route.js`.
-- Verification on Vercel preview before merge.
+Two-phase delivery on branch `claude/angry-swartz-89fa4e`:
+
+**Phase 1 — spec (this commit and the prior `1a6f599`/`378e9f2`):**
+- This spec file, committed.
+
+**Phase 2 — implementation (next commit, not yet present on branch):**
+- Code change in `app/api/products/route.js` matching the snippet in
+  the [Changes](#changes) section.
+- Route-level routing-decision test per the
+  [Required new test coverage](#required-new-test-coverage) section.
+- Verification on Vercel preview against every URL in
+  [Verification](#verification) before opening the PR for merge.
+
+A reviewer of the branch at any commit between Phase 1 and Phase 2 will
+see only the spec. The feed fix is not live until Phase 2 lands.
