@@ -11,11 +11,36 @@ import {
   brandFromHandle,
 } from "../../lib/stores.js";
 
-// Lightweight title-cased coercion for the handle-fallback path. Lowercases
-// the raw Shopify name and capitalizes each word boundary so an ALL CAPS
-// input like "WOOL BLAZER" becomes "Wool Blazer".
-function toTitleCase(s) {
-  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+// Token-aware title case for the handle-fallback. Preserves canonical
+// casing for season codes (FW1998, SS99, AW2000) and decade markers
+// (2000s, 1990s) per cleanTitle's prompt examples. Other tokens get
+// standard title case (first letter upper, rest lower). Only used by
+// the handle-fallback path — no other call sites.
+export function toTitleCase(s) {
+  return s
+    .split(/\s+/)
+    .map((token) => {
+      if (!token) return token;
+      if (/^(FW|SS|AW)\d{2,4}$/i.test(token)) return token.toUpperCase();
+      if (/^\d{4}s$/i.test(token)) return token.toLowerCase();
+      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+// Mirror cleanTitle's prompt rule "remove collection names in quotes,
+// parentheticals" so the deterministic fallback writes a title that
+// meets the same editorial bar. Stripping is delimiter-class greedy
+// (each class runs once over the string); collapse whitespace and
+// trim afterward. No-op on titles without quotes/parens.
+export function sanitizeFallbackTitle(s) {
+  return s
+    .replace(/«[^»]*»/g, " ")
+    .replace(/"[^"]*"/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // Removes the brand from the raw name before title-casing, so a row whose
@@ -24,7 +49,7 @@ function toTitleCase(s) {
 // the same failure mode cleanTitle's `brandInTitle` guard exists to prevent.
 // Match is whole-word, case-insensitive, and accent-insensitive against the
 // full brand phrase; if no match, original name is returned untouched.
-function nameWithoutBrand(name, brand) {
+export function nameWithoutBrand(name, brand) {
   const accentStrip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
   const tokens = accentStrip(brand).split(/[^A-Za-z0-9]+/).filter(Boolean);
   if (tokens.length === 0) return name;
@@ -190,16 +215,19 @@ export async function POST(request) {
         // curated allowlist via hyphen-bounded boundaries, so a non-archive
         // word fragment cannot impersonate a brand.
         const handleBrand = brandFromHandle(row.handle);
-        const nameWords = row.name.trim().split(/\s+/).length;
-        if (handleBrand && nameWords >= 1 && nameWords <= 7) {
-          // Guard against name-equals-brand rows: stripping the brand from
-          // "FENDI" leaves an empty string, and writing an empty title
-          // would bypass the same empty-title invariant cleanTitle's gate
-          // enforces, permanently marking the row enriched with no title.
-          const fallbackTitle = toTitleCase(
-            nameWithoutBrand(row.name, handleBrand)
+        if (handleBrand) {
+          // Bound the OUTPUT title's word count, not the input name's. The
+          // brand is stripped first, so a wordy brand prefix shouldn't
+          // block recovery of a short title. Sanitize quotes/parens before
+          // counting so the deterministic path mirrors cleanTitle's rule
+          // "remove collection names in quotes, parentheticals". The
+          // titleWords >= 1 lower bound also rules out the name-equals-brand
+          // case (stripping "FENDI" from "FENDI" yields empty → 0 words).
+          const fallbackTitle = sanitizeFallbackTitle(
+            toTitleCase(nameWithoutBrand(row.name, handleBrand))
           );
-          if (fallbackTitle.length > 0) {
+          const titleWords = fallbackTitle.split(/\s+/).filter(Boolean).length;
+          if (titleWords >= 1 && titleWords <= 7) {
             result = {
               brand: handleBrand.toUpperCase(),
               title: fallbackTitle,
@@ -289,6 +317,39 @@ export async function POST(request) {
         // self-branded/unbranded.
         if (
           SELF_BRANDED_STORES.has(row.store_domain) &&
+          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+        ) {
+          await supabaseAdmin
+            .from("products")
+            .update({ hidden: true })
+            .eq("id", row.id);
+          rejected++;
+        }
+
+        // FILTER_BY_BRAND null-branch terminal hide. Mirrors the success-
+        // branch allowlist gate above: if no brand resolved from either
+        // cleanTitle or brandFromHandle by MAX retries, there's no allowlist
+        // check the row could pass, so it doesn't belong in the curated feed.
+        if (
+          FILTER_BY_BRAND.has(row.store_domain) &&
+          row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+        ) {
+          await supabaseAdmin
+            .from("products")
+            .update({ hidden: true })
+            .eq("id", row.id);
+          rejected++;
+        }
+
+        // Generic title-null terminal hide. The homepage invariant is that
+        // we never surface a row whose editorial title is NULL — ProductCard
+        // falls back to row.name and leaks the raw uppercase Shopify string.
+        // If we exhausted attempts and still have no title, hide. Subsumes
+        // the two policy hides above in their common case; kept separate so
+        // the per-store policy intent stays explicit. Also covers stores in
+        // NEITHER policy list (e.g. seyswardrobe.fr's HYSTERIC GLAMOUR row).
+        if (
+          row.title === null &&
           row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
         ) {
           await supabaseAdmin
