@@ -21,7 +21,13 @@ export default function ProductCard({ product }) {
     "Les Archives Paris": "Les Archives",
     "Numero 13 Vintage": "Numero 13",
   };
+  const SHORT_BRANDS = {
+    "COMME DES GARÇONS HOMME PLUS": "CDG Homme Plus",
+    "COMME DES GARCONS HOMME PLUS": "CDG Homme Plus",
+    "JUNYA WATANABE COMME DES GARÇONS": "JUNYA WATANABE CDG",
+  };
   const badgeName = SHORT_NAMES[storeName] ?? storeName;
+  const displayBrand = brand ? (SHORT_BRANDS[brand] ?? brand) : null;
   const displayTitle = title ?? name ?? "Untitled";
   const isSold = !available;
 
@@ -38,9 +44,9 @@ export default function ProductCard({ product }) {
   };
 
   const card = (
-    <div className="group focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
+    <div className="group flex h-full flex-col focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
       {/* Image */}
-      <div className="relative aspect-[4/5] overflow-hidden bg-zinc-950">
+      <div className="relative aspect-[4/5] shrink-0 overflow-hidden bg-zinc-950">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -63,18 +69,20 @@ export default function ProductCard({ product }) {
       </div>
 
       {/* Info */}
-      <div className="mt-4">
+      <div className="mt-4 flex flex-1 flex-col">
         {/* Mobile */}
-        <div className="md:hidden">
-          {brand ? (
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
-              {brand}
+        <div className="flex flex-1 flex-col md:hidden">
+          <div>
+            {brand ? (
+              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
+                {displayBrand}
+              </div>
+            ) : null}
+            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2 min-h-[2lh]${brand ? " mt-0.5" : ""}`}>
+              {displayTitle}
             </div>
-          ) : null}
-          <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
-            {displayTitle}
           </div>
-          <div className="mt-2 flex items-baseline justify-between gap-2">
+          <div className="mt-auto flex items-baseline justify-between gap-2 pt-2">
             <div className="font-mono text-[12px] text-zinc-200">
               {price ?? "—"}
             </div>
@@ -91,7 +99,7 @@ export default function ProductCard({ product }) {
           <div className="flex flex-col min-w-0">
             {brand ? (
               <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
-                {brand}
+                {displayBrand}
               </div>
             ) : null}
             <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
@@ -118,7 +126,7 @@ export default function ProductCard({ product }) {
   return (
     <Link
       href={internalUrl}
-      className="block focus:outline-none"
+      className="block h-full focus:outline-none"
       onClick={handleClick}
     >
       {card}
