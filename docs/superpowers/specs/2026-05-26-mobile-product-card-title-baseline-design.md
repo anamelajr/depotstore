@@ -68,3 +68,42 @@ The following edge cases were considered during adversarial review and deliberat
 - Null `brand`: 4 of 7,193 rows (see follow-ups above).
 
 If any of these counts crosses ~1% of the visible feed, revisit the verification matrix.
+
+## Addendum — structural fix layered on top
+
+The title-only fix landed in commit `ed54232` and was verified across 360/390/430. Verification surfaced a separate height contributor not anticipated in the original brainstorming: **brand-text wrap**. Long brand names (ALEXANDER MCQUEEN, COMME DES GARÇONS, ANN DEMEULEMEESTER, LABEL UNDER CONSTRUCTION) wrap to 2 — and at 360px sometimes 3 — lines, while short brands (RICK OWENS, PRADA, JUNYA WATANABE) fit on 1. Measured impact:
+
+| Viewport | Aligned rows (title-only fix) |
+|---|---|
+| 360px | 10/15 (67%) — 5 rows misaligned by brand wrap |
+| 390px | 14/15 (93%) — 1 row misaligned |
+| 430px | 14/15 (93%) — 1 row misaligned |
+
+The 360px result was prevalent enough that the user vetoed shipping the title-only fix and approved Option C from the original brainstorming: pin the price row to the bottom of a fixed-height text block, absorbing all variance (title length, brand line count, brand presence) as breathing room above the price row.
+
+### What the structural fix changes
+
+In [app/components/ProductCard.js](../../../app/components/ProductCard.js):
+
+- Card wrapper root: `flex h-full flex-col` so the wrapper fills the grid item.
+- Image container: `shrink-0` to lock the 4:5 aspect ratio inside the flex column.
+- Info container: `mt-4 flex flex-1 flex-col` to absorb remaining vertical space.
+- Mobile block: `flex flex-1 flex-col md:hidden` — becomes a flex column.
+- Brand + title wrapped in a top group `<div>`; price row now `mt-auto pt-2` instead of `mt-2`. `mt-auto` pushes the price to the bottom of the mobile block, `pt-2` preserves the original 8px gap when content is tight.
+- Link wrapper: adds `h-full` so height flows from the grid item through to the card root.
+
+Title kept `min-h-[2lh]` (from the title-only commit) for consistency; redundant with the new flex layout for alignment purposes, but keeps the per-title geometry stable so titles in the same row visually start at the same Y even before grid stretch resolves.
+
+### Verification results after structural fix
+
+15/15 rows aligned at 360, 390, and 430. Confirmed visually that ANN DEMEULEMEESTER (2-line brand) and CHRISTIANE BILLET (1-line brand) — sitting in the same row at 360px — have prices on identical baselines. Desktop layout unaffected (the mobile block is `md:hidden` and the desktop block sits inside the same flex column with no flex-1, so it takes its natural size).
+
+### Follow-ups now resolved
+
+- **No-brand cards**: the price-pin pattern handles them too. Removed from deferred list.
+- **Brand-wrap**: resolved.
+
+Still deferred:
+
+- **Desktop layout** has its own latent alignment vulnerability via the `flex-col items-end justify-between` pattern on the right column. Out of scope per user's mobile-focused report.
+- **Editorial cards** (`MoreFromStore`, `EditorialProductCard`) carry the same flaw. Out of scope per "feed only for now."
