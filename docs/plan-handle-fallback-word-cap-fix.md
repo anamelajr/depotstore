@@ -152,6 +152,28 @@ Two reasons not to relax the LLM-side cap:
 The handle-fallback gate is the surface that needed relaxing, not
 cleanTitle.
 
+### Why `titleWords >= 1`, not `>= 2`
+
+The handle-fallback's lower bound matches cleanTitle's actual JS
+validator at [cleanTitle.js:86](app/lib/cleanTitle.js:86):
+`titleValid = parsed.title && parsed.title.trim().length > 0 &&
+titleWords <= 7`. The validator only enforces non-empty + ≤7 — it does
+NOT require ≥2 words.
+
+This is a deliberate prior decision. Commit `f6f4246`
+("fix(enrich): admit single-word titles + allowlist 10 archive
+brands") removed an earlier `titleWords >= 2` floor because it was
+rejecting valid model output for terse "BRAND - Garment" listings
+(e.g. `GUCCI - Loafers`) and sending those rows to the 3-attempt
+cap. 357 single-word titles already ship in production via cleanTitle
+(`Bag / CHANEL`, `Backpack / MCM`, etc.) and validate the
+two-line-card UX. Restoring the floor in the handle-fallback would
+regress that decision and re-create the same false negatives.
+
+The handle-fallback's output (e.g. `LOAFERS GUCCI` → `Loafers`) is
+exactly the same shape as cleanTitle's accepted output — same
+editorial bar, same one-word legitimacy.
+
 ### Editorial-protection invariant
 
 Writes still go through `enrich_product` RPC with COALESCE
@@ -205,13 +227,12 @@ concern is satisfied, not just acknowledged.
     The new null-branch hide only fires on rows that already exhausted
     their token budget. Neither change adds or saves OpenAI calls.
 12. **seyswardrobe.fr's HYSTERIC GLAMOUR row** is in neither
-    `SELF_BRANDED_STORES` nor `FILTER_BY_BRAND`. The new null-branch
-    hide does NOT cover it. It needs a one-time manual hide today,
-    AND it represents a residual leak surface if seyswardrobe ever
-    sends another brand-only-name row. Out of scope for this PR
-    (would require a policy decision: add seyswardrobe to a hide
-    list, add a generic name-too-short-for-title gate, or accept the
-    risk). Flagged for follow-up.
+    `SELF_BRANDED_STORES` nor `FILTER_BY_BRAND`. The store-specific
+    null-branch hides do NOT cover it. Now closed by the **generic
+    title-null terminal hide** (Code change 3 below) — any row at
+    MAX exhaustion with `title IS NULL` is hidden regardless of
+    store policy. Closes the seyswardrobe residual AND any future
+    not-yet-policy-listed store with the same failure mode.
 
 ## Recommended fix
 
@@ -286,16 +307,20 @@ if (handleBrand) {
 The existing `if (fallbackTitle.length > 0)` collapses into the
 `titleWords >= 1` check — same effect, one comparison.
 
-### Code change 2 — FILTER_BY_BRAND null-branch terminal hide
+### Code change 2 — null-branch terminal hides
 
 In the else (null) branch at [enrich/route.js:290-299](app/api/enrich/route.js:290),
-add a second conditional after the existing `SELF_BRANDED_STORES`
-block (do NOT collapse into one condition — keeping them separate
-makes the two policies' rationales explicit at the call site, and the
-two store lists may diverge later):
+keep the existing `SELF_BRANDED_STORES` block and add TWO more
+conditionals after it. Three hides total, each with distinct
+rationale; they may overlap in practice but the comments document
+intent. Order matters only for tally accuracy — once a row is
+hidden, subsequent UPDATEs are no-ops.
 
 ```js
-// Existing — SELF_BRANDED null-branch hide
+// Existing — SELF_BRANDED null-branch hide.
+// POLICY: store has opted in to "don't surface house-line inventory."
+// nuovo-paris.com, atdawnparis.com are listed as stores whose
+// null-enrichment outcomes mean "this is their own line, not archive."
 if (
   SELF_BRANDED_STORES.has(row.store_domain) &&
   row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
@@ -307,14 +332,32 @@ if (
   rejected++;
 }
 
-// NEW — FILTER_BY_BRAND null-branch hide. Mirrors the SUCCESS-branch
-// allowlist gate at line 229: a curated allowlist store whose row
-// yielded no brand from cleanTitle OR brandFromHandle has nothing to
-// place it in the feed. Same MAX-exhaustion deferral pattern as the
-// SELF_BRANDED hide above: a transient OpenAI hiccup should not be
-// the trigger.
+// NEW — FILTER_BY_BRAND null-branch hide.
+// POLICY: store has opted in to "only surface allowlisted brands."
+// Mirrors the SUCCESS-branch allowlist gate at line 229: if no brand
+// resolved from cleanTitle OR brandFromHandle, there is no allowlist
+// check to pass, so the row doesn't belong in the curated feed.
 if (
   FILTER_BY_BRAND.has(row.store_domain) &&
+  row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
+) {
+  await supabaseAdmin
+    .from("products")
+    .update({ hidden: true })
+    .eq("id", row.id);
+  rejected++;
+}
+
+// NEW — Generic title-null terminal hide.
+// INVARIANT: the homepage must never surface a row whose editorial
+// title is NULL — the ProductCard fallback to row.name leaks the raw
+// uppercase Shopify string. If we exhausted attempts and still have
+// no title, the only safe action is to hide. Subsumes the two policy
+// hides above in their common case (null brand → no clean title), but
+// kept separate so the policy intent is explicit per store class. Also
+// covers stores in NEITHER policy list (e.g. seyswardrobe.fr today).
+if (
+  row.title === null &&
   row.enrich_attempts + 1 >= MAX_ENRICH_ATTEMPTS
 ) {
   await supabaseAdmin
@@ -412,46 +455,82 @@ triggered by a cron-side content-churn reset).
 
 3. **Confirm prod deploy is live.** Check the Vercel deployment URL
    reports the new commit SHA.
-4. **Run the two SQL statements** from the Data fix section. Snapshot
-   the four rows first.
-5. **Trigger one enrich pass** manually (faster than waiting for the
+4. **Pre-flight sanity check.** Confirm the four rows are still
+   exactly the set we expect to act on (in case prod's hourly cron
+   processed something between plan-write and deploy):
+   ```sql
+   SELECT store_domain, handle, name, title, brand, enrich_attempts,
+          available, hidden
+   FROM products
+   WHERE available = true AND hidden = false
+     AND title IS NULL AND enrich_attempts >= 3
+   ORDER BY store_domain, handle;
+   ```
+   If the row set differs from the plan's 4-row table, stop and
+   reassess — do not run the data fix on a moved target.
+5. **Run the two SQL statements** from the Data fix section.
+   Snapshot the four rows first.
+6. **Trigger one enrich pass** manually (faster than waiting for the
    next hourly cron):
    ```
    curl -H "Authorization: Bearer $CRON_SECRET" \
      https://depotstore-tau.vercel.app/api/enrich
    ```
-6. **Sweep query — must return 0:**
+7. **Sweep query A — strict invariant — must return 0:**
+   ```sql
+   SELECT COUNT(*) FROM products
+   WHERE available = true AND hidden = false
+     AND title IS NULL;
+   ```
+   This is the invariant the plan claims. Codex flagged that the
+   prior `enrich_attempts >= 3` predicate masked in-flight rows
+   (reset to 0 by step 5, not yet re-enriched). The unfiltered
+   sweep catches both. If non-zero, identify which rows leaked and
+   either re-trigger enrich or hide them.
+8. **Sweep query B — backlog-only — must return 0:**
    ```sql
    SELECT COUNT(*) FROM products
    WHERE available = true AND hidden = false
      AND title IS NULL AND enrich_attempts >= 3;
    ```
-7. **Verify the McQueen skirt rendered title:**
+   Confirms the original maxed-out backlog is drained.
+9. **Verify BOTH recovered rows explicitly:**
    ```sql
-   SELECT title, brand, category, subcategory, hidden
+   SELECT store_domain, handle, title, brand, category, subcategory,
+          hidden, enrich_attempts
    FROM products
-   WHERE store_domain = 'numero13vintage.com'
-     AND handle = 'alexander-mcqueen-fw1998-joan-black-denim-mini-skirt';
+   WHERE (store_domain, handle) IN (
+     ('numero13vintage.com',
+      'alexander-mcqueen-fw1998-joan-black-denim-mini-skirt'),
+     ('dolcevitahub.com',
+      'comme-des-garcons-shirt-blue-abstract-face-shirt')
+   );
    ```
-   Expected: `title = 'FW1998 Black Denim Mini Skirt'`, `brand =
-   'ALEXANDER MCQUEEN'`, `category` set, `hidden = false`.
-8. **Verify the dolcevitahub snake ring is hidden:**
-   ```sql
-   SELECT hidden, enrich_attempts FROM products
-   WHERE store_domain = 'dolcevitahub.com'
-     AND handle = '2000s-snake-circle-silver-925-ring';
-   ```
-   Expected: `hidden = true, enrich_attempts = 3`.
-9. **Filter regression spot-check on prod** — pick three feed combos:
-   - `/feed?brand=Alexander+McQueen` — McQueen skirt now appears
-     with the recovered title.
-   - `/feed?store=numero13` — set unchanged plus the now-clean skirt
-     title.
-   - `/feed?category=bottoms` — McQueen skirt joins (after
-     `assignCategory` runs on the recovered row).
-10. **Invariant-B forward check** — observe the next 1-2 hourly cron
-    runs in `enrich_runs` (or logs) to confirm no new dolcevitahub
-    rows accumulate in the `visible_uncleaned_no_brand` bucket. The
-    new null-branch hide is preventative; the sweep query at step 6
-    should stay at 0 indefinitely (modulo the seyswardrobe residual
-    flagged as out-of-scope edge case 12).
+   Expected:
+   - McQueen: `title = 'FW1998 Black Denim Mini Skirt'`,
+     `brand = 'ALEXANDER MCQUEEN'`, `category` set, `hidden = false`.
+   - CDG SHIRT: `title = 'Shirt Blue Abstract Face Shirt'`,
+     `brand = 'COMME DES GARÇONS'`, `category` set, `hidden = false`.
+10. **Verify BOTH manually-hidden rows:**
+    ```sql
+    SELECT store_domain, handle, hidden, enrich_attempts
+    FROM products
+    WHERE (store_domain, handle) IN (
+      ('dolcevitahub.com', '2000s-snake-circle-silver-925-ring'),
+      ('seyswardrobe.fr', 'sans-titre-6sept-_13-50')
+    );
+    ```
+    Expected: both `hidden = true, enrich_attempts = 3`.
+11. **Filter regression spot-check on prod** — pick three feed
+    combos:
+    - `/feed?brand=Alexander+McQueen` — McQueen skirt now appears
+      with the recovered title.
+    - `/feed?store=numero13` — set unchanged plus the now-clean
+      skirt title.
+    - `/feed?category=bottoms` — McQueen skirt joins (after
+      `assignCategory` runs on the recovered row).
+12. **Invariant forward check** — observe the next 1-2 hourly cron
+    runs in `enrich_runs` (or logs) to confirm sweep A stays at 0.
+    The three null-branch hides are preventative; future stuck rows
+    from any store, including ones outside SELF_BRANDED or
+    FILTER_BY_BRAND, are now caught by the generic title-null hide.
