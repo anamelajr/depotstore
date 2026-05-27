@@ -51,29 +51,61 @@ describe("formatSizes", () => {
   });
 
   it("returns null when every variant title is empty or 'Default Title'", () => {
-    expect(formatSizes([{ title: "Default Title" }])).toBe(null);
-    expect(formatSizes([{ title: "" }, { title: null }])).toBe(null);
+    expect(formatSizes([{ title: "Default Title", available: true }])).toBe(null);
+    expect(formatSizes([{ title: "", available: true }, { title: null, available: true }])).toBe(null);
     expect(
-      formatSizes([{ title: "default title" }, { title: "Default Title" }]),
+      formatSizes([{ title: "default title", available: true }, { title: "Default Title", available: true }]),
     ).toBe(null);
   });
 
-  it("returns single label when one usable variant", () => {
-    expect(formatSizes([{ title: "M" }])).toBe("M");
-    expect(formatSizes([{ title: "M" }, { title: "Default Title" }])).toBe(
-      "M",
-    );
-  });
-
-  it("joins multiple labels with comma+space", () => {
-    expect(formatSizes([{ title: "S" }, { title: "M" }, { title: "L" }])).toBe(
-      "S, M, L",
-    );
-  });
-
-  it("ignores variants without a usable title", () => {
+  it("returns null when all variants are sold out", () => {
+    expect(formatSizes([{ title: "M", available: false }])).toBe(null);
     expect(
-      formatSizes([{ title: "S" }, { title: "" }, { title: "L" }, {}]),
-    ).toBe("S, L");
+      formatSizes([{ title: "S", available: false }, { title: "L", available: false }]),
+    ).toBe(null);
+  });
+
+  it("returns array with single label when one in-stock variant", () => {
+    expect(formatSizes([{ title: "M", available: true }])).toEqual(["M"]);
+    expect(
+      formatSizes([{ title: "M", available: true }, { title: "Default Title", available: true }]),
+    ).toEqual(["M"]);
+  });
+
+  it("returns array with multiple in-stock labels", () => {
+    expect(
+      formatSizes([
+        { title: "S", available: true },
+        { title: "M", available: true },
+        { title: "L", available: true },
+      ]),
+    ).toEqual(["S", "M", "L"]);
+  });
+
+  it("filters sold-out variants from mixed-stock array", () => {
+    expect(
+      formatSizes([
+        { title: "S", available: false },
+        { title: "M", available: true },
+        { title: "L", available: false },
+      ]),
+    ).toEqual(["M"]);
+  });
+
+  it("ignores variants without a usable title (in-stock only)", () => {
+    expect(
+      formatSizes([
+        { title: "S", available: true },
+        { title: "", available: true },
+        { title: "L", available: true },
+        { available: true },
+      ]),
+    ).toEqual(["S", "L"]);
+  });
+
+  it("preserves a variant title containing a comma as one entry", () => {
+    expect(
+      formatSizes([{ title: "Waist 32, Inseam 30", available: true }]),
+    ).toEqual(["Waist 32, Inseam 30"]);
   });
 });

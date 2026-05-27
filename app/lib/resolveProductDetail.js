@@ -20,12 +20,12 @@ export function nonEmpty(value) {
 export function formatSizes(variants) {
   if (!Array.isArray(variants) || variants.length === 0) return null;
   const labels = variants
+    .filter((v) => v?.available === true)
     .map((v) => nonEmpty(v?.title))
     .filter(Boolean)
     .filter((label) => label.toLowerCase() !== "default title");
   if (labels.length === 0) return null;
-  if (labels.length === 1) return labels[0];
-  return labels.join(", ");
+  return labels;
 }
 
 async function fetchShopifyProduct(handle, storeDomain) {
@@ -43,10 +43,10 @@ async function fetchShopifyProduct(handle, storeDomain) {
 }
 
 // Returns a flat, render-ready detail object, or null when the PDP should
-// fall back to the "Product not found." view (missing params or Shopify
-// 404/network failure). Raw Shopify product is intentionally not in the
-// return shape — every consumer field is pre-derived here so the page stays
-// pure rendering.
+// fall back to the "Product not found." view (missing params, unknown/inactive
+// store domain, or Shopify 404/network failure). Raw Shopify product is
+// intentionally not in the return shape — every consumer field is pre-derived
+// here so the page stays pure rendering.
 //
 // Description resolution carries one CLAUDE.md-adjacent invariant: the
 // Supabase cache-back write swallows failures silently so the page still
@@ -56,7 +56,27 @@ async function fetchShopifyProduct(handle, storeDomain) {
 export async function resolveProductDetail({ handle, storeDomain }) {
   if (!handle || !storeDomain) return null;
 
-  const product = await fetchShopifyProduct(handle, storeDomain);
+  // Allowlist check — reject unknown or inactive domains before fetching
+  // Shopify, preventing an attacker-controlled domain from being fetched and
+  // rendered inside Dépôt's chrome.
+  const { data: storeRow } = await supabase
+    .from("stores")
+    .select("store_name, display_name, location")
+    .eq("domain", storeDomain)
+    .eq("active", true)
+    .maybeSingle();
+  if (!storeRow) return null;
+
+  const [product, { data: dbRow }] = await Promise.all([
+    fetchShopifyProduct(handle, storeDomain),
+    supabase
+      .from("products")
+      .select("brand, title, editorial_description")
+      .eq("store_domain", storeDomain)
+      .eq("handle", handle)
+      .maybeSingle(),
+  ]);
+
   if (!product) return null;
 
   const images = Array.isArray(product.images)
@@ -73,6 +93,7 @@ export async function resolveProductDetail({ handle, storeDomain }) {
   const price = minPrice !== null ? `€${minPrice.toFixed(2)}` : null;
 
   const sizes = formatSizes(variants);
+  const available = variants.some((v) => v?.available === true);
 
   const rawDescription = stripHtml(product.body_html);
   const tags = Array.isArray(product.tags)
@@ -80,20 +101,6 @@ export async function resolveProductDetail({ handle, storeDomain }) {
     : typeof product.tags === "string"
       ? product.tags.split(",").map((t) => t.trim())
       : [];
-
-  const [{ data: dbRow }, { data: storeRow }] = await Promise.all([
-    supabase
-      .from("products")
-      .select("brand, title, editorial_description")
-      .eq("store_domain", storeDomain)
-      .eq("handle", handle)
-      .maybeSingle(),
-    supabase
-      .from("stores")
-      .select("store_name, display_name, location")
-      .eq("domain", storeDomain)
-      .maybeSingle(),
-  ]);
 
   const brand = nonEmpty(dbRow?.brand) ?? nonEmpty(product.vendor);
   const title = nonEmpty(dbRow?.title) ?? nonEmpty(product.title) ?? product.title;
@@ -134,5 +141,6 @@ export async function resolveProductDetail({ handle, storeDomain }) {
     storeName,
     storeLocation: storeRow?.location ?? null,
     description,
+    available,
   };
 }
