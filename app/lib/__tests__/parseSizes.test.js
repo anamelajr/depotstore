@@ -279,6 +279,33 @@ describe("parseSizeFromBody — labeled lines", () => {
     expect(parseSizeFromBody("<p>Size:&#xa0;S</p>")).toEqual(["S"]);
   });
 
+  // ----- "one size fits all" reject (codex round-3 finding) -----
+  // Common body copy. The earlier no-colon branch allowed FITS as a
+  // size token, so it captured "fits all" starting at the word `size`,
+  // and canonicalizeLabeled stripped the FITS prefix leaving `["all"]`.
+  // FITS removed from the no-colon token list; the colon path
+  // (e.g. "SIZE : FITS XS") still works via the permissive value
+  // capture + FITS_PREFIX_RE strip.
+
+  it("returns null for 'One size fits all' (no longer captures 'all')", () => {
+    expect(parseSizeFromBody("<p>One size fits all</p>")).toBe(null);
+    expect(parseSizeFromBody("<p>one size fits all</p>")).toBe(null);
+    expect(parseSizeFromBody("<p>ONE SIZE FITS ALL</p>")).toBe(null);
+  });
+
+  it("returns null for 'one size fits most'", () => {
+    expect(parseSizeFromBody("<p>One size fits most</p>")).toBe(null);
+  });
+
+  it("returns null when the phrase is embedded in surrounding copy", () => {
+    expect(
+      parseSizeFromBody("<p>This piece is one size fits all.</p>"),
+    ).toBe(null);
+    expect(
+      parseSizeFromBody("<p>Universal one size fits all design</p>"),
+    ).toBe(null);
+  });
+
   it("normalizes a raw U+00A0 character (was the previously-handled case)", () => {
     // Direct U+00A0 (not the entity) still resolves cleanly — the
     // existing replacement remains in place alongside the new entity

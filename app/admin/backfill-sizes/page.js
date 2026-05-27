@@ -25,6 +25,10 @@ export default function BackfillSizesPage() {
     }
   }
 
+  // Color palette matches the admin shell (app/admin/layout.js):
+  //   bg #0f0f10, text #e7e7e2, muted #8a8a80, borders #2a2a2c.
+  // The earlier light-on-light pass made the page unreadable inside
+  // the dark admin layout (codex round-3 finding).
   return (
     <main
       style={{
@@ -32,11 +36,11 @@ export default function BackfillSizesPage() {
         maxWidth: 720,
         margin: "0 auto",
         fontFamily: "monospace",
-        color: "#111",
+        color: "#e7e7e2",
       }}
     >
       <h1 style={{ fontSize: 18, marginBottom: 8 }}>Backfill sizes</h1>
-      <p style={{ fontSize: 13, lineHeight: 1.6, color: "#444" }}>
+      <p style={{ fontSize: 13, lineHeight: 1.6, color: "#8a8a80" }}>
         One-shot: re-fetch every active store via the products listing endpoint
         and write the parsed size into <code>products.size</code>. Safe to
         re-run. Touches only the <code>size</code> column.
@@ -50,9 +54,9 @@ export default function BackfillSizesPage() {
           padding: "10px 20px",
           fontFamily: "inherit",
           fontSize: 12,
-          border: "1px solid #111",
-          background: running ? "#eee" : "#111",
-          color: running ? "#888" : "#fff",
+          border: "1px solid #2a2a2c",
+          background: running ? "#18181a" : "#e7e7e2",
+          color: running ? "#8a8a80" : "#0f0f10",
           cursor: running ? "default" : "pointer",
         }}
       >
@@ -64,9 +68,10 @@ export default function BackfillSizesPage() {
           style={{
             marginTop: 16,
             padding: 12,
-            background: "#fee",
-            color: "#900",
+            background: "#2a0f10",
+            color: "#fcb6b6",
             fontSize: 12,
+            border: "1px solid #5a1a1c",
           }}
         >
           {error}
@@ -88,7 +93,13 @@ export default function BackfillSizesPage() {
             }}
           >
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+              <tr
+                style={{
+                  textAlign: "left",
+                  borderBottom: "1px solid #2a2a2c",
+                  color: "#8a8a80",
+                }}
+              >
                 <th style={{ padding: "6px 8px" }}>Domain</th>
                 <th style={{ padding: "6px 8px" }}>Processed</th>
                 <th style={{ padding: "6px 8px" }}>Updated</th>
@@ -99,7 +110,7 @@ export default function BackfillSizesPage() {
               {result.results.map((r) => (
                 <tr
                   key={r.domain}
-                  style={{ borderBottom: "1px solid #eee" }}
+                  style={{ borderBottom: "1px solid #18181a" }}
                   title={r.fetchError || ""}
                 >
                   <td style={{ padding: "6px 8px" }}>{r.domain}</td>
@@ -108,7 +119,7 @@ export default function BackfillSizesPage() {
                   <td
                     style={{
                       padding: "6px 8px",
-                      color: r.errors > 0 ? "#900" : "#444",
+                      color: r.errors > 0 ? "#fcb6b6" : "#8a8a80",
                     }}
                   >
                     {r.errors}

@@ -78,10 +78,19 @@ export function parseSizeFromOptions(product) {
 // Match `size` / `taille` / `pointure` followed by either:
 //   (a) ":" then any value (colon signals a value follows — permissive)
 //   (b) whitespace then a size-shape first token (digit, S/M/L family,
-//       OS, ONE SIZE, FITS, TBD) then more chars
+//       OS, ONE SIZE, TBD) then more chars
 // Rejects retail headings like "Size and fit:", "Size & Fit:",
 // "Size guide", "Size range:" — they have neither a colon directly
 // after the label nor a size-shape next token. (Codex round-2 finding.)
+//
+// FITS is intentionally NOT in the no-colon token list. The phrase
+// "one size fits all" / "one size fits most" is common body copy; the
+// no-colon branch would match starting at the word `size`, capture
+// "fits all", and canonicalizeLabeled() strips the `fits` prefix,
+// persisting `["all"]` into products.size. The colon path still
+// handles "SIZE : FITS XS" (Numero 13) via the permissive value
+// capture + FITS_PREFIX_RE strip in canonicalizeLabeled. (Codex
+// round-3 finding.)
 //
 // Decimal handling: `.` is permitted inside the capture so that half-
 // sizes like "Pointure: 40.5" or "Size: 38.5 IT" survive — common in
@@ -96,7 +105,7 @@ const LABEL_RE = new RegExp(
     String.raw`(?:` +
     String.raw`\s*:\s*([^<\n(]{1,80}?)` +
     String.raw`|` +
-    String.raw`\s+((?:\d|XX?S\b|XX?L\b|XL\b|XS\b|[SML]\b|OS\b|ONE\s+SIZE\b|FITS?\b|TBD\b)[^<\n(]{0,79}?)` +
+    String.raw`\s+((?:\d|XX?S\b|XX?L\b|XL\b|XS\b|[SML]\b|OS\b|ONE\s+SIZE\b|TBD\b)[^<\n(]{0,79}?)` +
     String.raw`)` +
     String.raw`(?=\s+(?:[A-Z][a-zA-Z]+|[A-Z]+)\s*:|\.(?!\d)|[<\n(]|$)`,
   "i",
