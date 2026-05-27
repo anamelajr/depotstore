@@ -256,6 +256,35 @@ describe("parseSizeFromBody — labeled lines", () => {
     expect(parseSizeFromBody("<p>Size: M.</p>")).toEqual(["M"]);
     expect(parseSizeFromBody("<p>Size: M. Color: Black.</p>")).toEqual(["M"]);
   });
+
+  // ----- HTML whitespace entities (codex round-2 finding) -----
+  // Shopify's rich-text product description editor routinely inserts
+  // literal `&nbsp;` (and the numeric forms `&#160;` / `&#xa0;`) for
+  // visual spacing. Without normalization, the regex captures the
+  // entity text and persists "&NBSP;M" into products.size.
+
+  it("normalizes &nbsp; before the regex sees it (Size:&nbsp;M)", () => {
+    expect(parseSizeFromBody("<p>Size:&nbsp;M</p>")).toEqual(["M"]);
+  });
+
+  it("normalizes &nbsp; with a decimal half-size", () => {
+    expect(parseSizeFromBody("<p>Size:&nbsp;38.5 IT</p>")).toEqual(["38.5 IT"]);
+  });
+
+  it("normalizes the decimal numeric entity &#160;", () => {
+    expect(parseSizeFromBody("<p>Size:&#160;M</p>")).toEqual(["M"]);
+  });
+
+  it("normalizes the hex numeric entity &#xa0;", () => {
+    expect(parseSizeFromBody("<p>Size:&#xa0;S</p>")).toEqual(["S"]);
+  });
+
+  it("normalizes a raw U+00A0 character (was the previously-handled case)", () => {
+    // Direct U+00A0 (not the entity) still resolves cleanly — the
+    // existing replacement remains in place alongside the new entity
+    // normalization.
+    expect(parseSizeFromBody("<p>Size: M</p>")).toEqual(["M"]);
+  });
 });
 
 describe("parseSizeFromBody — unlabeled triplet (nuovo-paris)", () => {

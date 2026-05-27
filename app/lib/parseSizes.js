@@ -25,7 +25,18 @@
 
 function stripHtml(html) {
   if (typeof html !== "string") return "";
-  return html.replace(/<[^>]+>/g, " ").replace(/\xa0/g, " ");
+  // Shopify's rich-text product description editor routinely inserts
+  // literal `&nbsp;` (and occasionally `&#160;` / `&#xa0;`) for visual
+  // spacing. The regex below operates on the post-strip text, so an
+  // unhandled entity becomes part of the captured size value and ends
+  // up persisted in products.size (e.g. "Size:&nbsp;M" → "&nbsp;M").
+  // Normalize the whitespace-entity set explicitly to a regular space,
+  // alongside the raw U+00A0 character.
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#(?:160|xa0);/gi, " ")
+    .replace(/\xa0/g, " ");
 }
 
 const SIZE_OPTION_NAME = /^\s*(size|taille|pointure|talla)\s*$/i;
