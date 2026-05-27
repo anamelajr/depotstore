@@ -127,6 +127,7 @@ export default async function ProductPage({ params, searchParams }) {
 
           {/* Desktop info panel — right column */}
           <ProductInfoPanel
+            brand={brand}
             storeName={storeName}
             title={title}
             price={price}

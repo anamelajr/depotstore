@@ -1,4 +1,5 @@
 export default function ProductInfoPanel({
+  brand,
   storeName,
   title,
   price,
@@ -16,12 +17,16 @@ export default function ProductInfoPanel({
   const sizeLabel = hasSizes && sizes.length > 1 ? "SIZES" : "SIZE";
   const sizeValue = hasSizes ? sizes.join(" · ") : null;
 
+  // Brand-first header: brand owns the divided tag above the title. Falls back
+  // to the store name when brand is null so the slot never blanks out.
+  const tag = brand ?? storeName;
+
   return (
     <div className="hidden lg:block lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:pt-6">
-      {/* Store name */}
+      {/* Brand-as-tag + title */}
       <div className="border-b border-zinc-200 pb-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-          {storeName}
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-900">
+          {tag}
         </p>
         <h1 className="mt-3 font-sans text-[14px] font-medium uppercase tracking-[0.06em] leading-[1.45] text-zinc-900">
           {title}
@@ -59,15 +64,20 @@ export default function ProductInfoPanel({
         </a>
       </div>
 
-      {/* Availability */}
-      <div className="mt-3 flex items-center gap-2">
+      {/* Availability — dot + status, then store as provenance signal.
+          Suppress the store suffix when the tag above already shows storeName
+          (brand was null and we fell back), so it never reads as a duplicate. */}
+      <div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
         <span
           className={`block h-1.5 w-1.5 rounded-full flex-none ${
             available ? "bg-emerald-500" : "bg-zinc-400"
           }`}
         />
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        <span>
           {available ? "Available" : "Sold"}
+          {brand && (
+            <span className="text-zinc-400"> · at {storeName}</span>
+          )}
         </span>
       </div>
     </div>
