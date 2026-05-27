@@ -58,17 +58,20 @@ The user has explicitly stated this PR must ship solid, not "working enough for 
 
 ## Storage format (referenced by multiple tasks)
 
-The `products.size` column stores a single `TEXT` value with " · " as the multi-variant separator:
+The `products.size` column is a native Postgres `TEXT[]` (string array). Each element is one seller-provided size string, stored verbatim — no encoding, no delimiter, no escape:
 
 | Scenario | Stored value | PDP renders |
 |---|---|---|
-| Single size, single token | `"S"` | `SIZE: S` |
-| Single size, dual-system | `"38 FR / M / 42 IT"` | `SIZE: 38 FR / M / 42 IT` (no " · " inside → singular label) |
-| Multi-variant (e.g. S/M/L all in stock) | `"S · M · L"` | `SIZES: S · M · L` (" · " present → plural label) |
-| ONE SIZE for bag (applied at PDP read, never stored) | `null` (column stays NULL; L3 in resolver returns `["ONE SIZE"]`) | `SIZE: ONE SIZE` |
-| Honest empty | `null` | block hidden |
+| Single size, single token | `{S}` (one-element array) | `SIZE: S` |
+| Single size, dual-system | `{"38 FR / M / 42 IT"}` (one element — slashes are inside the element, not a separator) | `SIZE: 38 FR / M / 42 IT` (singular label) |
+| Single size, contains " · " | `{"MEN S · WOMEN M"}` (one element — the middle dot is *inside* the seller's value) | `SIZE: MEN S · WOMEN M` (singular label) |
+| Multi-variant (e.g. S/M/L all in stock) | `{S,M,L}` (three elements) | `SIZES: S · M · L` (plural label, joined for display only) |
+| ONE SIZE for bag (applied at PDP read, never stored) | `NULL` (column stays NULL; L3 in resolver returns `["ONE SIZE"]`) | `SIZE: ONE SIZE` |
+| Honest empty | `NULL` | block hidden |
 
-The PDP recovers an array by splitting on " · ". This preserves the `sizes.length > 1 ? "SIZES" : "SIZE"` plural-label logic that already exists in `ProductInfoPanel`.
+**Why TEXT[] and not joined TEXT.** A single Shopify Size option value can itself contain ` · ` (e.g., Taille `"MEN S · WOMEN M"` covered by the L1 test). If `products.size` were a TEXT column joined with ` · ` and split on read, that single value round-trips as two elements, flipping the SIZE label to SIZES and breaking the rendered meaning. TEXT[] preserves the array shape end-to-end — supabase-js converts to/from JS arrays natively — so element boundaries can never be misread.
+
+The PDP joins the array with ` · ` **for display only**; the splitter/joiner divergence the original spec carried has been eliminated. The existing `sizes.length > 1 ? "SIZES" : "SIZE"` plural-label logic in `ProductInfoPanel` is unchanged.
 
 ---
 
@@ -84,10 +87,18 @@ This migration is **applied manually via the Supabase SQL Editor** before mergin
 ```sql
 -- Add products.size for parsed-from-Shopify size value.
 --
--- Storage shape: TEXT, nullable.
---   Single size:        'S'  /  '42 IT'  /  '38 FR / M / 42 IT'
---   Multi-variant:      'S · M · L'   (middle-dot separator)
---   No usable size:     NULL
+-- Storage shape: TEXT[] (native Postgres string array), nullable.
+--   Single size:           {S}  /  {"42 IT"}  /  {"38 FR / M / 42 IT"}
+--   Single size with dot:  {"MEN S · WOMEN M"}   (one element — the
+--                                                 middle dot is part of
+--                                                 the seller's value)
+--   Multi-variant:         {S,M,L}
+--   No usable size:        NULL
+--
+-- TEXT[] (not joined TEXT) is required because a single Shopify Size
+-- option value can itself contain ` · ` (covered by the parseSizes L1
+-- test for Taille `MEN S · WOMEN M`). A TEXT-with-delimiter shape would
+-- corrupt that on round-trip; the array preserves element boundaries.
 --
 -- Unlike brand/title/category/subcategory, `size` is NOT an editorial
 -- field — it's a mechanical projection from Shopify. The cron Step-1
@@ -99,7 +110,7 @@ This migration is **applied manually via the Supabase SQL Editor** before mergin
 BEGIN;
 
 ALTER TABLE public.products
-  ADD COLUMN IF NOT EXISTS size TEXT;
+  ADD COLUMN IF NOT EXISTS size TEXT[];
 
 COMMIT;
 ```
@@ -113,14 +124,14 @@ Paste the file's contents into the SQL Editor and run. Adding a NULLABLE column 
 In the SQL Editor:
 
 ```sql
-SELECT column_name, data_type, is_nullable
+SELECT column_name, data_type, udt_name, is_nullable
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'products'
   AND column_name = 'size';
 ```
 
-Expected: one row, `data_type = 'text'`, `is_nullable = 'YES'`.
+Expected: one row, `data_type = 'ARRAY'`, `udt_name = '_text'`, `is_nullable = 'YES'`. (Postgres reports array columns as `data_type = 'ARRAY'` with the element type in `udt_name` — `_text` is Postgres's internal name for `text[]`.)
 
 - [ ] **Step 4: Commit the migration file to the branch**
 
@@ -213,6 +224,39 @@ describe("parseSizeFromOptions", () => {
       variants: [{ option1: "S" }, { option1: "M" }, { option1: "L" }],
     };
     expect(parseSizeFromOptions(product)).toEqual(["S", "M", "L"]);
+  });
+
+  it("dedupes repeated size values across a Color × Size variant matrix", () => {
+    // A product with two options (Color, Size) and a Red/S, Blue/S, Red/M,
+    // Blue/M matrix should return ["S", "M"], not ["S", "S", "M", "M"].
+    // The 2-option Shopify shape is common on seyswardrobe and would
+    // otherwise inflate the SIZES list with duplicates.
+    const product = {
+      options: [{ name: "Color" }, { name: "Size" }],
+      variants: [
+        { option1: "Red", option2: "S" },
+        { option1: "Blue", option2: "S" },
+        { option1: "Red", option2: "M" },
+        { option1: "Blue", option2: "M" },
+      ],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["S", "M"]);
+  });
+
+  it("dedup preserves first-seen order, not sort order", () => {
+    // Order matters because the seller's listing order is meaningful
+    // (e.g. ascending size). First-occurrence dedup must not re-sort.
+    const product = {
+      options: [{ name: "Size" }, { name: "Color" }],
+      variants: [
+        { option1: "L", option2: "Red" },
+        { option1: "S", option2: "Red" },
+        { option1: "L", option2: "Blue" },
+        { option1: "S", option2: "Blue" },
+        { option1: "M", option2: "Red" },
+      ],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["L", "S", "M"]);
   });
 
   it("skips Default Title and empty option values", () => {
@@ -441,14 +485,26 @@ export function parseSizeFromOptions(product) {
   const idx = options.findIndex((o) => SIZE_OPTION_NAME.test(o?.name ?? ""));
   if (idx === -1) return null;
 
+  // First-seen dedup: a 2-option Shopify product (e.g. Color × Size) lists
+  // every size once per color variant, so naive collection yields
+  // ["S","S","M","M"]. Set preserves insertion order in JS, so this also
+  // preserves the seller's listing order (typically ascending size).
+  //
+  // Per-variant in-stock filtering is intentionally NOT applied here.
+  // The listing endpoint exposes `variant.available`, but the current
+  // (pre-redesign) PDP shows every variant label regardless of stock, so
+  // adding a stock filter now would be a scope expansion, not a fix —
+  // and a sold-out-only product would render with no SIZE block, which
+  // is worse than showing the size and letting the storefront link
+  // surface the out-of-stock state. Phase 2 candidate.
   const key = `option${idx + 1}`;
-  const labels = [];
+  const seen = new Set();
   for (const v of variants) {
     const val = typeof v?.[key] === "string" ? v[key].trim() : "";
     if (!val || val.toLowerCase() === "default title") continue;
-    labels.push(val);
+    seen.add(val);
   }
-  return labels.length > 0 ? labels : null;
+  return seen.size > 0 ? [...seen] : null;
 }
 
 // ---------- Layer 2 ----------
@@ -632,7 +688,7 @@ const syncRows = products.map((p) => ({
 
 - [ ] **Step 2: Add the `size` field to the map**
 
-Append a `size` line that joins the parsed array with the storage separator:
+Append a `size` line that writes the parsed array directly. supabase-js converts a JS array of strings into a Postgres `text[]` literal natively; **do not** `JSON.stringify` or `join` — that would store a string-shaped scalar in a `text[]` column and either error on insert or stash literal `'["S","M","L"]'` text as the first array element.
 
 ```js
 const syncRows = products.map((p) => ({
@@ -646,7 +702,7 @@ const syncRows = products.map((p) => ({
   available: p.available,
   synced_at: now,
   description: p.rawDescription,
-  size: p.sizes && p.sizes.length > 0 ? p.sizes.join(" · ") : null,
+  size: p.sizes && p.sizes.length > 0 ? p.sizes : null,
 }));
 ```
 
@@ -686,18 +742,22 @@ Just below the existing `formatSizes` function (currently `app/lib/resolveProduc
 
 ```js
 // Builds the PDP sizes array from the stored products.size column plus a
-// category-aware fallback. `dbRow.size` (text) is split on " · " to
-// recover the multi-variant array shape that ProductInfoPanel renders.
-// When `size` is null and the product is in the Bags & Accessories
-// category, the SIZE block defaults to "ONE SIZE" — visually right for
-// bags, sunglasses, hats, scarves, jewelry, belts. Other categories with
-// no parsed size stay null (block hidden) so the PDP never invents data.
+// category-aware fallback. `dbRow.size` is a `text[]` (or null);
+// supabase-js hands it back as a JS array, so no parsing is needed — we
+// just defend against the legacy shape (a stray string from a row that
+// pre-dates the schema migration) and against empty/whitespace-only
+// elements. When `size` is null/empty and the product is in the Bags &
+// Accessories category, the SIZE block defaults to "ONE SIZE" — visually
+// right for bags, sunglasses, hats, scarves, jewelry, belts. Other
+// categories with no parsed size stay null (block hidden) so the PDP
+// never invents data.
 export function sizesFromDb(dbRow) {
-  const raw = typeof dbRow?.size === "string" ? dbRow.size.trim() : "";
-  if (raw.length > 0) {
-    const parts = raw.split(" · ").map((s) => s.trim()).filter(Boolean);
-    if (parts.length > 0) return parts;
-  }
+  const raw = dbRow?.size;
+  const arr = Array.isArray(raw) ? raw : [];
+  const parts = arr
+    .map((s) => (typeof s === "string" ? s.trim() : ""))
+    .filter((s) => s.length > 0);
+  if (parts.length > 0) return parts;
   if (dbRow?.category === "Bags & Accessories") return ["ONE SIZE"];
   return null;
 }
@@ -770,55 +830,70 @@ describe("sizesFromDb", () => {
     expect(sizesFromDb(undefined)).toBe(null);
   });
 
-  it("returns null when size is null and category is not Bags & Accessories", () => {
+  it("returns null when size is null/empty array and category is not Bags & Accessories", () => {
     expect(sizesFromDb({ size: null, category: "Tops" })).toBe(null);
     expect(sizesFromDb({ size: null, category: null })).toBe(null);
-    expect(sizesFromDb({ size: "", category: "Footwear" })).toBe(null);
-    expect(sizesFromDb({ size: "   ", category: "Dresses & Skirts" })).toBe(null);
+    expect(sizesFromDb({ size: [], category: "Footwear" })).toBe(null);
+    expect(sizesFromDb({ size: ["   "], category: "Dresses & Skirts" })).toBe(null);
   });
 
-  it("returns ['ONE SIZE'] when size is null and category is Bags & Accessories", () => {
+  it("returns ['ONE SIZE'] when size is null/empty and category is Bags & Accessories", () => {
     expect(sizesFromDb({ size: null, category: "Bags & Accessories" })).toEqual([
       "ONE SIZE",
     ]);
-    expect(sizesFromDb({ size: "", category: "Bags & Accessories" })).toEqual([
+    expect(sizesFromDb({ size: [], category: "Bags & Accessories" })).toEqual([
       "ONE SIZE",
     ]);
   });
 
-  it("returns single-entry array for single stored size", () => {
-    expect(sizesFromDb({ size: "S", category: "Tops" })).toEqual(["S"]);
-    expect(sizesFromDb({ size: "42 IT", category: "Bottoms" })).toEqual([
+  it("returns the stored array verbatim for a single-entry value", () => {
+    expect(sizesFromDb({ size: ["S"], category: "Tops" })).toEqual(["S"]);
+    expect(sizesFromDb({ size: ["42 IT"], category: "Bottoms" })).toEqual([
       "42 IT",
     ]);
   });
 
-  it("preserves dual-system strings as one entry (no split on /)", () => {
+  it("preserves dual-system strings as one element (no split on /)", () => {
     expect(
-      sizesFromDb({ size: "38 FR / M / 42 IT", category: "Dresses & Skirts" }),
+      sizesFromDb({
+        size: ["38 FR / M / 42 IT"],
+        category: "Dresses & Skirts",
+      }),
     ).toEqual(["38 FR / M / 42 IT"]);
   });
 
-  it("splits multi-variant strings on the ' · ' separator", () => {
-    expect(sizesFromDb({ size: "S · M · L", category: "Tops" })).toEqual([
-      "S",
-      "M",
-      "L",
-    ]);
+  it("preserves a single seller value containing ' · ' as one element", () => {
+    // The motivating regression: TEXT[] keeps this whole as one element so
+    // the PDP renders `SIZE: MEN S · WOMEN M`, not `SIZES: MEN S · WOMEN M`.
+    expect(
+      sizesFromDb({ size: ["MEN S · WOMEN M"], category: "Tops" }),
+    ).toEqual(["MEN S · WOMEN M"]);
   });
 
-  it("trims whitespace around each split part", () => {
-    expect(sizesFromDb({ size: "S  ·  M  ·  L", category: "Tops" })).toEqual([
-      "S",
-      "M",
-      "L",
-    ]);
+  it("returns multi-variant arrays element-by-element", () => {
+    expect(
+      sizesFromDb({ size: ["S", "M", "L"], category: "Tops" }),
+    ).toEqual(["S", "M", "L"]);
+  });
+
+  it("trims whitespace around each element and drops empties", () => {
+    expect(
+      sizesFromDb({ size: ["  S  ", "M", "", "  ", "L"], category: "Tops" }),
+    ).toEqual(["S", "M", "L"]);
   });
 
   it("prefers stored size over category fallback when both apply", () => {
     expect(
-      sizesFromDb({ size: "Tote OS", category: "Bags & Accessories" }),
+      sizesFromDb({ size: ["Tote OS"], category: "Bags & Accessories" }),
     ).toEqual(["Tote OS"]);
+  });
+
+  it("tolerates a stray string for legacy rows that pre-date the migration", () => {
+    // Defensive: a row inserted before the TEXT→TEXT[] migration could
+    // still hand back a scalar string. We treat that as 'no value' rather
+    // than splitting it — the next sync overwrites the row with the
+    // correct array shape.
+    expect(sizesFromDb({ size: "S · M · L", category: "Tops" })).toBe(null);
   });
 });
 ```
@@ -916,7 +991,7 @@ Dev-only endpoint that re-fetches every active store via `fetchStoreProducts` (w
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertDev } from "../_gate.js";
-import { loadActiveStores } from "../../../lib/stores.js";
+import { getActiveStores } from "../../../lib/stores.js";
 import { fetchStoreProducts } from "../../../lib/shopifyFetch.js";
 
 export const dynamic = "force-dynamic";
@@ -940,7 +1015,7 @@ export async function POST() {
   const gate = assertDev();
   if (gate) return gate;
 
-  const stores = await loadActiveStores();
+  const stores = await getActiveStores();
   const results = [];
   let totalProcessed = 0;
   let totalUpdated = 0;
@@ -956,8 +1031,10 @@ export async function POST() {
       const products = await fetchStoreProducts(store);
       for (const p of products) {
         processed++;
+        // Write the parsed array directly — supabase-js converts a JS
+        // array of strings into a Postgres text[] literal. Do not join.
         const sizeValue =
-          p.sizes && p.sizes.length > 0 ? p.sizes.join(" · ") : null;
+          p.sizes && p.sizes.length > 0 ? p.sizes : null;
         const { error } = await supabase
           .from("products")
           .update({ size: sizeValue })
@@ -1209,15 +1286,16 @@ Append to the PR description:
 ```markdown
 ## Deploy sequence
 
-Apply these steps in order. Steps 1 and 2 happen on Supabase **before** the merge so production never reads a column that doesn't exist.
+Apply these steps in order. Steps 1 and 2 happen on Supabase **before** the merge so production never reads a column that doesn't exist and never renders an empty SIZE block on day-one traffic.
 
 1. **Apply the schema migration** via Supabase SQL Editor.
    Paste the contents of `scripts/sql/2026-05-27-add-products-size.sql` into the SQL Editor and run. Verify with:
    ```sql
-   SELECT column_name, data_type FROM information_schema.columns
+   SELECT column_name, data_type, udt_name FROM information_schema.columns
    WHERE table_name = 'products' AND column_name = 'size';
    ```
-2. **(Optional but recommended)** Run the backfill locally to populate `products.size` for all 7,280 existing rows before merge. With `npm run dev` running, visit `http://localhost:3000/admin/backfill-sizes` and click the button. Takes ~5 minutes. Without this step, sizes populate gradually as the hourly cron runs Step-1 sync — first cron run after merge covers everything, so production has a 0-60 minute transition window where the SIZE block is empty (or `ONE SIZE` for bags via the L3 fallback).
+   Expected: `data_type = 'ARRAY'`, `udt_name = '_text'`.
+2. **Run the backfill — required, not optional.** Populate `products.size` for all 7,280 existing rows before merge. With `npm run dev` running, visit `http://localhost:3000/admin/backfill-sizes` and click the button. Takes ~5 minutes. Confirm the post-backfill SQL coverage check (Verification section) returns non-empty `with_size` counts per store before proceeding to step 3. Skipping this step leaves a 0-60 minute transition window where every PDP renders an empty SIZE block (or `ONE SIZE` for Bags & Accessories via the L3 fallback) — visible regression for real users on every store.
 3. **Merge the PR.** Vercel auto-deploys. The new PDP reads `products.size` and renders correctly.
 4. **Verify on Vercel preview before merging:** see the five product-specific smoke checks in the verification section below.
 ```
@@ -1318,6 +1396,6 @@ The eight products the user verified as legitimately sizeless should still rende
 
 - **Placeholders:** Every code block is concrete. No "implement appropriate validation" or "add error handling later." Every regex, every selector, every SQL statement is fully written.
 
-- **Type consistency:** `parseSizes` returns `string[] | null`. `parseSizeFromOptions` returns `string[] | null`. `parseSizeFromBody` returns `string[] | null`. `sizesFromDb` returns `string[] | null`. The `products.size` column is `TEXT`, joined with " · " on write and split on " · " on read. `ProductInfoPanel`'s existing prop contract (`sizes: string[] | null`) is unchanged. Names align (`sizes` everywhere on the wire, `size` only as the DB column name to match the single-column convention).
+- **Type consistency:** `parseSizes` returns `string[] | null`. `parseSizeFromOptions` returns `string[] | null` (deduped, first-seen order). `parseSizeFromBody` returns `string[] | null`. `sizesFromDb` returns `string[] | null`. The `products.size` column is `TEXT[]` (native Postgres string array) — supabase-js converts the JS array to a `text[]` literal on write and hands back a JS array on read, with no join/split or encoding in between. This eliminates the delimiter-collision class of bug (a single seller value like `"MEN S · WOMEN M"` can never be misread as two elements). `ProductInfoPanel`'s existing prop contract (`sizes: string[] | null`) is unchanged. Names align (`sizes` everywhere on the wire, `size` only as the DB column name to match the single-column convention).
 
 - **Frequent commits:** 9 commits across 9 tasks (migration / parser / wire-in / cron / resolver / tests / cosmetic / backfill route / backfill UI). Each is independently revertable.
