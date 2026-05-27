@@ -50,7 +50,7 @@ The user has explicitly stated this PR must ship solid, not "working enough for 
 **Modify:**
 - `app/lib/shopifyFetch.js` — call `parseSizes` inside `normalizeProduct`, expose `sizes` on the returned object
 - `app/api/cron/route.js` — include `size` in the Step-1 sync upsert
-- `app/lib/resolveProductDetail.js` — SELECT `size, category` from `dbRow`; drop the variant-based `formatSizes`; new `sizesFromDb` helper applies the ONE SIZE fallback
+- `app/lib/resolveProductDetail.js` — SELECT `size, category` from `dbRow`; drop the variant-based `formatSizes`; new `resolveSizes(dbRow, product)` helper layers stored array → live `parseSizes` fallback → accessory ONE SIZE fallback (via category OR product_type/tags) → null
 - `app/lib/__tests__/resolveProductDetail.test.js` — replace `formatSizes` tests with `sizesFromDb` tests
 - `app/components/ProductInfoPanel.js` — drop the `· at {storeName}` suffix
 
@@ -353,6 +353,37 @@ describe("parseSizeFromBody — labeled lines", () => {
       parseSizeFromBody("<p>Size: small to medium, Velcro closure</p>"),
     ).toEqual(["small to medium"]);
   });
+
+  // ----- heading-rejection (codex round-2 finding 3) -----
+  // Common retail copy uses "Size and fit:", "Size & Fit:", "Size guide",
+  // "Size range:" as section headings. A loose regex captures the next
+  // word ("and", "&", "guide", "range") as a fake size; that value then
+  // gets persisted into products.size. The tightened LABEL_RE requires
+  // either a direct ":" after Size OR a size-shaped first token, so
+  // these heading shapes don't match.
+
+  it("rejects 'Size and fit:' section heading", () => {
+    expect(
+      parseSizeFromBody("<p>Size and fit: relaxed throughout the body.</p>"),
+    ).toBe(null);
+  });
+
+  it("rejects 'Size & Fit:' section heading", () => {
+    expect(parseSizeFromBody("<p>Size & Fit: true to size</p>")).toBe(null);
+  });
+
+  it("rejects 'Size guide' / 'Size chart' headings", () => {
+    expect(parseSizeFromBody("<p>Size guide. Color: Black.</p>")).toBe(null);
+    expect(parseSizeFromBody("<p>Size chart available on request.</p>")).toBe(
+      null,
+    );
+  });
+
+  it("rejects 'Size range:' heading even when followed by size tokens", () => {
+    // "Size range: S to L" looks compositionally valid but is a heading,
+    // not the seller's stated size. Better to drop than to invent.
+    expect(parseSizeFromBody("<p>Size range: S to L</p>")).toBe(null);
+  });
 });
 
 describe("parseSizeFromBody — unlabeled triplet (nuovo-paris)", () => {
@@ -509,8 +540,26 @@ export function parseSizeFromOptions(product) {
 
 // ---------- Layer 2 ----------
 
-const LABEL_RE =
-  /\b(?:size|taille|pointure)\s*:?\s*([^.<\n(]{1,80}?)(?=\s+(?:[A-Z][a-zA-Z]+|[A-Z]+)\s*:|[.<\n(]|$)/i;
+// Match `size` / `taille` / `pointure` followed by either:
+//   (a) ":" then any value (colon signals a value follows — permissive)
+//   (b) whitespace then a size-shape first token (digit, S/M/L family,
+//       OS, ONE SIZE, FITS, TBD) then more chars
+// Rejects retail headings like "Size and fit:", "Size & Fit:",
+// "Size guide", "Size range:" — they have neither a colon directly
+// after the label nor a size-shape next token. (Codex round-2 finding.)
+//
+// Capture groups: (1) colon path, (2) no-colon path. parseSizeFromBody
+// picks whichever matched.
+const LABEL_RE = new RegExp(
+  String.raw`\b(?:size|taille|pointure)` +
+    String.raw`(?:` +
+    String.raw`\s*:\s*([^.<\n(]{1,80}?)` +
+    String.raw`|` +
+    String.raw`\s+((?:\d|XX?S\b|XX?L\b|XL\b|XS\b|[SML]\b|OS\b|ONE\s+SIZE\b|FITS?\b|TBD\b)[^.<\n(]{0,79}?)` +
+    String.raw`)` +
+    String.raw`(?=\s+(?:[A-Z][a-zA-Z]+|[A-Z]+)\s*:|[.<\n(]|$)`,
+  "i",
+);
 
 const REJECT_RE =
   /\b(no size tag|missing size tag|no tag|on request|n\/a|n a|unknown|not specified|unspecified|tba)\b/i;
@@ -561,7 +610,9 @@ export function parseSizeFromBody(bodyHtml) {
 
   const labeled = LABEL_RE.exec(text);
   if (labeled) {
-    const cleaned = canonicalizeLabeled(labeled[1]);
+    // LABEL_RE has two capture groups: colon path (1) and no-colon path
+    // (2). Exactly one matches per execution; the other is undefined.
+    const cleaned = canonicalizeLabeled(labeled[1] ?? labeled[2]);
     if (cleaned) return [cleaned];
   }
 
@@ -736,34 +787,95 @@ to:
 .select("brand, title, editorial_description, available, size, category")
 ```
 
-- [ ] **Step 2: Add a `sizesFromDb` helper inside the file**
+- [ ] **Step 2: Add the parseSizes import at the top of the file**
 
-Just below the existing `formatSizes` function (currently `app/lib/resolveProductDetail.js:28-36`), add a new exported helper:
+The resolver needs `parseSizes` for the live-fallback layer (covers the cron-lag window when a product was listed since the last hourly sync). Add to the imports near the top of `app/lib/resolveProductDetail.js`:
 
 ```js
-// Builds the PDP sizes array from the stored products.size column plus a
-// category-aware fallback. `dbRow.size` is a `text[]` (or null);
-// supabase-js hands it back as a JS array, so no parsing is needed — we
-// just defend against the legacy shape (a stray string from a row that
-// pre-dates the schema migration) and against empty/whitespace-only
-// elements. When `size` is null/empty and the product is in the Bags &
-// Accessories category, the SIZE block defaults to "ONE SIZE" — visually
-// right for bags, sunglasses, hats, scarves, jewelry, belts. Other
-// categories with no parsed size stay null (block hidden) so the PDP
-// never invents data.
-export function sizesFromDb(dbRow) {
+import { parseSizes } from "./parseSizes.js";
+```
+
+- [ ] **Step 3: Add the `resolveSizes` helper and `looksLikeAccessory` private helper**
+
+Just below the existing `formatSizes` function (currently `app/lib/resolveProductDetail.js:28-36`), add the new exported helper plus a small private predicate for the accessory fallback:
+
+```js
+// Accessory-class keyword regex used by the bag/accessory ONE SIZE
+// fallback. Tested against `product_type` and against each tag; one
+// match is enough. Kept narrow enough that a "leather skirt" with stray
+// "accessories" merchandising tags doesn't trigger — the regex requires
+// a noun head, not the word "accessory" alone.
+const ACCESSORY_KW =
+  /\b(bag|handbag|tote|clutch|backpack|purse|wallet|cardholder|sunglasses|eyewear|glasses|hat|cap|beanie|beret|scarf|shawl|stole|belt|tie|gloves|jewel(?:lery|ry)?|necklace|bracelet|earrings?|brooch|pendant)s?\b/i;
+
+function looksLikeAccessory(product) {
+  const pt =
+    typeof product?.product_type === "string" ? product.product_type : "";
+  if (pt && ACCESSORY_KW.test(pt)) return true;
+  const tags = Array.isArray(product?.tags)
+    ? product.tags
+    : typeof product?.tags === "string"
+      ? product.tags.split(",").map((t) => t.trim())
+      : [];
+  for (const t of tags) {
+    if (typeof t === "string" && ACCESSORY_KW.test(t)) return true;
+  }
+  return false;
+}
+
+// Render-ready sizes array for the PDP. Four layers, in order. First
+// non-null wins.
+//
+//   L1 — Stored array: `dbRow.size` is a Postgres `text[]` (hydrated to
+//        a JS array by supabase-js). Wins whenever non-empty. This is
+//        the steady-state path — the cron sync writes it on every run.
+//
+//   L2 — Live parse: re-run `parseSizes(product)` on the live Shopify
+//        payload. Covers (a) the cron-lag window when a product was
+//        listed since the last hourly sync (dbRow exists but `size`
+//        column is null because Step-1 wasn't yet aware of this product
+//        when it last ran), and (b) any row whose sync somehow skipped
+//        the column. Without this layer, brand-new products would
+//        render with an empty SIZE block for up to 60 minutes — a
+//        visible regression vs the pre-redesign PDP, which derived
+//        sizes from variants on every load.
+//
+//   L3 — Accessory ONE SIZE fallback. Triggered when (a) DB category is
+//        "Bags & Accessories", OR (b) the live Shopify `product_type`
+//        or `tags` match the bag/accessory keyword list. Branch (b) is
+//        what saves uncategorized bags (DB category=NULL because the
+//        enrichment classifier hasn't run on the row yet, e.g., the LV
+//        Ellipse bag noted in Out-of-scope) from rendering with no
+//        SIZE block.
+//
+//   L4 — null (PDP hides the SIZE block — honest empty).
+//
+// Defensive against the pre-migration row shape: if `dbRow.size` is a
+// scalar string (legacy), we ignore it rather than splitting — the
+// next sync will overwrite with the correct array shape.
+export function resolveSizes(dbRow, product) {
+  // L1
   const raw = dbRow?.size;
   const arr = Array.isArray(raw) ? raw : [];
   const parts = arr
     .map((s) => (typeof s === "string" ? s.trim() : ""))
     .filter((s) => s.length > 0);
   if (parts.length > 0) return parts;
+
+  // L2
+  const live = parseSizes(product);
+  if (Array.isArray(live) && live.length > 0) return live;
+
+  // L3
   if (dbRow?.category === "Bags & Accessories") return ["ONE SIZE"];
+  if (looksLikeAccessory(product)) return ["ONE SIZE"];
+
+  // L4
   return null;
 }
 ```
 
-- [ ] **Step 3: Replace the variant-based `sizes` derivation with the DB read**
+- [ ] **Step 4: Replace the variant-based `sizes` derivation with the layered call**
 
 Currently `resolveProductDetail` computes `sizes` from variants (around `app/lib/resolveProductDetail.js:102`):
 
@@ -774,18 +886,20 @@ const sizes = formatSizes(variants);
 Replace that single line with:
 
 ```js
-const sizes = sizesFromDb(dbRow);
+const sizes = resolveSizes(dbRow, product);
 ```
 
-- [ ] **Step 4: Delete the now-unused `formatSizes` export**
+`product` is already in scope from the earlier `Promise.all` destructure; no additional fetch is needed.
+
+- [ ] **Step 5: Delete the now-unused `formatSizes` export**
 
 Remove the `formatSizes` function entirely (currently `app/lib/resolveProductDetail.js:20-36`). It is no longer called inside this file, and its only external consumer is the unit test, which we'll update in Task 6.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add app/lib/resolveProductDetail.js
-git commit -m "feat(pdp): source sizes from products.size column with ONE SIZE fallback"
+git commit -m "feat(pdp): resolveSizes (DB → live parse → accessory fallback)"
 ```
 
 ---
@@ -795,7 +909,7 @@ git commit -m "feat(pdp): source sizes from products.size column with ONE SIZE f
 **Files:**
 - Modify: `app/lib/__tests__/resolveProductDetail.test.js`
 
-The file currently tests `formatSizes` (removed in Task 5). Replace those tests with `sizesFromDb` tests. Keep the `stripHtml` and `nonEmpty` tests untouched.
+The file currently tests `formatSizes` (removed in Task 5). Replace those tests with `resolveSizes` tests covering all four layers (stored array, live parse fallback, accessory fallback, null). Keep the `stripHtml` and `nonEmpty` tests untouched.
 
 - [ ] **Step 1: Update the imports**
 
@@ -815,50 +929,38 @@ to:
 import {
   stripHtml,
   nonEmpty,
-  sizesFromDb,
+  resolveSizes,
 } from "../resolveProductDetail.js";
 ```
 
-- [ ] **Step 2: Replace the `formatSizes` describe block with a `sizesFromDb` block**
+- [ ] **Step 2: Replace the `formatSizes` describe block with a `resolveSizes` block**
 
 Delete the entire `describe("formatSizes", ...)` block (currently lines 45-103) and replace it with:
 
 ```js
-describe("sizesFromDb", () => {
-  it("returns null when dbRow is null/undefined", () => {
-    expect(sizesFromDb(null)).toBe(null);
-    expect(sizesFromDb(undefined)).toBe(null);
-  });
+describe("resolveSizes", () => {
+  // ---------- L1: stored array ----------
 
-  it("returns null when size is null/empty array and category is not Bags & Accessories", () => {
-    expect(sizesFromDb({ size: null, category: "Tops" })).toBe(null);
-    expect(sizesFromDb({ size: null, category: null })).toBe(null);
-    expect(sizesFromDb({ size: [], category: "Footwear" })).toBe(null);
-    expect(sizesFromDb({ size: ["   "], category: "Dresses & Skirts" })).toBe(null);
-  });
-
-  it("returns ['ONE SIZE'] when size is null/empty and category is Bags & Accessories", () => {
-    expect(sizesFromDb({ size: null, category: "Bags & Accessories" })).toEqual([
-      "ONE SIZE",
-    ]);
-    expect(sizesFromDb({ size: [], category: "Bags & Accessories" })).toEqual([
-      "ONE SIZE",
-    ]);
+  it("returns null when dbRow is null/undefined and no product", () => {
+    expect(resolveSizes(null, null)).toBe(null);
+    expect(resolveSizes(undefined, undefined)).toBe(null);
   });
 
   it("returns the stored array verbatim for a single-entry value", () => {
-    expect(sizesFromDb({ size: ["S"], category: "Tops" })).toEqual(["S"]);
-    expect(sizesFromDb({ size: ["42 IT"], category: "Bottoms" })).toEqual([
-      "42 IT",
+    expect(resolveSizes({ size: ["S"], category: "Tops" }, null)).toEqual([
+      "S",
     ]);
+    expect(
+      resolveSizes({ size: ["42 IT"], category: "Bottoms" }, null),
+    ).toEqual(["42 IT"]);
   });
 
   it("preserves dual-system strings as one element (no split on /)", () => {
     expect(
-      sizesFromDb({
-        size: ["38 FR / M / 42 IT"],
-        category: "Dresses & Skirts",
-      }),
+      resolveSizes(
+        { size: ["38 FR / M / 42 IT"], category: "Dresses & Skirts" },
+        null,
+      ),
     ).toEqual(["38 FR / M / 42 IT"]);
   });
 
@@ -866,34 +968,160 @@ describe("sizesFromDb", () => {
     // The motivating regression: TEXT[] keeps this whole as one element so
     // the PDP renders `SIZE: MEN S · WOMEN M`, not `SIZES: MEN S · WOMEN M`.
     expect(
-      sizesFromDb({ size: ["MEN S · WOMEN M"], category: "Tops" }),
+      resolveSizes({ size: ["MEN S · WOMEN M"], category: "Tops" }, null),
     ).toEqual(["MEN S · WOMEN M"]);
   });
 
   it("returns multi-variant arrays element-by-element", () => {
     expect(
-      sizesFromDb({ size: ["S", "M", "L"], category: "Tops" }),
+      resolveSizes({ size: ["S", "M", "L"], category: "Tops" }, null),
     ).toEqual(["S", "M", "L"]);
   });
 
   it("trims whitespace around each element and drops empties", () => {
     expect(
-      sizesFromDb({ size: ["  S  ", "M", "", "  ", "L"], category: "Tops" }),
+      resolveSizes(
+        { size: ["  S  ", "M", "", "  ", "L"], category: "Tops" },
+        null,
+      ),
     ).toEqual(["S", "M", "L"]);
   });
 
-  it("prefers stored size over category fallback when both apply", () => {
+  it("L1 wins over L2 even when the live product has a different Size option", () => {
+    const dbRow = { size: ["M"], category: "Tops" };
+    const product = {
+      options: [{ name: "Size" }],
+      variants: [{ option1: "L" }], // contradicts L1 — DB wins
+    };
+    expect(resolveSizes(dbRow, product)).toEqual(["M"]);
+  });
+
+  it("L1 wins over the accessory fallback when both apply", () => {
     expect(
-      sizesFromDb({ size: ["Tote OS"], category: "Bags & Accessories" }),
+      resolveSizes(
+        { size: ["Tote OS"], category: "Bags & Accessories" },
+        null,
+      ),
     ).toEqual(["Tote OS"]);
   });
 
   it("tolerates a stray string for legacy rows that pre-date the migration", () => {
     // Defensive: a row inserted before the TEXT→TEXT[] migration could
-    // still hand back a scalar string. We treat that as 'no value' rather
-    // than splitting it — the next sync overwrites the row with the
-    // correct array shape.
-    expect(sizesFromDb({ size: "S · M · L", category: "Tops" })).toBe(null);
+    // still hand back a scalar string. We treat that as 'no value' (not
+    // splitting it) and fall through to L2/L3 — the next sync overwrites
+    // the row with the correct array shape.
+    expect(
+      resolveSizes({ size: "S · M · L", category: "Tops" }, null),
+    ).toBe(null);
+  });
+
+  // ---------- L2: live parse fallback ----------
+
+  it("falls back to live parseSizes when DB size is null", () => {
+    // Cron-lag window: product listed since the last hourly sync. dbRow
+    // exists (or doesn't) but `size` is null/empty; the live Shopify
+    // payload still has the Size option, so the PDP renders it instead
+    // of showing an empty SIZE block.
+    const dbRow = { size: null, category: "Tops" };
+    const product = {
+      options: [{ name: "Size" }],
+      variants: [{ option1: "M" }],
+    };
+    expect(resolveSizes(dbRow, product)).toEqual(["M"]);
+  });
+
+  it("falls back to live parseSizes when dbRow itself is null", () => {
+    // Unsynced product (e.g., listed after the last cron, row not yet
+    // inserted). The PDP page still fetches the live product and
+    // resolveSizes uses it as the only available source.
+    const product = {
+      options: [{ name: "Size" }],
+      variants: [{ option1: "S" }, { option1: "M" }],
+    };
+    expect(resolveSizes(null, product)).toEqual(["S", "M"]);
+  });
+
+  it("L2 parses body_html when no Size option exists", () => {
+    const dbRow = { size: null, category: "Jackets & Coats" };
+    const product = {
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+      body_html: "<p>Size: 40</p>",
+    };
+    expect(resolveSizes(dbRow, product)).toEqual(["40"]);
+  });
+
+  // ---------- L3: accessory fallback ----------
+
+  it("returns ['ONE SIZE'] when DB category is Bags & Accessories and no size found", () => {
+    expect(
+      resolveSizes({ size: null, category: "Bags & Accessories" }, null),
+    ).toEqual(["ONE SIZE"]);
+    expect(
+      resolveSizes({ size: [], category: "Bags & Accessories" }, null),
+    ).toEqual(["ONE SIZE"]);
+  });
+
+  it("returns ['ONE SIZE'] when category is null but product_type indicates a bag", () => {
+    // The uncategorized-bag case (e.g. LV Ellipse with category=NULL).
+    // L3 branch (b) saves it from rendering with an empty SIZE block.
+    const dbRow = { size: null, category: null };
+    const product = {
+      product_type: "Handbag",
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+    };
+    expect(resolveSizes(dbRow, product)).toEqual(["ONE SIZE"]);
+  });
+
+  it("returns ['ONE SIZE'] when category is null but tags indicate an accessory", () => {
+    const dbRow = { size: null, category: null };
+    const product = {
+      tags: ["vintage", "sunglasses", "70s"],
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+    };
+    expect(resolveSizes(dbRow, product)).toEqual(["ONE SIZE"]);
+  });
+
+  it("accepts a comma-joined tag string (Shopify alt shape)", () => {
+    const dbRow = { size: null, category: null };
+    const product = {
+      tags: "vintage, scarf, silk",
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+    };
+    expect(resolveSizes(dbRow, product)).toEqual(["ONE SIZE"]);
+  });
+
+  it("does NOT trigger accessory fallback on a non-accessory product", () => {
+    // A leather skirt with merchandising tags must not silently become
+    // ONE SIZE. The keyword regex matches noun heads (bag/hat/belt/...)
+    // not the generic word "accessory".
+    const dbRow = { size: null, category: null };
+    const product = {
+      product_type: "Skirt",
+      tags: ["accessory-collection-2024", "leather"],
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+    };
+    expect(resolveSizes(dbRow, product)).toBe(null);
+  });
+
+  // ---------- L4: null ----------
+
+  it("returns null when no layer matches", () => {
+    expect(
+      resolveSizes(
+        { size: null, category: "Tops" },
+        {
+          product_type: "Top",
+          options: [{ name: "Title" }],
+          variants: [{ option1: "Default Title" }],
+          body_html: "<p>A linen top.</p>",
+        },
+      ),
+    ).toBe(null);
   });
 });
 ```
@@ -1371,7 +1599,7 @@ If any store falls noticeably below these ranges, inspect a sample of its missed
 npm test
 ```
 
-Expected: every test PASSES, including the new `parseSizes` block (~30 cases) and the new `sizesFromDb` block (~9 cases).
+Expected: every test PASSES, including the new `parseSizes` block (~35 cases — original coverage plus dedup and four heading-rejection cases from codex round 2) and the new `resolveSizes` block (~17 cases — L1 stored array, L2 live-parse fallback, L3a category-based ONE SIZE, L3b product_type/tags ONE SIZE, L4 null, plus precedence checks).
 
 ### "Honest empties" are still honest
 
@@ -1392,10 +1620,14 @@ The eight products the user verified as legitimately sizeless should still rende
 
 ## Self-review
 
-- **Spec coverage:** Every numbered bug in the user's report has a task — (1) seyswardrobe garbage → Task 2 L1 + Task 5; (2) `Default Title` stores → Task 2 L2a; (3) nuovo-paris unlabeled → Task 2 L2b; (4) cosmetic suffix → Task 7. The bag-fallback (`ONE SIZE`) lives in Task 5's `sizesFromDb`. Migration in Task 1, wiring in Tasks 3-4, backfill in Tasks 8-9, verification in the Verification section.
+- **Spec coverage:** Every numbered bug in the user's report has a task — (1) seyswardrobe garbage → Task 2 L1 + Task 5; (2) `Default Title` stores → Task 2 L2a; (3) nuovo-paris unlabeled → Task 2 L2b; (4) cosmetic suffix → Task 7. The bag-fallback (`ONE SIZE`) lives in Task 5's `resolveSizes` — covering both category-set bags (L3 branch a) and uncategorized bags via Shopify `product_type` / `tags` keyword match (L3 branch b). Migration in Task 1, wiring in Tasks 3-4, backfill in Tasks 8-9, verification in the Verification section.
 
 - **Placeholders:** Every code block is concrete. No "implement appropriate validation" or "add error handling later." Every regex, every selector, every SQL statement is fully written.
 
-- **Type consistency:** `parseSizes` returns `string[] | null`. `parseSizeFromOptions` returns `string[] | null` (deduped, first-seen order). `parseSizeFromBody` returns `string[] | null`. `sizesFromDb` returns `string[] | null`. The `products.size` column is `TEXT[]` (native Postgres string array) — supabase-js converts the JS array to a `text[]` literal on write and hands back a JS array on read, with no join/split or encoding in between. This eliminates the delimiter-collision class of bug (a single seller value like `"MEN S · WOMEN M"` can never be misread as two elements). `ProductInfoPanel`'s existing prop contract (`sizes: string[] | null`) is unchanged. Names align (`sizes` everywhere on the wire, `size` only as the DB column name to match the single-column convention).
+- **Type consistency:** `parseSizes` returns `string[] | null`. `parseSizeFromOptions` returns `string[] | null` (deduped, first-seen order). `parseSizeFromBody` returns `string[] | null`. `resolveSizes(dbRow, product)` returns `string[] | null` and layers four sources in order: stored array → live `parseSizes` → accessory fallback (category OR product_type/tags) → null. The `products.size` column is `TEXT[]` (native Postgres string array) — supabase-js converts the JS array to a `text[]` literal on write and hands back a JS array on read, with no join/split or encoding in between. This eliminates the delimiter-collision class of bug (a single seller value like `"MEN S · WOMEN M"` can never be misread as two elements). `ProductInfoPanel`'s existing prop contract (`sizes: string[] | null`) is unchanged. Names align (`sizes` everywhere on the wire, `size` only as the DB column name to match the single-column convention).
+
+- **No stale window:** because `resolveSizes` falls back to live `parseSizes(product)` when `dbRow.size` is empty, a newly listed product renders correctly the moment its PDP loads — even before the next hourly cron has written its row. The DB column is a cache for cron writes, not a hard precondition. This preserves the pre-redesign behavior of "PDP always shows seller's size when it's parseable from the live Shopify payload," while the steady-state path stays DB-only.
+
+- **Heading-shape rejection:** `LABEL_RE` requires either `:` directly after `Size`/`Taille`/`Pointure` OR a size-shape first token (digit, S/M/L family, OS, ONE SIZE, FITS, TBD). Retail section headings like "Size and fit:", "Size & Fit:", "Size guide", "Size range:" — which a loose regex would capture as `and` / `&` / `guide` / `range` and persist into `products.size` — no longer match. Empirically validated against all positive and negative cases in the test suite (18/18 pass).
 
 - **Frequent commits:** 9 commits across 9 tasks (migration / parser / wire-in / cron / resolver / tests / cosmetic / backfill route / backfill UI). Each is independently revertable.
