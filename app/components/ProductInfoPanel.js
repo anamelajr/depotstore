@@ -64,21 +64,16 @@ export default function ProductInfoPanel({
         </a>
       </div>
 
-      {/* Availability — dot + status, then store as provenance signal.
-          Suppress the store suffix when the tag above already shows storeName
-          (brand was null and we fell back), so it never reads as a duplicate. */}
+      {/* Availability — dot + status. The black CTA two lines above
+          already reads "BUY AT {STORE}", so a "· at {storeName}" suffix
+          here would duplicate. */}
       <div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
         <span
           className={`block h-1.5 w-1.5 rounded-full flex-none ${
             available ? "bg-emerald-500" : "bg-zinc-400"
           }`}
         />
-        <span>
-          {available ? "Available" : "Sold"}
-          {brand && (
-            <span className="text-zinc-400"> · at {storeName}</span>
-          )}
-        </span>
+        <span>{available ? "Available" : "Sold"}</span>
       </div>
     </div>
   );
