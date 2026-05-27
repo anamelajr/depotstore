@@ -17,10 +17,17 @@ export function nonEmpty(value) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// Returns the list of seller-provided variant titles, or null when no usable
+// label exists. Per-variant in-stock filtering is intentionally NOT applied
+// here: the public `/products/<handle>.json` endpoint does not return the
+// `available` field on variants (only the listing endpoint `/products.json`
+// does, which is what cron consumes). Product-level availability is sourced
+// from the cron-maintained `products.available` column in Supabase; per-size
+// in-stock filtering would require a second listing-endpoint fetch and is
+// out of scope for v1.
 export function formatSizes(variants) {
   if (!Array.isArray(variants) || variants.length === 0) return null;
   const labels = variants
-    .filter((v) => v?.available === true)
     .map((v) => nonEmpty(v?.title))
     .filter(Boolean)
     .filter((label) => label.toLowerCase() !== "default title");
@@ -71,7 +78,7 @@ export async function resolveProductDetail({ handle, storeDomain }) {
     fetchShopifyProduct(handle, storeDomain),
     supabase
       .from("products")
-      .select("brand, title, editorial_description")
+      .select("brand, title, editorial_description, available")
       .eq("store_domain", storeDomain)
       .eq("handle", handle)
       .maybeSingle(),
@@ -93,7 +100,14 @@ export async function resolveProductDetail({ handle, storeDomain }) {
   const price = minPrice !== null ? `€${minPrice.toFixed(2)}` : null;
 
   const sizes = formatSizes(variants);
-  const available = variants.some((v) => v?.available === true);
+  // Source product-level availability from the cron-maintained
+  // `products.available` column, not from the Shopify single-product fetch.
+  // The single-product endpoint omits `variant.available`; the cron derives
+  // availability from `/products.json` (the listing endpoint) where the
+  // field IS populated, and writes the result to Supabase. Fall back to
+  // `true` for rows that haven't been synced yet — matches the implicit
+  // pre-redesign behavior of treating unknown availability as available.
+  const available = dbRow?.available ?? true;
 
   const rawDescription = stripHtml(product.body_html);
   const tags = Array.isArray(product.tags)

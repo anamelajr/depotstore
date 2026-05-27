@@ -51,61 +51,54 @@ describe("formatSizes", () => {
   });
 
   it("returns null when every variant title is empty or 'Default Title'", () => {
-    expect(formatSizes([{ title: "Default Title", available: true }])).toBe(null);
-    expect(formatSizes([{ title: "", available: true }, { title: null, available: true }])).toBe(null);
+    expect(formatSizes([{ title: "Default Title" }])).toBe(null);
+    expect(formatSizes([{ title: "" }, { title: null }])).toBe(null);
     expect(
-      formatSizes([{ title: "default title", available: true }, { title: "Default Title", available: true }]),
+      formatSizes([{ title: "default title" }, { title: "Default Title" }]),
     ).toBe(null);
   });
 
-  it("returns null when all variants are sold out", () => {
-    expect(formatSizes([{ title: "M", available: false }])).toBe(null);
-    expect(
-      formatSizes([{ title: "S", available: false }, { title: "L", available: false }]),
-    ).toBe(null);
+  it("returns array with single label when one usable variant", () => {
+    expect(formatSizes([{ title: "M" }])).toEqual(["M"]);
+    expect(formatSizes([{ title: "M" }, { title: "Default Title" }])).toEqual(["M"]);
   });
 
-  it("returns array with single label when one in-stock variant", () => {
-    expect(formatSizes([{ title: "M", available: true }])).toEqual(["M"]);
-    expect(
-      formatSizes([{ title: "M", available: true }, { title: "Default Title", available: true }]),
-    ).toEqual(["M"]);
+  it("returns array with all usable variant labels", () => {
+    expect(formatSizes([{ title: "S" }, { title: "M" }, { title: "L" }])).toEqual([
+      "S",
+      "M",
+      "L",
+    ]);
   });
 
-  it("returns array with multiple in-stock labels", () => {
+  it("ignores variants without a usable title", () => {
     expect(
-      formatSizes([
-        { title: "S", available: true },
-        { title: "M", available: true },
-        { title: "L", available: true },
-      ]),
-    ).toEqual(["S", "M", "L"]);
+      formatSizes([{ title: "S" }, { title: "" }, { title: "L" }, {}]),
+    ).toEqual(["S", "L"]);
   });
 
-  it("filters sold-out variants from mixed-stock array", () => {
+  it("preserves a variant title containing a comma as one entry", () => {
+    expect(formatSizes([{ title: "Waist 32, Inseam 30" }])).toEqual([
+      "Waist 32, Inseam 30",
+    ]);
+  });
+
+  it("does NOT filter by variant.available (the single-product endpoint omits it)", () => {
+    // Regression guard: an earlier draft of the redesign filtered to
+    // `v.available === true`, but Shopify's /products/<handle>.json
+    // endpoint doesn't return `available` on variants. Filtering on it
+    // collapsed every product to "no sizes". Product-level availability
+    // is now sourced from the cron-maintained `products.available` column
+    // in Supabase; formatSizes returns all named variants verbatim.
     expect(
       formatSizes([
         { title: "S", available: false },
         { title: "M", available: true },
         { title: "L", available: false },
       ]),
+    ).toEqual(["S", "M", "L"]);
+    expect(
+      formatSizes([{ title: "M" /* available field absent */ }]),
     ).toEqual(["M"]);
-  });
-
-  it("ignores variants without a usable title (in-stock only)", () => {
-    expect(
-      formatSizes([
-        { title: "S", available: true },
-        { title: "", available: true },
-        { title: "L", available: true },
-        { available: true },
-      ]),
-    ).toEqual(["S", "L"]);
-  });
-
-  it("preserves a variant title containing a comma as one entry", () => {
-    expect(
-      formatSizes([{ title: "Waist 32, Inseam 30", available: true }]),
-    ).toEqual(["Waist 32, Inseam 30"]);
   });
 });
