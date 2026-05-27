@@ -42,6 +42,15 @@ export function expandSearchAliases(query) {
 // "comme des" in their name. Anything > 0 means an unrelated row has
 // joined the catalog and is being silently surfaced as a CDG search hit.
 //
+// `products.brand` is nullable (the enrichment pipeline writes brand
+// only when it's NULL), so the brand-exclusion clause must accept NULL —
+// otherwise null-brand rows whose title/name carries "comme" would still
+// be surfaced by ?search=CDG but invisible to this probe. Same NULL-
+// exclusion trap CLAUDE.md flags for `.eq("hidden", false)`: a `NOT
+// ILIKE` predicate against a nullable column drops NULL rows because
+// `NULL NOT ILIKE x` evaluates to NULL. Mirrors the spec's verification
+// SQL (`brand IS NULL OR brand NOT ILIKE '%comme%'`).
+//
 // Run from /api/cron post-sync (see cron/route.js). Never throws — the
 // caller treats a non-empty result as a log signal, not a hard failure,
 // mirroring the existing enrich_runs telemetry pattern at
@@ -53,7 +62,7 @@ export async function checkCdgAliasDrift(supabase) {
     .eq("available", true)
     .eq("hidden", false)
     .or("title.ilike.%comme%,brand.ilike.%comme%,name.ilike.%comme%")
-    .not("brand", "ilike", "%comme%");
+    .or("brand.is.null,brand.not.ilike.%comme%");
   if (error) return { error, count: 0, samples: [] };
   const unexpected = (data ?? []).filter(
     (row) => !(row.name ?? "").toLowerCase().includes("comme des"),
