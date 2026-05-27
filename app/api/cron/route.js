@@ -2,6 +2,7 @@ import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
 import { chunkArray } from "../../lib/chunk.js";
+import { checkCdgAliasDrift } from "../../lib/searchAliases.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -283,6 +284,21 @@ export async function GET(request) {
   } catch (e) {
     console.error("enrich_runs cron log failed:", e?.message ?? e);
   }
+
+  const aliasDrift = await checkCdgAliasDrift(supabaseAdmin);
+  if (aliasDrift.error) {
+    console.error("alias drift probe failed:", aliasDrift.error.message ?? aliasDrift.error);
+  } else if (aliasDrift.count > 0) {
+    console.warn(
+      JSON.stringify({
+        event: "search_alias_drift",
+        alias: "cdg",
+        count: aliasDrift.count,
+        samples: aliasDrift.samples,
+      }),
+    );
+  }
+  summary.aliasDrift = { cdg: aliasDrift.error ? null : aliasDrift.count };
 
   return Response.json(summary);
 }

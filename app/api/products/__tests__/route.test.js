@@ -112,3 +112,40 @@ describe("GET /api/products — routing decisions", () => {
     expect(fetchInterleavedProducts).not.toHaveBeenCalled();
   });
 });
+
+describe("GET /api/products — search alias propagation", () => {
+  beforeEach(() => {
+    vi.mocked(fetchInterleavedProducts).mockClear();
+    vi.mocked(countInterleavedProducts).mockClear();
+  });
+
+  it("alias-aware search: cdg → comme on both fetch and count", async () => {
+    await GET(makeRequest({ search: "CDG" }));
+    expect(fetchInterleavedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "comme" }),
+    );
+    expect(countInterleavedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "comme" }),
+    );
+  });
+
+  it("alias passthrough: unrelated search unchanged", async () => {
+    await GET(makeRequest({ search: "dress" }));
+    expect(fetchInterleavedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "dress" }),
+    );
+    expect(countInterleavedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "dress" }),
+    );
+  });
+
+  it("alias-aware compound search: cdg + jacket → comme jacket", async () => {
+    await GET(makeRequest({ search: "CDG jacket" }));
+    expect(fetchInterleavedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "comme jacket" }),
+    );
+    expect(countInterleavedProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "comme jacket" }),
+    );
+  });
+});

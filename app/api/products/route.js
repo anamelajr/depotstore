@@ -1,5 +1,6 @@
 import { supabase } from "../../lib/supabase.js";
 import { resolveCategoryFilter } from "../../lib/categories.js";
+import { expandSearchAliases } from "../../lib/searchAliases.js";
 import {
   fetchInterleavedProducts,
   countInterleavedProducts,
@@ -62,7 +63,7 @@ export async function GET(request) {
   const categoryRaw = searchParams.get("category");
   const categorySlugs = categoryRaw ? categoryRaw.split(",").filter(Boolean) : [];
   const { parentCategories, leafFilters } = resolveCategoryFilter(categorySlugs);
-  const search = searchParams.get("search");
+  const search = expandSearchAliases(searchParams.get("search"));
   const brand = searchParams.get("brand");
   const sort = searchParams.get("sort");
   // Explicit offset wins over (page - 1) * limit so FeedClient's Load More
