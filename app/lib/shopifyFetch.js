@@ -4,6 +4,7 @@ import {
   isAllowedBrand,
   titleContainsAllowedBrand,
 } from "./brand.js";
+import { parseSizes } from "./parseSizes.js";
 
 export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
 
@@ -68,6 +69,7 @@ export function normalizeProduct(product, store) {
 
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const available = variants.some((v) => v?.available === true);
+  const sizes = parseSizes(product);
   let minPrice = null;
 
   for (const variant of variants) {
@@ -98,6 +100,7 @@ export function normalizeProduct(product, store) {
     vendor,
     handle,
     rawDescription,
+    sizes,
     createdAt: product?.created_at ?? null,
   };
 }
