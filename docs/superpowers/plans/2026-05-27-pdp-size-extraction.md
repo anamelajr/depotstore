@@ -718,7 +718,7 @@ The cron's Step-1 sync upserts all rows including columns like `price`, `availab
 
 - [ ] **Step 1: Locate the `syncRows` map**
 
-Open `app/api/cron/route.js`. Find the section (around lines 34-46) that builds `syncRows` from the per-store `products`. It looks like:
+Open `app/api/cron/route.js`. Find the section (around lines 34-46) that builds `syncRows` from the per-store `products`. The current shape uses `synced_at: syncStart` (the timestamp variable defined at the top of the request handler — `syncStart = new Date(syncStartMs).toISOString()`):
 
 ```js
 const syncRows = products.map((p) => ({
@@ -730,16 +730,16 @@ const syncRows = products.map((p) => ({
   image_url: p.imageUrl,
   product_url: p.productUrl,
   available: p.available,
-  synced_at: now,
+  synced_at: syncStart,
   description: p.rawDescription,
 }));
 ```
 
-(The exact line numbers may have shifted; locate by structure, not by line.)
+(The exact line numbers may have shifted; locate by structure, not by line. **Do not rename `syncStart` to `now`** — the surrounding code reads `syncStart` again at the stale-delete step, so a rename would silently break the scoped delete.)
 
 - [ ] **Step 2: Add the `size` field to the map**
 
-Append a `size` line that writes the parsed array directly. supabase-js converts a JS array of strings into a Postgres `text[]` literal natively; **do not** `JSON.stringify` or `join` — that would store a string-shaped scalar in a `text[]` column and either error on insert or stash literal `'["S","M","L"]'` text as the first array element.
+Append a single `size` line that writes the parsed array directly. supabase-js converts a JS array of strings into a Postgres `text[]` literal natively; **do not** `JSON.stringify` or `join` — that would store a string-shaped scalar in a `text[]` column and either error on insert or stash literal `'["S","M","L"]'` text as the first array element. Only the one new line is being added; the rest of the object stays exactly as the existing code wrote it.
 
 ```js
 const syncRows = products.map((p) => ({
@@ -751,7 +751,7 @@ const syncRows = products.map((p) => ({
   image_url: p.imageUrl,
   product_url: p.productUrl,
   available: p.available,
-  synced_at: now,
+  synced_at: syncStart,
   description: p.rawDescription,
   size: p.sizes && p.sizes.length > 0 ? p.sizes : null,
 }));
@@ -1257,25 +1257,40 @@ export async function POST() {
 
     try {
       const products = await fetchStoreProducts(store);
-      for (const p of products) {
-        processed++;
-        // Write the parsed array directly — supabase-js converts a JS
-        // array of strings into a Postgres text[] literal. Do not join.
-        const sizeValue =
-          p.sizes && p.sizes.length > 0 ? p.sizes : null;
-        const { error } = await supabase
-          .from("products")
-          .update({ size: sizeValue })
-          .eq("store_domain", store.domain)
-          .eq("handle", p.handle);
-        if (error) {
-          errors++;
-          console.error(
-            `backfill-sizes: update failed for ${store.domain}/${p.handle}:`,
-            error.message,
-          );
-        } else {
-          updated++;
+      processed = products.length;
+      // Run updates in bounded-concurrency chunks. A purely-serial
+      // `await` per row at ~50-100ms each puts 7,280 rows well above
+      // the 300s maxDuration on this route (Vercel kills the request,
+      // leaving the DB in the exact partially-populated state the
+      // deploy sequence says must not ship). Chunked parallelism with
+      // CONCURRENCY=20 brings the wall time to roughly
+      // ceil(rowCount / 20) × ~80ms ≈ 30s for a 7,280-row catalog
+      // across 11 stores, well within the budget.
+      const CONCURRENCY = 20;
+      for (let i = 0; i < products.length; i += CONCURRENCY) {
+        const chunk = products.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(
+          chunk.map((p) => {
+            const sizeValue =
+              p.sizes && p.sizes.length > 0 ? p.sizes : null;
+            return supabase
+              .from("products")
+              .update({ size: sizeValue })
+              .eq("store_domain", store.domain)
+              .eq("handle", p.handle);
+          }),
+        );
+        for (let j = 0; j < results.length; j++) {
+          const { error } = results[j];
+          if (error) {
+            errors++;
+            console.error(
+              `backfill-sizes: update failed for ${store.domain}/${chunk[j].handle}:`,
+              error.message,
+            );
+          } else {
+            updated++;
+          }
         }
       }
     } catch (e) {
@@ -1322,7 +1337,16 @@ In another:
 curl -X POST http://localhost:3000/api/admin/backfill-sizes -i
 ```
 
-Expected response: a JSON body with `totalProcessed`, `totalUpdated`, and a `results` array — one entry per active store, each showing per-store counts. Errors should be zero for healthy stores.
+Expected response: a JSON body with `totalProcessed`, `totalUpdated`, `totalErrors`, and a `results` array — one entry per active store, each showing per-store counts plus a `fetchError` field. Wait for the response to complete in full (the chunked-parallel implementation should finish well under the 300s `maxDuration`; a 504 / timeout means a store's fetch is hanging — investigate before proceeding).
+
+**Completion gate (do not skip):** assert in the response that
+
+```
+totalErrors === 0
+totalUpdated === totalProcessed
+```
+
+If either fails — especially `totalUpdated < totalProcessed` — the DB is in a partial state. Inspect `results` for the offending store(s), fix the fetch or transient Supabase error, then re-run. Re-running is safe (the route only touches the `size` column on the matched row; idempotent on success, idempotent on retry).
 
 Verify the column is populated in Supabase via SQL Editor:
 
@@ -1334,7 +1358,7 @@ GROUP BY store_domain
 ORDER BY store_domain;
 ```
 
-Expected: `with_size / total` should be high (~85-100%) for every store, matching the validated coverage from the pre-implementation survey.
+Expected: `with_size / total` should be high (~85-100%) for every store, matching the validated coverage from the pre-implementation survey. A store at 0% indicates the backfill silently failed for it — re-check `results` and re-run the backfill.
 
 - [ ] **Step 3: Commit**
 
