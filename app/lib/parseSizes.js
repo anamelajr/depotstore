@@ -72,16 +72,22 @@ export function parseSizeFromOptions(product) {
 // "Size guide", "Size range:" — they have neither a colon directly
 // after the label nor a size-shape next token. (Codex round-2 finding.)
 //
+// Decimal handling: `.` is permitted inside the capture so that half-
+// sizes like "Pointure: 40.5" or "Size: 38.5 IT" survive — common in
+// shoe sizing. The terminator `\.(?!\d)` ensures a period that ENDS
+// a sentence (period + space or end-of-string) still stops the capture,
+// while a period between digits is treated as part of the value.
+//
 // Capture groups: (1) colon path, (2) no-colon path. parseSizeFromBody
 // picks whichever matched.
 const LABEL_RE = new RegExp(
   String.raw`\b(?:size|taille|pointure)` +
     String.raw`(?:` +
-    String.raw`\s*:\s*([^.<\n(]{1,80}?)` +
+    String.raw`\s*:\s*([^<\n(]{1,80}?)` +
     String.raw`|` +
-    String.raw`\s+((?:\d|XX?S\b|XX?L\b|XL\b|XS\b|[SML]\b|OS\b|ONE\s+SIZE\b|FITS?\b|TBD\b)[^.<\n(]{0,79}?)` +
+    String.raw`\s+((?:\d|XX?S\b|XX?L\b|XL\b|XS\b|[SML]\b|OS\b|ONE\s+SIZE\b|FITS?\b|TBD\b)[^<\n(]{0,79}?)` +
     String.raw`)` +
-    String.raw`(?=\s+(?:[A-Z][a-zA-Z]+|[A-Z]+)\s*:|[.<\n(]|$)`,
+    String.raw`(?=\s+(?:[A-Z][a-zA-Z]+|[A-Z]+)\s*:|\.(?!\d)|[<\n(]|$)`,
   "i",
 );
 

@@ -225,6 +225,37 @@ describe("parseSizeFromBody — labeled lines", () => {
     // not the seller's stated size. Better to drop than to invent.
     expect(parseSizeFromBody("<p>Size range: S to L</p>")).toBe(null);
   });
+
+  // ----- decimal half-sizes (codex round-1 finding) -----
+  // Shoe sizing routinely uses half-sizes (40.5, 41.5 EU). An earlier
+  // version of LABEL_RE treated `.` as an unconditional terminator, so
+  // "Pointure: 40.5" parsed to "40" and "Size: 38.5 IT" parsed to "38"
+  // (silently dropping both the half and the unit). The terminator now
+  // requires `.` followed by non-digit, so digit-period-digit survives.
+
+  it("preserves decimal half-sizes after a colon (Pointure: 40.5)", () => {
+    expect(parseSizeFromBody("<p>Pointure: 40.5</p>")).toEqual(["40.5"]);
+  });
+
+  it("preserves decimal half-sizes with a unit (Size: 38.5 IT)", () => {
+    expect(parseSizeFromBody("<p>Size: 38.5 IT</p>")).toEqual(["38.5 IT"]);
+  });
+
+  it("preserves decimal half-sizes on the no-colon path (Pointure 41.5)", () => {
+    expect(parseSizeFromBody("<p>Pointure 41.5</p>")).toEqual(["41.5"]);
+  });
+
+  it("preserves decimal half-sizes and trims trailing body-shape (Size 7.5 US fit men)", () => {
+    expect(parseSizeFromBody("<p>Size 7.5 US fit men</p>")).toEqual(["7.5 US"]);
+  });
+
+  it("still treats sentence-ending '.' as a terminator (Size: M.)", () => {
+    // Regression guard: the decimal fix loosened `.` rules; a period
+    // followed by space/end-of-string must still terminate so single-
+    // letter sizes followed by punctuation don't accumulate noise.
+    expect(parseSizeFromBody("<p>Size: M.</p>")).toEqual(["M"]);
+    expect(parseSizeFromBody("<p>Size: M. Color: Black.</p>")).toEqual(["M"]);
+  });
 });
 
 describe("parseSizeFromBody — unlabeled triplet (nuovo-paris)", () => {
