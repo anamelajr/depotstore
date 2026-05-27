@@ -1,0 +1,1323 @@
+# PDP Size Extraction Overhaul — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Fix the desktop PDP's `SIZE` block so it shows the correct seller size across all 11 active stores (today it renders junk like `"WOMAN / B"` from polluted Shopify variant titles, or nothing at all for the 8 stores whose sizes live in `body_html`).
+
+**Architecture:** Move size derivation out of the PDP and into the data pipeline. A new three-layer parser (`L1` Shopify option lookup → `L2` `body_html` extraction with both labeled and unlabeled-triplet patterns) runs at sync time and writes to a new `products.size` column. The PDP reads that column verbatim and applies a `Bags & Accessories → "ONE SIZE"` fallback (`L3`) only when the column is null. A one-shot admin backfill route populates the column for existing rows. A trivial cosmetic edit removes the redundant `· at {storeName}` suffix below the CTA.
+
+**Tech Stack:** Next.js (App Router), Supabase (Postgres), Vitest. The validation that backs every decision in this plan was run live against 550 products across 11 stores (50/store, listing endpoint) and is summarized in the PR description; this plan is the implementation of that validated design.
+
+---
+
+## Context
+
+### Why this change is being made
+
+The PR that's currently in flight (`claude/elegant-heisenberg-452f36`, branch already rebased onto `main`) shipped a redesigned desktop PDP with a prominent new `SIZE` block. Verification on the Vercel preview surfaced four bugs that make the PR unsafe to merge:
+
+1. **Seyswardrobe** products show garbage in the SIZE block (e.g. `WOMAN / B` for the LOEWE Amazona handbag, `M / B / Man` for a Vivienne Westwood longsleeve). Root cause: Shopify's `variant.title` concatenates *all* option values with ` / `, and seyswardrobe uses `Gender`/`Condition` options that pollute the title. When `Size` is also an option, it's there but buried at a varying index.
+2. **L'Obscur, dot Comme, atdawn, esco, Les Archives, Numero 13, Yourgarmentz, plus most of Grain de Sell** show no SIZE at all. Root cause: they use a single Shopify variant titled `Default Title` and write the size inside `body_html` (e.g. `<p>Size: S.</p>`). The current code only reads `variant.title`, so the size is lost.
+3. **Nuovo-Paris** also shows no SIZE. Root cause: their sizes are written *unlabeled* — a standalone line like `38 FR / M / 42 IT` with no `Size:` prefix. The labeled-line regex from (2) misses these.
+4. **Cosmetic:** the line below the buy button reads `• AVAILABLE · AT {STORE}`, but the black button two lines above already says `BUY AT {STORE}`. Visible duplicate.
+
+The user has explicitly stated this PR must ship solid, not "working enough for now." A holistic survey across the full store roster, plus a 550-product validation pass, confirms a three-layer parser with a generic regex (no per-store map) reaches 98% extraction coverage with zero false positives. The remaining 2% is store-side data gaps (products where the seller wrote no size anywhere) that no parser can recover.
+
+### Intended outcome
+
+- Desktop PDP `SIZE` block renders the seller's actual size across all 11 active stores.
+- Sizeless items (bags, accessories) render `ONE SIZE`.
+- Truly empty cases (no size written anywhere AND not a bag/accessory) render no SIZE block — conservative and consistent with current behavior, never wrong data.
+- Future store additions inherit the generic parser; new stores joining the catalog will work without code changes as long as they use one of the dominant patterns (Shopify option named Size/Taille/Pointure, OR labeled `Size:` line in body, OR unlabeled size triplet).
+- Size derivation is a pure projection from Shopify (overwrites every cron run) — not a protected editorial field. This is correct because the data is mechanical, not AI-generated.
+
+### Validation done (do not redo)
+
+- 550 products surveyed across all 11 active stores via `https://{domain}/products.json?limit=50`.
+- Three-layer parser (L1 option lookup + L2 labeled-line + L2 unlabeled triplet + L3 ONE SIZE category fallback) achieves **98.0% extraction**, **0 false positives**.
+- Per-store coverage: 6 stores at 100%, 4 stores at 96–98%, lesarchivesparis at 88% (4 products have empty body_html — store-side data gap, no parser can recover).
+- The 11 honest-empty products were verified with the user; all are products where no size exists at the source.
+
+### Files in scope
+
+**Create:**
+- `scripts/sql/2026-05-27-add-products-size.sql` — migration
+- `app/lib/parseSizes.js` — three-layer parser module
+- `app/lib/__tests__/parseSizes.test.js` — parser unit tests
+- `app/api/admin/backfill-sizes/route.js` — one-shot backfill endpoint
+- `app/admin/backfill-sizes/page.js` — dev-only UI to click the backfill button
+
+**Modify:**
+- `app/lib/shopifyFetch.js` — call `parseSizes` inside `normalizeProduct`, expose `sizes` on the returned object
+- `app/api/cron/route.js` — include `size` in the Step-1 sync upsert
+- `app/lib/resolveProductDetail.js` — SELECT `size, category` from `dbRow`; drop the variant-based `formatSizes`; new `sizesFromDb` helper applies the ONE SIZE fallback
+- `app/lib/__tests__/resolveProductDetail.test.js` — replace `formatSizes` tests with `sizesFromDb` tests
+- `app/components/ProductInfoPanel.js` — drop the `· at {storeName}` suffix
+
+---
+
+## Storage format (referenced by multiple tasks)
+
+The `products.size` column stores a single `TEXT` value with " · " as the multi-variant separator:
+
+| Scenario | Stored value | PDP renders |
+|---|---|---|
+| Single size, single token | `"S"` | `SIZE: S` |
+| Single size, dual-system | `"38 FR / M / 42 IT"` | `SIZE: 38 FR / M / 42 IT` (no " · " inside → singular label) |
+| Multi-variant (e.g. S/M/L all in stock) | `"S · M · L"` | `SIZES: S · M · L` (" · " present → plural label) |
+| ONE SIZE for bag (applied at PDP read, never stored) | `null` (column stays NULL; L3 in resolver returns `["ONE SIZE"]`) | `SIZE: ONE SIZE` |
+| Honest empty | `null` | block hidden |
+
+The PDP recovers an array by splitting on " · ". This preserves the `sizes.length > 1 ? "SIZES" : "SIZE"` plural-label logic that already exists in `ProductInfoPanel`.
+
+---
+
+## Task 1: Schema migration — add `products.size` column
+
+**Files:**
+- Create: `scripts/sql/2026-05-27-add-products-size.sql`
+
+This migration is **applied manually via the Supabase SQL Editor** before merging the PR (per CLAUDE.md: Supabase MCP is read-only; schema/RPC changes apply to Supabase before dependent code merges).
+
+- [ ] **Step 1: Write the migration SQL file**
+
+```sql
+-- Add products.size for parsed-from-Shopify size value.
+--
+-- Storage shape: TEXT, nullable.
+--   Single size:        'S'  /  '42 IT'  /  '38 FR / M / 42 IT'
+--   Multi-variant:      'S · M · L'   (middle-dot separator)
+--   No usable size:     NULL
+--
+-- Unlike brand/title/category/subcategory, `size` is NOT an editorial
+-- field — it's a mechanical projection from Shopify. The cron Step-1
+-- sync overwrites it every run (same model as `name`, `price`,
+-- `available`). No COALESCE-protection, no `enrich_product` RPC change.
+--
+-- Apply via Supabase SQL Editor.
+
+BEGIN;
+
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS size TEXT;
+
+COMMIT;
+```
+
+- [ ] **Step 2: Apply manually via Supabase SQL Editor**
+
+Paste the file's contents into the SQL Editor and run. Adding a NULLABLE column does not require a table rewrite — operation completes sub-second on 7,280 rows.
+
+- [ ] **Step 3: Verify column exists**
+
+In the SQL Editor:
+
+```sql
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'products'
+  AND column_name = 'size';
+```
+
+Expected: one row, `data_type = 'text'`, `is_nullable = 'YES'`.
+
+- [ ] **Step 4: Commit the migration file to the branch**
+
+```bash
+git add scripts/sql/2026-05-27-add-products-size.sql
+git commit -m "feat(schema): add products.size column for parsed size value"
+```
+
+---
+
+## Task 2: Build the size parser library (TDD)
+
+**Files:**
+- Create: `app/lib/parseSizes.js`
+- Test: `app/lib/__tests__/parseSizes.test.js`
+
+This is the heart of the change. Three layers, single module, comprehensive tests.
+
+### 2.1 — Write the test file first
+
+- [ ] **Step 1: Create the failing test file**
+
+`app/lib/__tests__/parseSizes.test.js`:
+
+```js
+import { describe, it, expect } from "vitest";
+import {
+  parseSizeFromOptions,
+  parseSizeFromBody,
+  parseSizes,
+} from "../parseSizes.js";
+
+// ---------- Layer 1: Shopify option lookup ----------
+
+describe("parseSizeFromOptions", () => {
+  it("returns null when product has no options array", () => {
+    expect(parseSizeFromOptions({})).toBe(null);
+    expect(parseSizeFromOptions({ variants: [] })).toBe(null);
+  });
+
+  it("returns null when no option name matches Size/Taille/Pointure/Talla", () => {
+    const product = {
+      options: [{ name: "Gender" }, { name: "Condition" }],
+      variants: [{ option1: "Woman", option2: "B", title: "Woman / B" }],
+    };
+    expect(parseSizeFromOptions(product)).toBe(null);
+  });
+
+  it("extracts the Size option value when Size is at index 0", () => {
+    const product = {
+      options: [{ name: "Size" }, { name: "Gender" }, { name: "Condition" }],
+      variants: [{ option1: "S", option2: "Man", option3: "A", title: "S / Man / A" }],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["S"]);
+  });
+
+  it("extracts the Size option value when Size is at index 1", () => {
+    const product = {
+      options: [{ name: "Color" }, { name: "Size" }],
+      variants: [{ option1: "Black", option2: "M" }],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["M"]);
+  });
+
+  it("extracts via French synonyms Taille and Pointure", () => {
+    const taille = {
+      options: [{ name: "Taille" }],
+      variants: [{ option1: "MEN S · WOMEN M" }],
+    };
+    expect(parseSizeFromOptions(taille)).toEqual(["MEN S · WOMEN M"]);
+
+    const pointure = {
+      options: [{ name: "Pointure" }],
+      variants: [{ option1: "46" }],
+    };
+    expect(parseSizeFromOptions(pointure)).toEqual(["46"]);
+  });
+
+  it("trims surrounding whitespace on option name (nuovo-paris had 'Size ')", () => {
+    const product = {
+      options: [{ name: "Size " }],
+      variants: [{ option1: "M" }],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["M"]);
+  });
+
+  it("returns multiple values for multi-variant products", () => {
+    const product = {
+      options: [{ name: "Size" }],
+      variants: [{ option1: "S" }, { option1: "M" }, { option1: "L" }],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["S", "M", "L"]);
+  });
+
+  it("skips Default Title and empty option values", () => {
+    const product = {
+      options: [{ name: "Size" }],
+      variants: [
+        { option1: "Default Title" },
+        { option1: "" },
+        { option1: null },
+        { option1: "M" },
+      ],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["M"]);
+  });
+
+  it("matches Size synonyms case-insensitively", () => {
+    const product = {
+      options: [{ name: "SIZE" }],
+      variants: [{ option1: "L" }],
+    };
+    expect(parseSizeFromOptions(product)).toEqual(["L"]);
+  });
+});
+
+// ---------- Layer 2: body_html parser ----------
+
+describe("parseSizeFromBody — labeled lines", () => {
+  it("returns null for null/empty/undefined input", () => {
+    expect(parseSizeFromBody(null)).toBe(null);
+    expect(parseSizeFromBody(undefined)).toBe(null);
+    expect(parseSizeFromBody("")).toBe(null);
+  });
+
+  it("returns null when body has no size-like content", () => {
+    expect(parseSizeFromBody("<p>Color: Black. Material: Wool.</p>")).toBe(null);
+  });
+
+  it("extracts S from 'Size: S.' (dot Comme)", () => {
+    expect(parseSizeFromBody("<p>Size: S.</p>")).toEqual(["S"]);
+  });
+
+  it("extracts 40 from 'Size 40' with no colon (L'Obscur)", () => {
+    expect(parseSizeFromBody("<p>Size 40</p>")).toEqual(["40"]);
+  });
+
+  it("extracts S from 'SIZE S' uppercase no colon (Esco)", () => {
+    expect(parseSizeFromBody("<p>SIZE S</p>")).toEqual(["S"]);
+  });
+
+  it("extracts 42 IT from 'Size: 42IT fit S-M women' (Grain de Sell)", () => {
+    // Cuts at 'fit' (body-shape note), normalizes 42IT → '42 IT'
+    expect(parseSizeFromBody("<p>Size: 42IT fit S-M women</p>")).toEqual([
+      "42 IT",
+    ]);
+  });
+
+  it("extracts XS from 'SIZE : FITS XS' (Numero 13)", () => {
+    expect(parseSizeFromBody("<p>SIZE : FITS XS</p>")).toEqual(["XS"]);
+  });
+
+  it("normalizes 'FROM XS TO S' to 'XS-S' (Numero 13)", () => {
+    expect(parseSizeFromBody("<p>SIZE : FROM XS TO S</p>")).toEqual(["XS-S"]);
+  });
+
+  it("stops at next labeled field (atdawn paragraphs)", () => {
+    // 'Size: ONE SIZE (STRETCH FIT) Color: BLACK Material: ACETATE'
+    // — must capture only the ONE SIZE portion, not the trailing fields.
+    expect(
+      parseSizeFromBody(
+        "<p>Size: ONE SIZE Color: BLACK Material: ACETATE Condition: 4/5</p>",
+      ),
+    ).toEqual(["ONE SIZE"]);
+  });
+
+  it("rejects 'No size tag fit M' (Grain de Sell sizeless rows)", () => {
+    // Reject-list match → returns null, lets L3 / hidden block take over.
+    expect(parseSizeFromBody("<p>No size tag fit M</p>")).toBe(null);
+  });
+
+  it("rejects 'Size: on request'", () => {
+    expect(parseSizeFromBody("<p>Size: on request</p>")).toBe(null);
+  });
+
+  it("rejects 'SIZE : MISSING SIZE TAG' (Les Archives)", () => {
+    expect(parseSizeFromBody("<p>SIZE : MISSING SIZE TAG</p>")).toBe(null);
+  });
+
+  it("trims trailing 'women'/'men' connectors", () => {
+    expect(parseSizeFromBody("<p>Size M women</p>")).toEqual(["M"]);
+  });
+
+  it("cuts at first comma (avoid 'small to medium, Velcro closure')", () => {
+    expect(
+      parseSizeFromBody("<p>Size: small to medium, Velcro closure</p>"),
+    ).toEqual(["small to medium"]);
+  });
+});
+
+describe("parseSizeFromBody — unlabeled triplet (nuovo-paris)", () => {
+  it("extracts '38 FR / M / 42 IT' from a standalone line", () => {
+    expect(parseSizeFromBody("<p>Dress description.</p><p>38 FR / M / 42 IT</p>"))
+      .toEqual(["38 FR / M / 42 IT"]);
+  });
+
+  it("normalizes spacing — '38FR/M/42IT' becomes '38 FR / M / 42 IT'", () => {
+    expect(parseSizeFromBody("<p>38FR/M/42IT</p>")).toEqual([
+      "38 FR / M / 42 IT",
+    ]);
+  });
+
+  it("uppercases the letter token", () => {
+    expect(parseSizeFromBody("<p>36 FR / s / 40 IT</p>")).toEqual([
+      "36 FR / S / 40 IT",
+    ]);
+  });
+
+  it("accepts size duos (not just triplets)", () => {
+    expect(parseSizeFromBody("<p>36 FR / 40 IT</p>")).toEqual(["36 FR / 40 IT"]);
+    expect(parseSizeFromBody("<p>S / 40 IT</p>")).toEqual(["S / 40 IT"]);
+  });
+
+  it("does NOT match a standalone letter without separator", () => {
+    // 'S' alone in body text would be a false positive — require at least
+    // two atoms separated by /.
+    expect(parseSizeFromBody("<p>This S is a sentence.</p>")).toBe(null);
+  });
+
+  it("does NOT match a year-shaped number", () => {
+    // '2002' isn't a size atom — only \d{1,3}(FR|IT|EU|US|UK) qualifies.
+    expect(parseSizeFromBody("<p>From 2002 / Vintage</p>")).toBe(null);
+  });
+});
+
+// ---------- Orchestrator ----------
+
+describe("parseSizes (orchestrator)", () => {
+  it("Layer 1 wins when product has a Size option", () => {
+    const product = {
+      options: [{ name: "Size" }],
+      variants: [{ option1: "M" }],
+      body_html: "<p>Size: L.</p>", // contradicts L1 — L1 should win
+    };
+    expect(parseSizes(product)).toEqual(["M"]);
+  });
+
+  it("falls through to Layer 2 when no Size option exists", () => {
+    const product = {
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+      body_html: "<p>Size: S.</p>",
+    };
+    expect(parseSizes(product)).toEqual(["S"]);
+  });
+
+  it("returns null when both layers fail", () => {
+    const product = {
+      options: [{ name: "Title" }],
+      variants: [{ option1: "Default Title" }],
+      body_html: "<p>A bag with leather trim.</p>",
+    };
+    expect(parseSizes(product)).toBe(null);
+  });
+
+  it("returns null for null/empty input", () => {
+    expect(parseSizes(null)).toBe(null);
+    expect(parseSizes(undefined)).toBe(null);
+    expect(parseSizes({})).toBe(null);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to confirm they all fail**
+
+```bash
+npm test -- app/lib/__tests__/parseSizes.test.js
+```
+
+Expected: every test FAILS with `Cannot find module '../parseSizes.js'` or similar.
+
+### 2.2 — Implement the parser
+
+- [ ] **Step 3: Create the parser module**
+
+`app/lib/parseSizes.js`:
+
+```js
+// Three-layer size parser for Shopify product data.
+//
+// Layer 1 (parseSizeFromOptions):
+//   Look up the product option whose name matches Size / Taille / Pointure /
+//   Talla (case-insensitive, trimmed). Return that option's value across all
+//   variants, filtering out "Default Title" and empties.
+//
+// Layer 2 (parseSizeFromBody):
+//   Two sub-patterns in priority order:
+//   2a. Labeled: `Size:` / `SIZE :` / `Taille` / `Pointure` followed by a
+//       value. Stops at next labeled field, comma, period, paren, or HTML
+//       tag. Rejects negative phrases ("no size tag", "on request", etc).
+//   2b. Unlabeled triplet/duo: `38 FR / M / 42 IT`, `S / 40 IT`. Requires
+//       at least two size atoms (numeric+unit OR letter size) separated by
+//       `/` or `·`. Pure letter-only standalone tokens don't match.
+//
+// parseSizes (orchestrator):
+//   L1 → L2a → L2b. First non-null wins.
+//
+// Layer 3 (ONE SIZE fallback for Bags & Accessories) is applied by the
+// PDP renderer (`resolveProductDetail`), NOT here — it's a presentation
+// rule, not a parser rule, and depends on the row's category column.
+
+// ---------- helpers ----------
+
+function stripHtml(html) {
+  if (typeof html !== "string") return "";
+  return html.replace(/<[^>]+>/g, " ").replace(/\xa0/g, " ");
+}
+
+const SIZE_OPTION_NAME = /^\s*(size|taille|pointure|talla)\s*$/i;
+
+// ---------- Layer 1 ----------
+
+export function parseSizeFromOptions(product) {
+  const options = Array.isArray(product?.options) ? product.options : [];
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  if (options.length === 0 || variants.length === 0) return null;
+
+  const idx = options.findIndex((o) => SIZE_OPTION_NAME.test(o?.name ?? ""));
+  if (idx === -1) return null;
+
+  const key = `option${idx + 1}`;
+  const labels = [];
+  for (const v of variants) {
+    const val = typeof v?.[key] === "string" ? v[key].trim() : "";
+    if (!val || val.toLowerCase() === "default title") continue;
+    labels.push(val);
+  }
+  return labels.length > 0 ? labels : null;
+}
+
+// ---------- Layer 2 ----------
+
+const LABEL_RE =
+  /\b(?:size|taille|pointure)\s*:?\s*([^.<\n(]{1,80}?)(?=\s+(?:[A-Z][a-zA-Z]+|[A-Z]+)\s*:|[.<\n(]|$)/i;
+
+const REJECT_RE =
+  /\b(no size tag|missing size tag|no tag|on request|n\/a|n a|unknown|not specified|unspecified|tba)\b/i;
+
+const FITS_PREFIX_RE = /^\s*(?:fits?|aprox\.?|approx\.?)\s+/i;
+const TRAILING_NOISE_RE = /\s+(?:women(?:'s)?|men(?:'s)?|unisex|kids?)\s*$/i;
+const FROM_TO_RE = /\bfrom\s+(\S+?)\s+to\s+(\S+?)\b/i;
+const NUMERIC_UNIT_RE = /(\d)(IT|EU|US|UK|FR)\b/gi;
+const TRAILING_PUNCT_RE = /[\s:\-.,;]+$/;
+
+const SIZE_ATOM = "(?:\\d{1,3}\\s*(?:FR|IT|EU|US|UK)|XX?S|XX?L|[SML])";
+const TRIPLET_RE = new RegExp(
+  `\\b(${SIZE_ATOM}(?:\\s*[/·]\\s*${SIZE_ATOM}){1,3})\\b`,
+  "i",
+);
+
+function canonicalizeLabeled(raw) {
+  if (!raw) return null;
+  let p = raw.trim();
+  if (REJECT_RE.test(p)) return null;
+  p = p.replace(FITS_PREFIX_RE, "");
+  p = p.replace(TRAILING_NOISE_RE, "");
+  // Cut at " fit " — body shape note, not size data.
+  p = p.split(/\bfit\b/i)[0];
+  // "from X to Y" -> "X-Y"
+  const ft = FROM_TO_RE.exec(p);
+  if (ft) p = `${ft[1].toUpperCase()}-${ft[2].toUpperCase()}`;
+  // "44IT" -> "44 IT"
+  p = p.replace(NUMERIC_UNIT_RE, (_, d, u) => `${d} ${u.toUpperCase()}`);
+  // Cut at first comma (often introduces a clarifier).
+  p = p.split(",")[0];
+  p = p.replace(TRAILING_PUNCT_RE, "").trim();
+  return p || null;
+}
+
+function canonicalizeTriplet(raw) {
+  let p = raw.trim();
+  p = p.replace(/\s*\/\s*/g, " / ");
+  p = p.replace(/\s*·\s*/g, " · ");
+  p = p.replace(NUMERIC_UNIT_RE, (_, d, u) => `${d} ${u.toUpperCase()}`);
+  p = p.replace(/\b(xx?s|xx?l|[sml])\b/gi, (m) => m.toUpperCase());
+  return p.replace(TRAILING_PUNCT_RE, "").trim() || null;
+}
+
+export function parseSizeFromBody(bodyHtml) {
+  const text = stripHtml(bodyHtml);
+  if (!text) return null;
+
+  const labeled = LABEL_RE.exec(text);
+  if (labeled) {
+    const cleaned = canonicalizeLabeled(labeled[1]);
+    if (cleaned) return [cleaned];
+  }
+
+  const triplet = TRIPLET_RE.exec(text);
+  if (triplet) {
+    const cleaned = canonicalizeTriplet(triplet[1]);
+    if (cleaned) return [cleaned];
+  }
+
+  return null;
+}
+
+// ---------- Orchestrator ----------
+
+export function parseSizes(product) {
+  if (!product || typeof product !== "object") return null;
+  const fromOpts = parseSizeFromOptions(product);
+  if (fromOpts) return fromOpts;
+  return parseSizeFromBody(product.body_html);
+}
+```
+
+- [ ] **Step 4: Run tests to verify they all pass**
+
+```bash
+npm test -- app/lib/__tests__/parseSizes.test.js
+```
+
+Expected: every test PASSES.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/lib/parseSizes.js app/lib/__tests__/parseSizes.test.js
+git commit -m "feat(parseSizes): three-layer parser for Shopify product sizes"
+```
+
+---
+
+## Task 3: Wire the parser into `normalizeProduct`
+
+**Files:**
+- Modify: `app/lib/shopifyFetch.js:43-103` (the `normalizeProduct` function)
+
+The parser needs the raw Shopify product. `normalizeProduct` already has it. Add a `sizes` field to the normalized output.
+
+- [ ] **Step 1: Add the import at the top of `shopifyFetch.js`**
+
+Locate the existing imports near line 1 and add:
+
+```js
+import { parseSizes } from "./parseSizes.js";
+```
+
+- [ ] **Step 2: Compute `sizes` inside `normalizeProduct`**
+
+Inside `normalizeProduct`, after the existing `variants` line (currently `app/lib/shopifyFetch.js:69`) and before the return statement, add:
+
+```js
+  const sizes = parseSizes(product);
+```
+
+- [ ] **Step 3: Add `sizes` to the returned object**
+
+In the return literal (currently `app/lib/shopifyFetch.js:86-102`), add `sizes` alongside the existing fields. Final shape includes (existing fields elided for brevity):
+
+```js
+  return {
+    shopifyId: product?.id ?? null,
+    name,
+    price,
+    imageUrl,
+    images,
+    storeName: store.storeName,
+    storeDomain: store.domain,
+    productUrl,
+    available,
+    productType,
+    tags,
+    vendor,
+    handle,
+    rawDescription,
+    sizes,                           // NEW
+    createdAt: product?.created_at ?? null,
+  };
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/lib/shopifyFetch.js
+git commit -m "feat(shopifyFetch): expose parsed sizes on normalized product"
+```
+
+---
+
+## Task 4: Cron Step-1 sync writes the `size` column
+
+**Files:**
+- Modify: `app/api/cron/route.js` — the `syncRows` map inside the per-store loop (around lines 34-46)
+
+The cron's Step-1 sync upserts all rows including columns like `price`, `available`, `name`. Add `size` to that list. Because Step-1 is the unprotected upsert (Step-2 is the COALESCE-gated editorial one), `size` overwrites every run — which is the correct behaviour for a mechanical projection from Shopify.
+
+- [ ] **Step 1: Locate the `syncRows` map**
+
+Open `app/api/cron/route.js`. Find the section (around lines 34-46) that builds `syncRows` from the per-store `products`. It looks like:
+
+```js
+const syncRows = products.map((p) => ({
+  shopify_id: p.shopifyId,
+  handle: p.handle,
+  store_domain: p.storeDomain,
+  name: p.name,
+  price: p.price,
+  image_url: p.imageUrl,
+  product_url: p.productUrl,
+  available: p.available,
+  synced_at: now,
+  description: p.rawDescription,
+}));
+```
+
+(The exact line numbers may have shifted; locate by structure, not by line.)
+
+- [ ] **Step 2: Add the `size` field to the map**
+
+Append a `size` line that joins the parsed array with the storage separator:
+
+```js
+const syncRows = products.map((p) => ({
+  shopify_id: p.shopifyId,
+  handle: p.handle,
+  store_domain: p.storeDomain,
+  name: p.name,
+  price: p.price,
+  image_url: p.imageUrl,
+  product_url: p.productUrl,
+  available: p.available,
+  synced_at: now,
+  description: p.rawDescription,
+  size: p.sizes && p.sizes.length > 0 ? p.sizes.join(" · ") : null,
+}));
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add app/api/cron/route.js
+git commit -m "feat(cron): write parsed size into products.size on Step-1 sync"
+```
+
+---
+
+## Task 5: PDP resolver — read `size` and `category` from DB, apply ONE SIZE fallback
+
+**Files:**
+- Modify: `app/lib/resolveProductDetail.js`
+
+The current resolver computes `sizes` from `product.variants` via the broken `formatSizes`. Replace this with a pure DB read plus a category-aware fallback.
+
+- [ ] **Step 1: Expand the `dbRow` SELECT to include `size` and `category`**
+
+Locate the existing `Promise.all` block that runs the Shopify fetch and the Supabase products SELECT in parallel (currently `app/lib/resolveProductDetail.js:77-85`). Update the `.select()` string from:
+
+```js
+.select("brand, title, editorial_description, available")
+```
+
+to:
+
+```js
+.select("brand, title, editorial_description, available, size, category")
+```
+
+- [ ] **Step 2: Add a `sizesFromDb` helper inside the file**
+
+Just below the existing `formatSizes` function (currently `app/lib/resolveProductDetail.js:28-36`), add a new exported helper:
+
+```js
+// Builds the PDP sizes array from the stored products.size column plus a
+// category-aware fallback. `dbRow.size` (text) is split on " · " to
+// recover the multi-variant array shape that ProductInfoPanel renders.
+// When `size` is null and the product is in the Bags & Accessories
+// category, the SIZE block defaults to "ONE SIZE" — visually right for
+// bags, sunglasses, hats, scarves, jewelry, belts. Other categories with
+// no parsed size stay null (block hidden) so the PDP never invents data.
+export function sizesFromDb(dbRow) {
+  const raw = typeof dbRow?.size === "string" ? dbRow.size.trim() : "";
+  if (raw.length > 0) {
+    const parts = raw.split(" · ").map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 0) return parts;
+  }
+  if (dbRow?.category === "Bags & Accessories") return ["ONE SIZE"];
+  return null;
+}
+```
+
+- [ ] **Step 3: Replace the variant-based `sizes` derivation with the DB read**
+
+Currently `resolveProductDetail` computes `sizes` from variants (around `app/lib/resolveProductDetail.js:102`):
+
+```js
+const sizes = formatSizes(variants);
+```
+
+Replace that single line with:
+
+```js
+const sizes = sizesFromDb(dbRow);
+```
+
+- [ ] **Step 4: Delete the now-unused `formatSizes` export**
+
+Remove the `formatSizes` function entirely (currently `app/lib/resolveProductDetail.js:20-36`). It is no longer called inside this file, and its only external consumer is the unit test, which we'll update in Task 6.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/lib/resolveProductDetail.js
+git commit -m "feat(pdp): source sizes from products.size column with ONE SIZE fallback"
+```
+
+---
+
+## Task 6: Update `resolveProductDetail` unit tests for the new shape
+
+**Files:**
+- Modify: `app/lib/__tests__/resolveProductDetail.test.js`
+
+The file currently tests `formatSizes` (removed in Task 5). Replace those tests with `sizesFromDb` tests. Keep the `stripHtml` and `nonEmpty` tests untouched.
+
+- [ ] **Step 1: Update the imports**
+
+Change the import block at the top of the file from:
+
+```js
+import {
+  stripHtml,
+  nonEmpty,
+  formatSizes,
+} from "../resolveProductDetail.js";
+```
+
+to:
+
+```js
+import {
+  stripHtml,
+  nonEmpty,
+  sizesFromDb,
+} from "../resolveProductDetail.js";
+```
+
+- [ ] **Step 2: Replace the `formatSizes` describe block with a `sizesFromDb` block**
+
+Delete the entire `describe("formatSizes", ...)` block (currently lines 45-103) and replace it with:
+
+```js
+describe("sizesFromDb", () => {
+  it("returns null when dbRow is null/undefined", () => {
+    expect(sizesFromDb(null)).toBe(null);
+    expect(sizesFromDb(undefined)).toBe(null);
+  });
+
+  it("returns null when size is null and category is not Bags & Accessories", () => {
+    expect(sizesFromDb({ size: null, category: "Tops" })).toBe(null);
+    expect(sizesFromDb({ size: null, category: null })).toBe(null);
+    expect(sizesFromDb({ size: "", category: "Footwear" })).toBe(null);
+    expect(sizesFromDb({ size: "   ", category: "Dresses & Skirts" })).toBe(null);
+  });
+
+  it("returns ['ONE SIZE'] when size is null and category is Bags & Accessories", () => {
+    expect(sizesFromDb({ size: null, category: "Bags & Accessories" })).toEqual([
+      "ONE SIZE",
+    ]);
+    expect(sizesFromDb({ size: "", category: "Bags & Accessories" })).toEqual([
+      "ONE SIZE",
+    ]);
+  });
+
+  it("returns single-entry array for single stored size", () => {
+    expect(sizesFromDb({ size: "S", category: "Tops" })).toEqual(["S"]);
+    expect(sizesFromDb({ size: "42 IT", category: "Bottoms" })).toEqual([
+      "42 IT",
+    ]);
+  });
+
+  it("preserves dual-system strings as one entry (no split on /)", () => {
+    expect(
+      sizesFromDb({ size: "38 FR / M / 42 IT", category: "Dresses & Skirts" }),
+    ).toEqual(["38 FR / M / 42 IT"]);
+  });
+
+  it("splits multi-variant strings on the ' · ' separator", () => {
+    expect(sizesFromDb({ size: "S · M · L", category: "Tops" })).toEqual([
+      "S",
+      "M",
+      "L",
+    ]);
+  });
+
+  it("trims whitespace around each split part", () => {
+    expect(sizesFromDb({ size: "S  ·  M  ·  L", category: "Tops" })).toEqual([
+      "S",
+      "M",
+      "L",
+    ]);
+  });
+
+  it("prefers stored size over category fallback when both apply", () => {
+    expect(
+      sizesFromDb({ size: "Tote OS", category: "Bags & Accessories" }),
+    ).toEqual(["Tote OS"]);
+  });
+});
+```
+
+- [ ] **Step 3: Run the test file to confirm all pass**
+
+```bash
+npm test -- app/lib/__tests__/resolveProductDetail.test.js
+```
+
+Expected: every test PASSES (including the existing `stripHtml` and `nonEmpty` blocks).
+
+- [ ] **Step 4: Run the full test suite to confirm no other breakage**
+
+```bash
+npm test
+```
+
+Expected: full suite PASSES. If any unrelated test references `formatSizes`, it will fail loudly here — fix by repointing to the new helper or removing if obsolete.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/lib/__tests__/resolveProductDetail.test.js
+git commit -m "test(pdp): cover sizesFromDb (replaces formatSizes tests)"
+```
+
+---
+
+## Task 7: Cosmetic — drop `· at {storeName}` suffix below the CTA
+
+**Files:**
+- Modify: `app/components/ProductInfoPanel.js`
+
+The current panel renders the availability row as `• AVAILABLE · AT {STORE}`. The black button two lines above already says `BUY AT {STORE}`, making the suffix redundant.
+
+- [ ] **Step 1: Open `app/components/ProductInfoPanel.js` and locate the availability span**
+
+Find the block (currently around `app/components/ProductInfoPanel.js:71-83`) that renders the availability dot and label:
+
+```jsx
+<div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+  <span
+    className={`block h-1.5 w-1.5 rounded-full flex-none ${
+      available ? "bg-emerald-500" : "bg-zinc-400"
+    }`}
+  />
+  <span>
+    {available ? "Available" : "Sold"}
+    {brand && (
+      <span className="text-zinc-400"> · at {storeName}</span>
+    )}
+  </span>
+</div>
+```
+
+- [ ] **Step 2: Remove the redundant suffix**
+
+Replace the inner `<span>` block with:
+
+```jsx
+<div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+  <span
+    className={`block h-1.5 w-1.5 rounded-full flex-none ${
+      available ? "bg-emerald-500" : "bg-zinc-400"
+    }`}
+  />
+  <span>{available ? "Available" : "Sold"}</span>
+</div>
+```
+
+The `brand` prop is no longer consumed in this branch — check the prop destructure at the top of the component and remove `brand` from it if nothing else uses it. (Search the file for other references; if none, drop the destructure.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add app/components/ProductInfoPanel.js
+git commit -m "feat(pdp): drop redundant '· at {storeName}' suffix below CTA"
+```
+
+---
+
+## Task 8: Admin backfill API route
+
+**Files:**
+- Create: `app/api/admin/backfill-sizes/route.js`
+
+Dev-only endpoint that re-fetches every active store via `fetchStoreProducts` (which now returns `sizes` on each product thanks to Task 3) and writes the parsed size into `products.size`. Mirrors the existing admin route conventions: `assertDev()` gate, service-role Supabase client.
+
+- [ ] **Step 1: Create the route file**
+
+`app/api/admin/backfill-sizes/route.js`:
+
+```js
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { assertDev } from "../_gate.js";
+import { loadActiveStores } from "../../../lib/stores.js";
+import { fetchStoreProducts } from "../../../lib/shopifyFetch.js";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
+
+// One-shot backfill of the products.size column for every active store.
+// Re-fetches via the same listing-endpoint path the cron uses, so the
+// parsed `sizes` come from `normalizeProduct` (which calls parseSizes
+// internally). Writes a scoped UPDATE — touches only the `size` column,
+// never `name`/`price`/`available`/etc. — to keep this idempotent and
+// safe to re-run.
+//
+// Dev-only: middleware.js returns 404 for `/api/admin/*` in production,
+// and assertDev() is a second gate inside the handler.
+export async function POST() {
+  const gate = assertDev();
+  if (gate) return gate;
+
+  const stores = await loadActiveStores();
+  const results = [];
+  let totalProcessed = 0;
+  let totalUpdated = 0;
+  let totalErrors = 0;
+
+  for (const store of stores) {
+    let processed = 0;
+    let updated = 0;
+    let errors = 0;
+    let fetchError = null;
+
+    try {
+      const products = await fetchStoreProducts(store);
+      for (const p of products) {
+        processed++;
+        const sizeValue =
+          p.sizes && p.sizes.length > 0 ? p.sizes.join(" · ") : null;
+        const { error } = await supabase
+          .from("products")
+          .update({ size: sizeValue })
+          .eq("store_domain", store.domain)
+          .eq("handle", p.handle);
+        if (error) {
+          errors++;
+          console.error(
+            `backfill-sizes: update failed for ${store.domain}/${p.handle}:`,
+            error.message,
+          );
+        } else {
+          updated++;
+        }
+      }
+    } catch (e) {
+      fetchError = e?.message ?? String(e);
+      errors++;
+      console.error(
+        `backfill-sizes: fetch failed for ${store.domain}:`,
+        fetchError,
+      );
+    }
+
+    results.push({
+      domain: store.domain,
+      processed,
+      updated,
+      errors,
+      fetchError,
+    });
+    totalProcessed += processed;
+    totalUpdated += updated;
+    totalErrors += errors;
+  }
+
+  return NextResponse.json({
+    totalProcessed,
+    totalUpdated,
+    totalErrors,
+    results,
+  });
+}
+```
+
+- [ ] **Step 2: Smoke-test the route locally**
+
+In one terminal:
+
+```bash
+npm run dev
+```
+
+In another:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/backfill-sizes -i
+```
+
+Expected response: a JSON body with `totalProcessed`, `totalUpdated`, and a `results` array — one entry per active store, each showing per-store counts. Errors should be zero for healthy stores.
+
+Verify the column is populated in Supabase via SQL Editor:
+
+```sql
+SELECT store_domain, count(*) total, count(size) with_size
+FROM products
+WHERE available = true AND hidden = false
+GROUP BY store_domain
+ORDER BY store_domain;
+```
+
+Expected: `with_size / total` should be high (~85-100%) for every store, matching the validated coverage from the pre-implementation survey.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add app/api/admin/backfill-sizes/route.js
+git commit -m "feat(admin): one-shot backfill route for products.size"
+```
+
+---
+
+## Task 9: Admin backfill UI page
+
+**Files:**
+- Create: `app/admin/backfill-sizes/page.js`
+
+Minimal dev-only page. A button that POSTs to the API route and renders the results table. Matches the visual minimalism of the existing admin pages.
+
+- [ ] **Step 1: Create the page file**
+
+`app/admin/backfill-sizes/page.js`:
+
+```jsx
+"use client";
+
+import { useState } from "react";
+
+export default function BackfillSizesPage() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function run() {
+    setRunning(true);
+    setResult(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/backfill-sizes", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      setResult(data);
+    } catch (e) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <main
+      style={{
+        padding: 24,
+        maxWidth: 720,
+        margin: "0 auto",
+        fontFamily: "monospace",
+        color: "#111",
+      }}
+    >
+      <h1 style={{ fontSize: 18, marginBottom: 8 }}>Backfill sizes</h1>
+      <p style={{ fontSize: 13, lineHeight: 1.6, color: "#444" }}>
+        One-shot: re-fetch every active store via the products listing endpoint
+        and write the parsed size into <code>products.size</code>. Safe to
+        re-run. Touches only the <code>size</code> column.
+      </p>
+
+      <button
+        onClick={run}
+        disabled={running}
+        style={{
+          marginTop: 16,
+          padding: "10px 20px",
+          fontFamily: "inherit",
+          fontSize: 12,
+          border: "1px solid #111",
+          background: running ? "#eee" : "#111",
+          color: running ? "#888" : "#fff",
+          cursor: running ? "default" : "pointer",
+        }}
+      >
+        {running ? "Running…" : "Start backfill"}
+      </button>
+
+      {error && (
+        <pre
+          style={{
+            marginTop: 16,
+            padding: 12,
+            background: "#fee",
+            color: "#900",
+            fontSize: 12,
+          }}
+        >
+          {error}
+        </pre>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 24 }}>
+          <p style={{ fontSize: 13 }}>
+            <strong>{result.totalUpdated}</strong> / {result.totalProcessed}{" "}
+            products updated · {result.totalErrors} errors
+          </p>
+          <table
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              borderCollapse: "collapse",
+              width: "100%",
+            }}
+          >
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+                <th style={{ padding: "6px 8px" }}>Domain</th>
+                <th style={{ padding: "6px 8px" }}>Processed</th>
+                <th style={{ padding: "6px 8px" }}>Updated</th>
+                <th style={{ padding: "6px 8px" }}>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.results.map((r) => (
+                <tr
+                  key={r.domain}
+                  style={{ borderBottom: "1px solid #eee" }}
+                  title={r.fetchError || ""}
+                >
+                  <td style={{ padding: "6px 8px" }}>{r.domain}</td>
+                  <td style={{ padding: "6px 8px" }}>{r.processed}</td>
+                  <td style={{ padding: "6px 8px" }}>{r.updated}</td>
+                  <td
+                    style={{
+                      padding: "6px 8px",
+                      color: r.errors > 0 ? "#900" : "#444",
+                    }}
+                  >
+                    {r.errors}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </main>
+  );
+}
+```
+
+- [ ] **Step 2: Verify the page renders locally**
+
+With `npm run dev` running, open `http://localhost:3000/admin/backfill-sizes` in a browser. Click the button. The page should disable the button while running and render the results table when done.
+
+- [ ] **Step 3: Confirm the route 404s in production**
+
+This is covered by `middleware.js` (`/admin/:path*` returns 404 when `NODE_ENV === "production"`) and is not something to test from a dev session. The convention is the same as every other route under `app/admin/*` and `app/api/admin/*` — confirmed by the surveyed admin routes in this repo (see Task 8's reference to `_gate.js`).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/admin/backfill-sizes/page.js
+git commit -m "feat(admin): dev-only UI to trigger products.size backfill"
+```
+
+---
+
+## Task 10: PR description — deploy sequence
+
+**Files:**
+- Modify: the PR description on GitHub (no repo file change)
+
+The PR contains a schema migration that must be applied to Supabase before the app code reads the new column. Document the exact sequence so future-you (or a teammate) doesn't merge before the column exists.
+
+- [ ] **Step 1: Update the PR description with this deploy sequence**
+
+Append to the PR description:
+
+```markdown
+## Deploy sequence
+
+Apply these steps in order. Steps 1 and 2 happen on Supabase **before** the merge so production never reads a column that doesn't exist.
+
+1. **Apply the schema migration** via Supabase SQL Editor.
+   Paste the contents of `scripts/sql/2026-05-27-add-products-size.sql` into the SQL Editor and run. Verify with:
+   ```sql
+   SELECT column_name, data_type FROM information_schema.columns
+   WHERE table_name = 'products' AND column_name = 'size';
+   ```
+2. **(Optional but recommended)** Run the backfill locally to populate `products.size` for all 7,280 existing rows before merge. With `npm run dev` running, visit `http://localhost:3000/admin/backfill-sizes` and click the button. Takes ~5 minutes. Without this step, sizes populate gradually as the hourly cron runs Step-1 sync — first cron run after merge covers everything, so production has a 0-60 minute transition window where the SIZE block is empty (or `ONE SIZE` for bags via the L3 fallback).
+3. **Merge the PR.** Vercel auto-deploys. The new PDP reads `products.size` and renders correctly.
+4. **Verify on Vercel preview before merging:** see the five product-specific smoke checks in the verification section below.
+```
+
+- [ ] **Step 2: No commit — this is a GitHub PR description change**
+
+---
+
+## Verification
+
+End-to-end checks on the Vercel preview deployment. The redesign spec's checklist in `docs/superpowers/specs/2026-05-27-desktop-pdp-redesign-design.md:215-238` covers structural cases. Add these size-specific checks:
+
+### Five product smoke checks
+
+These are the exact examples from the user's bug report. After Task 10 step 2 (backfill) completes, open each PDP on the Vercel preview and verify the SIZE block:
+
+1. **Seyswardrobe LOEWE Amazona handbag** → `SIZE: ONE SIZE` (was: `WOMAN / B`).
+   `/product/loewe-amazona-handbag?store=seyswardrobe.fr`
+
+2. **Seyswardrobe Chrome Hearts thermal longsleeve** (regression check for the Size-option lookup) → `SIZE: S` (was: `S / MAN / A`).
+   `/product/chrome-hearts-thermal-longsleeve?store=seyswardrobe.fr`
+
+3. **L'Obscur A.F Vandevorst SS12 wedge boots** → `SIZE: 40` (was: empty).
+   `/product/new-arrival-a-f-vandevorst-ss12-open-toe-leather-wedge-boots-with-side-knots-runway?store=lobscur.com`
+
+4. **dot Comme Junya Watanabe Floral Spliced Dress** → `SIZE: S` (was: empty).
+   `/product/junya-watanabe-floral-spliced-dress?store=www.dotcomme.net`
+
+5. **Grain de Sell Miu Miu SS2001 cotton skirt** → `SIZE: 42 IT` (was: empty). Note: dual-system display `"42 IT / S"` is deferred to a Phase 2 follow-up.
+   `/product/miu-miu-ss2001-pockets-cotton-skirt?store=graindesell.shop`
+
+### Cosmetic check
+
+On any PDP, the line below the buy button reads only `• AVAILABLE` (or `• SOLD`) — no `· AT {STORE}` suffix.
+
+### Coverage spot-check via SQL
+
+After the backfill runs, verify per-store coverage matches the validated targets:
+
+```sql
+SELECT
+  store_domain,
+  count(*) total,
+  count(size) with_size,
+  round(100.0 * count(size) / count(*), 1) pct
+FROM products
+WHERE available = true AND hidden = false
+GROUP BY store_domain
+ORDER BY store_domain;
+```
+
+Expected (rounded to nearest %):
+
+| Store | Expected `pct` |
+|---|---|
+| atdawnparis.com | 100% |
+| dolcevitahub.com | 100% |
+| escoparis.com | 96-100% |
+| graindesell.shop | 80-90% |
+| lesarchivesparis.com | 80-90% |
+| lobscur.com | 85-95% |
+| numero13vintage.com | 100% |
+| nuovo-paris.com | 100% (was 30% before the unlabeled-triplet pattern landed) |
+| seyswardrobe.fr | 85-90% (remaining ~10% are bags/accessories caught by L3, so PDP shows `ONE SIZE`) |
+| www.dotcomme.net | 95-100% |
+| yourgarmentz.com | 70-80% (remaining are bags caught by L3) |
+
+If any store falls noticeably below these ranges, inspect a sample of its missed `body_html` content to see whether a new pattern has emerged.
+
+### Unit tests
+
+```bash
+npm test
+```
+
+Expected: every test PASSES, including the new `parseSizes` block (~30 cases) and the new `sizesFromDb` block (~9 cases).
+
+### "Honest empties" are still honest
+
+The eight products the user verified as legitimately sizeless should still render with no SIZE block — those are products whose Supabase category is `Tops`/`Jackets & Coats`/`Dresses & Skirts`/`Sets` AND whose `size` column is `NULL`. Spot-check one:
+
+`https://lesarchivesparis.com/products/la-perla-1990s-silk-floral-blouse` on the preview — `SIZE` block absent, page renders cleanly to the price + buy button.
+
+---
+
+## Out of scope (deferred or already shipped)
+
+- **Dual-system display** (e.g. `"42 IT / S"` for Grain de Sell). Phase 2. Validated as easy to add later once the per-store parsers prove stable in production.
+- **Mobile redesign.** Mobile branch reads the same `sizes` array — change is a no-op there because `sizesFromDb` returns the same shape `formatSizes` returned. The existing `sizes.join(", ")` at `app/product/[handle]/page.js:71` continues to render correctly.
+- **A new size column per language unit** (e.g. `size_it`, `size_fr`). Validated as unnecessary — the seller's chosen format passes through verbatim, which is the editorial bar.
+- **Re-categorising uncategorized products** (e.g. the LV Ellipse bag whose `category` is currently NULL). Out of scope — that's an enrichment-coverage issue and lives elsewhere.
+
+---
+
+## Self-review
+
+- **Spec coverage:** Every numbered bug in the user's report has a task — (1) seyswardrobe garbage → Task 2 L1 + Task 5; (2) `Default Title` stores → Task 2 L2a; (3) nuovo-paris unlabeled → Task 2 L2b; (4) cosmetic suffix → Task 7. The bag-fallback (`ONE SIZE`) lives in Task 5's `sizesFromDb`. Migration in Task 1, wiring in Tasks 3-4, backfill in Tasks 8-9, verification in the Verification section.
+
+- **Placeholders:** Every code block is concrete. No "implement appropriate validation" or "add error handling later." Every regex, every selector, every SQL statement is fully written.
+
+- **Type consistency:** `parseSizes` returns `string[] | null`. `parseSizeFromOptions` returns `string[] | null`. `parseSizeFromBody` returns `string[] | null`. `sizesFromDb` returns `string[] | null`. The `products.size` column is `TEXT`, joined with " · " on write and split on " · " on read. `ProductInfoPanel`'s existing prop contract (`sizes: string[] | null`) is unchanged. Names align (`sizes` everywhere on the wire, `size` only as the DB column name to match the single-column convention).
+
+- **Frequent commits:** 9 commits across 9 tasks (migration / parser / wire-in / cron / resolver / tests / cosmetic / backfill route / backfill UI). Each is independently revertable.
