@@ -37,6 +37,14 @@ export async function POST(request) {
   const indexFile = join(root, "content", "editorial", "index.js");
   const imgDir = join(root, "public", "editorial", slug);
 
+  // slug "index" resolves slugFile to the registry itself — never unlink it.
+  if (slugFile === indexFile) {
+    return NextResponse.json(
+      { error: "refusing to delete the editorial registry (reserved slug)" },
+      { status: 400 }
+    );
+  }
+
   // Step 1: read + unpatch index.js, write atomically. Keep the original in
   // memory for rollback if the slug-file deletion later fails.
   let originalIndex;
