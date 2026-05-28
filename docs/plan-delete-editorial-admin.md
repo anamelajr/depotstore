@@ -52,13 +52,30 @@ Mirror the conventions in `app/api/admin/save/route.js` and
      **atomically** via tmp + `fs.rename` (the `save-homepage-edit` pattern:
      `${file}.tmp.${pid}.${Date.now()}`, `unlink` tmp on failure). If this fails →
      return 500, nothing else touched.
-  2. `fs.unlink(content/editorial/<slug>.js)`. If it fails (e.g. ENOENT) treat as
-     non-fatal — the registry entry is already gone, which is what matters for the site.
+  2. `fs.unlink(content/editorial/<slug>.js)`. **ENOENT is benign** — the file is
+     already gone, so the delete is effectively done (treat as success/idempotent). **Any
+     other unlink error (EACCES, EBUSY, EPERM, …) is blocking → return 500.** Rationale
+     (Codex finding 2): the admin list page discovers entries by reading
+     `content/editorial/*.js` from disk (`loadEntries()` in `page.js`), NOT from the
+     `ENTRIES` registry. If the slug file survives a non-ENOENT failure, the entry stays
+     visible in admin while it's already gone from the public site — a silent partial
+     delete. Returning 500 surfaces that instead of falsely reporting `ok`.
   3. `fs.rm(public/editorial/<slug>/, { recursive: true, force: true })` — best-effort,
-     non-fatal (matches save route's "image dir failure is non-fatal" stance).
-- Return `{ ok: true, slug, indexUpdated, slugFileRemoved, imagesRemoved }`; report which
-  steps completed so a partial failure is visible. 400 on bad slug, 500 on index-write
-  failure.
+     non-fatal (matches save route's "image dir failure is non-fatal" stance). `force:
+     true` already swallows ENOENT, so a missing image dir is not an error.
+- Return `{ ok: true, slug, indexUpdated, imagesRemoved }` on full success. 400 on bad
+  slug; 500 on index-write failure (step 1) OR non-ENOENT slug-file deletion failure
+  (step 2), with a descriptive `error` message.
+
+**Concurrency assumption (Codex finding 1 — accepted, not mitigated):** step 1 is a
+read-modify-write of `index.js` and is NOT serialized against a second concurrent delete.
+This is the *same* single-writer assumption the existing `save` route already relies on
+(`patchEditorialIndex` reads → patches → writes the same file). It is safe here because
+the tool is dev-only (`middleware.js` 404s `/admin/*` in prod) and driven by one operator
+clicking one `confirm()`-gated button at a time; there is no realistic path to two
+simultaneous deletes, and any corruption is recoverable via git + the Vercel-preview gate
+before merge. A lock/queue would add a pattern that exists nowhere else in this codebase
+to defend against a situation this tool can't be in — deliberately out of scope.
 
 ### 3. List page wiring
 
@@ -71,7 +88,9 @@ small client component.
     accent used in `CuratedProductsPanel.js`), on `#2a2a2c`/transparent.
   - onClick: `confirm(`Delete "${title}"? Removes the entry, its file, and its images. This cannot be undone.`)`
     → `POST /api/admin/delete-editorial` with `{ slug }` → on `ok`, `router.refresh()`
-    (from `next/navigation`) to re-render the list; on error, `alert(data.error)`.
+    (from `next/navigation`) to re-render the list; on non-`ok` (incl. the new 500 from a
+    blocked slug-file deletion), `alert(data.error)` so a partial/failed delete is visible
+    rather than silently leaving the row in place.
 - **Edit** `app/admin/editorial/page.js`: the row is currently a single `<Link>`
   wrapping all content. Restructure each `<li>` to a flex container with the `<Link>`
   (title/slug/date) as one child and `<DeleteEntryButton>` as a **sibling** — NOT nested
@@ -107,8 +126,13 @@ small client component.
    array handling **in a throwaway git state** (or test with two dummy entries so the
    real one is untouched): remove one of two → array keeps the other with correct commas;
    remove the last → `const ENTRIES = [];`.
-5. Unit test (if added): `node --test` (or the repo's test runner) over
+5. **Blocked-deletion surfacing (finding 2):** simulate a non-ENOENT unlink failure
+   (e.g. `chmod 000` the slug file's parent dir, or temporarily make the file read-only on
+   a system that enforces it) → click Delete → the route returns 500 and the UI shows
+   `alert(error)`; the row does NOT silently disappear. Confirm a missing image dir
+   (`force: true`) still yields a clean `ok`.
+6. Unit test (if added): `node --test` (or the repo's test runner) over
    `unpatchEditorialIndex` — single-entry→empty, middle removal, first/last removal,
    idempotent-when-absent, substring-safety (`rick` vs `rickOwens`).
-6. Publish check (optional, end-to-end): after a delete, use the existing Publish flow
+7. Publish check (optional, end-to-end): after a delete, use the existing Publish flow
    and confirm the resulting PR diff shows the file deletions staged.
