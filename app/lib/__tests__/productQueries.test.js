@@ -103,9 +103,9 @@ describe("PRODUCT_ROW_SELECT", () => {
     expect(PRODUCT_ROW_SELECT_WITH_CATEGORY).toBe(`${PRODUCT_ROW_SELECT}, category`);
   });
 
-  it("base list covers the 10 columns every product surface needs", () => {
+  it("base list covers the 11 columns every product surface needs", () => {
     for (const col of [
-      "name", "title", "brand", "price", "image_url",
+      "name", "title", "brand", "price", "image_url", "image_url_2",
       "store_name", "store_domain", "product_url", "available", "handle",
     ]) {
       expect(PRODUCT_ROW_SELECT).toMatch(new RegExp(`\\b${col}\\b`));
@@ -114,14 +114,14 @@ describe("PRODUCT_ROW_SELECT", () => {
 });
 
 describe("mapProductRow", () => {
-  it("emits the exact 11 camelCase keys (no id, no subcategory)", () => {
+  it("emits the exact 12 camelCase keys (no id, no subcategory)", () => {
     const out = mapProductRow({
       name: "n", title: "t", brand: "b", price: "€10",
-      image_url: "u", store_name: "s", store_domain: "d.fr",
+      image_url: "u", image_url_2: "u2", store_name: "s", store_domain: "d.fr",
       product_url: "p", available: true, handle: "h", category: "Tops",
     });
     expect(Object.keys(out).sort()).toEqual([
-      "available", "brand", "category", "handle", "imageUrl",
+      "available", "brand", "category", "handle", "imageUrl", "imageUrl2",
       "name", "price", "productUrl", "storeDomain", "storeName", "title",
     ]);
   });

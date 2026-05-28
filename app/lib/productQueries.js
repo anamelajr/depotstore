@@ -30,7 +30,7 @@ export function withVisibility(query) {
 // overlap heavily, but unifying them would tangle the SQL contract with
 // the JS read contract.
 export const PRODUCT_ROW_SELECT =
-  "name, title, brand, price, image_url, store_name, store_domain, product_url, available, handle";
+  "name, title, brand, price, image_url, image_url_2, store_name, store_domain, product_url, available, handle";
 
 // Feed surfaces (`/api/products`) need `category` for filtering chips on
 // the card. Editorial / homepage / MoreFromStore surfaces don't render it.
@@ -54,6 +54,7 @@ export function mapProductRow(row) {
     brand: row.brand,
     price: row.price,
     imageUrl: row.image_url,
+    imageUrl2: row.image_url_2,
     storeName: row.store_name,
     storeDomain: row.store_domain,
     productUrl: row.product_url,
@@ -63,11 +64,12 @@ export function mapProductRow(row) {
   };
 }
 
-// Columns returned by both get_interleaved_products and
-// count_interleaved_products. Source of truth lives in
-// scripts/sql/2026-05-21-interleaved-rpcs.sql (RETURNS TABLE block, ~lines
-// 21–35 for get_; count_ returns bigint). `name` is mandatory: ProductCard
-// falls back to it when `title` is null (CLAUDE.md invariant).
+// Columns returned by get_interleaved_products. Source of truth lives in
+// the SQL migrations: scripts/sql/2026-05-21-interleaved-rpcs.sql defines
+// the original RETURNS TABLE; scripts/sql/2026-05-28-add-image-url-2.sql
+// adds image_url_2. (count_interleaved_products returns bigint and is not
+// described here.) `name` is mandatory: ProductCard falls back to it when
+// `title` is null (CLAUDE.md invariant).
 export const INTERLEAVED_RPC_RETURN_COLUMNS = Object.freeze([
   "id",
   "handle",
@@ -76,6 +78,7 @@ export const INTERLEAVED_RPC_RETURN_COLUMNS = Object.freeze([
   "brand",
   "price",
   "image_url",
+  "image_url_2",
   "product_url",
   "available",
   "store_domain",

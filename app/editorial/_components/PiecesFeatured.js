@@ -1,4 +1,5 @@
 import Link from "next/link";
+import HoverSwapImage from "../../components/HoverSwapImage.js";
 
 function EditorialProductCard({ product }) {
   const href =
@@ -8,13 +9,12 @@ function EditorialProductCard({ product }) {
   const displayTitle = product.title ?? product.name ?? "Untitled";
   const card = (
     <div className="group">
-      <div className="aspect-[4/5] w-full overflow-hidden bg-zinc-200">
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-zinc-200">
         {product.imageUrl ? (
-          <img
-            src={product.imageUrl}
+          <HoverSwapImage
+            imageUrl={product.imageUrl}
+            imageUrl2={product.imageUrl2}
             alt={displayTitle}
-            className="h-full w-full object-cover"
-            loading="lazy"
           />
         ) : null}
       </div>

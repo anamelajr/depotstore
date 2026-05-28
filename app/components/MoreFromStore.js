@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
+import HoverSwapImage from "./HoverSwapImage.js";
 import {
   withVisibility,
   PRODUCT_ROW_SELECT,
@@ -46,14 +47,13 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
             ? `/product/${p.handle}?store=${p.storeDomain}&available=${p.available !== false}`
             : null;
           const card = (
-            <div className="block">
-              <div className="aspect-[3/4] w-full overflow-hidden bg-zinc-100">
+            <div className="group block">
+              <div className="relative aspect-[3/4] w-full overflow-hidden bg-zinc-100">
                 {p.imageUrl ? (
-                  <img
-                    src={p.imageUrl}
+                  <HoverSwapImage
+                    imageUrl={p.imageUrl}
+                    imageUrl2={p.imageUrl2}
                     alt={p.title ?? p.name ?? ""}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
                   />
                 ) : null}
               </div>
