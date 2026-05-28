@@ -59,16 +59,13 @@ export function patchEditorialIndex(source, slug) {
     );
   }
 
-  // 1. Insert import after the last existing import line.
+  // 1. Insert import after the last existing import line. When the registry
+  // is empty (no imports — e.g. after deleting the last entry) there's no
+  // anchor to insert after, so prepend at the top of the file.
   const lines = source.split("\n");
   let lastImportIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].startsWith("import ")) lastImportIdx = i;
-  }
-  if (lastImportIdx === -1) {
-    throw new Error(
-      "patchEditorialIndex: no existing import line found in index.js"
-    );
   }
   lines.splice(lastImportIdx + 1, 0, importLine);
 

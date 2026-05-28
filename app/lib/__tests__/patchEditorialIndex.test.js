@@ -93,4 +93,27 @@ describe("unpatchEditorialIndex", () => {
     expect(removed).toContain("const ENTRIES = [a];");
     expect(removed).not.toContain('import newEntry from "./new-entry.js";');
   });
+
+  // Deleting the last entry leaves an import-less registry; the add path
+  // (patchEditorialIndex) must still be able to insert into it rather than
+  // throwing — otherwise creating any new editorial would break.
+  it("delete-last then add: empty registry stays creatable", () => {
+    const base = makeIndex(['import only from "./only.js";'], ["only"]);
+    const emptied = unpatchEditorialIndex(base, "only");
+    expect(emptied).toContain("const ENTRIES = [];");
+    expect(emptied).not.toContain("import ");
+
+    const readded = patchEditorialIndex(emptied, "fresh");
+    expect(readded).toContain('import fresh from "./fresh.js";');
+    expect(readded).toContain("const ENTRIES = [fresh];");
+  });
+});
+
+describe("patchEditorialIndex — empty registry", () => {
+  it("inserts at the top when there are no existing imports", () => {
+    const src = "\nconst ENTRIES = [];\n";
+    const out = patchEditorialIndex(src, "first");
+    expect(out.startsWith('import first from "./first.js";')).toBe(true);
+    expect(out).toContain("const ENTRIES = [first];");
+  });
 });
