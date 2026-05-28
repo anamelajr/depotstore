@@ -29,8 +29,9 @@ The data layer currently stores only a single `image_url` per product, so this i
    1. `shopifyFetch.js` — extract `images[1]` with dedup guard.
    2. `cron/route.js` — add `image_url_2` to Step-1 upsert (plain overwrite — NOT through `enrich_product` RPC).
    3. `productQueries.js` — single source of truth: SELECT, mapper, RPC column list.
-   4. 4 card components — render image 2 with crossfade.
-   5. 2 test fixtures — update key/column count assertions.
+   4. `app/lib/useHoverCapable.js` — new client hook gating the second image's mount to hover-capable pointers.
+   5. 4 card components — render image 2 with crossfade, gated on `useHoverCapable`.
+   6. 2 test fixtures — update key/column count assertions.
 4. **Vercel preview build** — confirm green.
 5. **Manual cron fire on preview** — `curl -H "Authorization: Bearer $CRON_SECRET" "$PREVIEW_URL/api/cron"` to backfill `image_url_2` immediately rather than waiting an hour.
 6. **Verify on preview** (desktop hover + phone tap).
@@ -45,7 +46,9 @@ The data layer currently stores only a single `image_url` per product, so this i
 Contains a single `BEGIN; … COMMIT;` block:
 1. `ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_url_2 TEXT;`
 2. `DROP FUNCTION IF EXISTS public.get_interleaved_products(…)` then `CREATE OR REPLACE` with `image_url_2 text` added to the `RETURNS TABLE` shape and to both inner `SELECT` lists (in `ranked` CTE and final `SELECT`). DROP is required because `CREATE OR REPLACE FUNCTION` rejects return-type changes.
-3. `DROP` + `CREATE` of `count_interleaved_products` for parity (its `bigint` return is unchanged, but parity keeps both definitions in sync).
+3. **`count_interleaved_products` is NOT touched.** Its `bigint` return and signature are unchanged (no `image_url_2`), so it needs no migration. Do **not** DROP/recreate it "for parity" — that only risks resetting its grants/owner for zero benefit. (Earlier draft proposed a parity DROP; removed per round-1 review.)
+
+**Grant/owner assumption (sharp edge).** `DROP`+`CREATE` on `get_interleaved_products` resets the function's ACL and owner to defaults. This is safe **only because** no SQL migration in `scripts/sql/` defines any `GRANT`/`REVOKE` on these functions — the feed relies on Postgres's default `EXECUTE` grant to `PUBLIC` (which `anon`/`authenticated` inherit), restored automatically on `CREATE`. This matches the proven May-21 migration. Before applying: confirm production has no manually-added custom grant or `REVOKE PUBLIC` on `get_interleaved_products` (e.g. `\df+` in the SQL editor, or check `pg_proc.proacl`). If a custom grant exists, capture and re-apply it inside the same transaction.
 
 **RPC body source: the live production definition, NOT the git file.** Use the `pg_get_functiondef()` output captured in Phase 1 as the base. The git file `scripts/sql/2026-05-21-interleaved-rpcs.sql` is one possible historical state; the live function may have been hand-edited since (CLAUDE.md: "DB objects not in git. Confirm full column list against production before applying any change"). Apply only the minimum delta: add `image_url_2 text` to the `RETURNS TABLE`, add `image_url_2` to both `SELECT` lists (`ranked` CTE + final SELECT), and match the live parameter signature in the `DROP FUNCTION` line.
 
@@ -78,6 +81,33 @@ Three small edits:
 
 `PRODUCT_ROW_SELECT_WITH_CATEGORY` composes from the base string — no edit needed.
 
+### Shared hook: `useHoverCapable` (new file)
+
+**Path:** `app/lib/useHoverCapable.js` (new) — a small client hook that returns whether the device is a real hover-capable, fine-pointer device. This **gates the mount of the second `<img>`** so mobile/touch devices never insert it into the DOM and therefore never fetch `image_url_2` (the bandwidth fix from round-1 review).
+
+```js
+"use client";
+import { useEffect, useState } from "react";
+
+const QUERY = "(hover: hover) and (pointer: fine)";
+
+export function useHoverCapable() {
+  // Must start false so SSR and first client paint agree (no hydration mismatch).
+  // Image 2 is decorative, so deferring its mount to post-hydration on desktop is fine.
+  const [hoverCapable, setHoverCapable] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(QUERY);
+    const update = () => setHoverCapable(mql.matches);
+    update();
+    mql.addEventListener("change", update); // handles tablet + mouse plugged in/out
+    return () => mql.removeEventListener("change", update);
+  }, []);
+  return hoverCapable;
+}
+```
+
+Each of the four card components calls `const hoverCapable = useHoverCapable();` and adds it as the first condition on the second image. All four are already `"use client"`, so no component conversion is needed.
+
 ### Card components (pattern repeated 4 times)
 
 The transformation is the same across all four files. The current shape is:
@@ -93,7 +123,7 @@ Becomes:
 ```jsx
 <div className="relative aspect-[4/5] … overflow-hidden …">
   <img src={imageUrl} alt={…} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-  {imageUrl2 && imageUrl2 !== imageUrl ? (
+  {hoverCapable && imageUrl2 && imageUrl2 !== imageUrl ? (
     <img
       src={imageUrl2}
       alt=""
@@ -101,11 +131,16 @@ Becomes:
       loading="lazy"
       decoding="async"
       fetchPriority="low"
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
       className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-[350ms] ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100"
     />
   ) : null}
 </div>
 ```
+
+The `hoverCapable` mount gate is the **primary** desktop-only mechanism (it prevents the mobile fetch). The `[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100` CSS variant is retained as belt-and-braces: it keeps image 2 hidden during the brief post-hydration window before `useEffect` runs, and guards the edge case where the media-query state flips between renders. Keeping both is intentional, not redundant cruft.
+
+**Broken-image fallback (`onError`).** A stale Shopify CDN URL or transient 404 on `image_url_2` would otherwise reveal a blank/broken image on hover — and because image 2 is hidden until interaction, it evades page-load smoke checks. The `onError` handler hides the second `<img>` outright; image 1 (the base layer underneath) then shows through unchanged on hover. This is a DOM-node hide (`e.currentTarget.style.display`), not React state, so it drops into all four call sites — including the inline-mapped editorial/MoreFromStore grids — without extracting a stateful sub-component. No `onLoad`/load-success gate is needed: an *unloaded* (not errored) image 2 at `opacity-100` simply renders transparent and image 1 shows through until it finishes loading, so only the genuine error case requires handling.
 
 > **React API note:** this project runs React 19.2.4 (`package.json`). Use camelCase `fetchPriority`, NOT lowercase `fetchpriority` — React 19 ignores the lowercase form (passes through with deprecation warning on every card render).
 
@@ -116,7 +151,7 @@ Per-file notes:
 - **`app/editorial/_components/PiecesFeatured.js`** (lines 11-20): wrapper already has `aspect-[4/5] w-full overflow-hidden bg-zinc-200` — add `relative`. Parent (line 10) already has `group`. `imageUrl2` flows in via the same productQueries path (confirmed: `fetchEditorialProducts.js` lines 5-6 import `PRODUCT_ROW_SELECT` + `mapProductRow`).
 - **`app/editorial/_components/MoreFromDesigner.js`** (lines 11-20): identical edit to PiecesFeatured.
 
-**Tailwind hover gate decision:** arbitrary variant `[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100` inline, not a global `tailwind.config` change. This project uses Tailwind v4 with CSS-first config (no `tailwind.config.js`); changing global hover behavior would silently affect every existing `hover:` utility across the app. Inline keeps the gate obvious at the call site. The `_` inside `[…]` is Tailwind's escape for spaces inside arbitrary variants — required syntax.
+**Hover gate — two layers:** the `useHoverCapable` JS hook is the **primary** gate (controls whether image 2 mounts at all → no mobile fetch). The CSS arbitrary variant `[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100` is the **secondary/visual** gate (controls the crossfade). The CSS variant is used inline, not as a global `tailwind.config` change: this project uses Tailwind v4 with CSS-first config (no `tailwind.config.js`), so changing global hover behavior would silently affect every existing `hover:` utility across the app. Inline keeps the gate obvious at the call site. The `_` inside `[…]` is Tailwind's escape for spaces inside arbitrary variants — required syntax.
 
 ### Test fixtures that will break
 
@@ -148,7 +183,7 @@ Both need updating in the same commit so CI stays green:
    ```
    Expect ~50%+ of rows with `has2 = true` (varies by store).
 7. **Desktop hover** — open preview feed in Chrome, hover a card with `image_url_2`; expect ~350ms crossfade to image 2, fade back on mouse-leave, no scale.
-8. **Touch fallback** — open preview on a phone, tap a card without navigating; expect no flash of image 2. If a flash appears, the arbitrary variant didn't gate — investigate Tailwind v4 arbitrary-variant compilation.
+8. **Touch fallback (mount + bandwidth gate)** — open preview on a phone (or Chrome devtools device emulation with touch + coarse pointer). Inspect the DOM: the second `<img>` must be **absent** from every card (the `useHoverCapable` gate returned false). Check the Network panel while scrolling the feed: there must be **zero requests for `image_url_2` URLs**. Also tap a card without navigating — no flash of image 2. If image 2 appears in the DOM or fetches, the `useHoverCapable` gate failed — check the SSR-false initial state and the `matchMedia` query string.
 9. **Single-image fallback** — find a row where `image_url_2 IS NULL`, hover it; expect current single-image behavior, no console errors. Inspect DOM: the second `<img>` should not be in the tree at all.
 10. **Sold overlay** — find a card with `available = false` AND `image_url_2 IS NOT NULL`; hover; SOLD overlay stays on top of both images.
 
@@ -167,6 +202,6 @@ Both need updating in the same commit so CI stays green:
 
 ## Open risks
 
-- **Bandwidth on mobile lazy lists** — `loading="lazy"` defers image 2 fetch until the card scrolls near viewport. With ~42 cards/page, roughly 2× image bandwidth at peak. Mobile users pay this even though hover never fires for them. Acceptable; mitigate with a `useMediaQuery` render gate only if anyone reports data-plan complaints.
+- **Bandwidth on mobile lazy lists — addressed.** Earlier draft accepted ~2× image bandwidth on mobile (image 2 rendered everywhere, opacity-gated). Round-1 review flagged this as a real regression on the core feed. Resolved by the `useHoverCapable` mount gate: mobile/touch devices never insert the second `<img>`, so they never fetch `image_url_2`. Verify with mobile network inspection (no `image_url_2` requests) — see verification step 8. Residual desktop cost: image 2 mounts post-hydration (decorative, acceptable).
 - **Aspect-ratio drift** — all four card sites use `aspect-[4/5]` (or `aspect-[3/4]` on MoreFromStore) with `object-cover`, so no layout shift on hover. If a future card switches to `object-contain`, image 2's intrinsic aspect could differ from image 1's and produce a perceptible jump — out of scope today, but flagged.
 - **Shopify gallery reorders** — if a merchant reorders their gallery between syncs, the "second image" silently changes within an hour. This is correct behavior (we mirror Shopify), but worth knowing.
