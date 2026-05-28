@@ -238,13 +238,45 @@ export default function ProductGallery({ images, alt }) {
       {/* Hero (desktop) + swipe gallery (mobile) */}
       <div className="order-1 lg:order-none">
         {/* Desktop hero */}
-        <div className="hidden lg:flex lg:w-full lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:items-start lg:justify-center">
+        <div className="hidden lg:flex lg:relative lg:w-full lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:items-start lg:justify-center">
           <img
             ref={heroRef}
             src={activeSrc}
             alt={alt}
             className="h-full w-auto max-w-full object-contain"
           />
+          {multiple && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = Math.max(0, indexRef.current - 1);
+                  indexRef.current = next;
+                  setSelectedIndex(next);
+                }}
+                aria-label="Previous image"
+                className="absolute left-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full text-zinc-700/60 hover:text-zinc-900 hover:bg-zinc-100/70 transition-colors"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                  <path d="M12.5 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = Math.min(count - 1, indexRef.current + 1);
+                  indexRef.current = next;
+                  setSelectedIndex(next);
+                }}
+                aria-label="Next image"
+                className="absolute right-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full text-zinc-700/60 hover:text-zinc-900 hover:bg-zinc-100/70 transition-colors"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                  <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Mobile swipe gallery */}

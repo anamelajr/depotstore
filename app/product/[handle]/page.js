@@ -1,5 +1,8 @@
 import BackToFeedLink from "../../components/BackToFeedLink";
 import ProductGallery from "../../components/ProductGallery";
+import ProductBreadcrumb from "../../components/ProductBreadcrumb";
+import ProductInfoPanel from "../../components/ProductInfoPanel";
+import DesktopAboutSection from "../../components/DesktopAboutSection";
 import Accordion from "../../components/Accordion";
 import SaveShareRow from "../../components/SaveShareRow";
 import MoreFromStore from "../../components/MoreFromStore";
@@ -8,8 +11,7 @@ import Link from "next/link";
 
 export default async function ProductPage({ params, searchParams }) {
   const { handle } = await params;
-  const { store: storeDomain, available: availableParam } = await searchParams;
-  const available = availableParam !== "false";
+  const { store: storeDomain } = await searchParams;
 
   const detail = await resolveProductDetail({ handle, storeDomain });
 
@@ -17,14 +19,21 @@ export default async function ProductPage({ params, searchParams }) {
     return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
   }
 
-  const { images, sizes, price, brand, title, storeName, storeLocation, description } = detail;
+  const { images, sizes, price, brand, title, storeName, storeLocation, description, available } = detail;
 
   const productUrl = `https://${storeDomain}/products/${handle}`;
   const storeFeedHref = `/feed?store=${encodeURIComponent(storeDomain)}`;
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
-      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 lg:pt-16 lg:pb-10">
+      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 lg:pt-8 lg:pb-10">
+
+        {/* Desktop top utility row — back link left, breadcrumb right */}
+        <div className="hidden lg:flex items-center justify-between mb-6">
+          <BackToFeedLink className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-900 transition-colors" />
+          <ProductBreadcrumb brand={brand} title={title} />
+        </div>
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[88px_1fr_340px] lg:gap-16">
 
           <ProductGallery images={images} alt={title} />
@@ -59,9 +68,9 @@ export default async function ProductPage({ params, searchParams }) {
               >
                 {storeName} ›
               </Link>
-              {sizes && (
+              {sizes && sizes.length > 0 && (
                 <p className="mt-2 font-mono text-[11px] text-zinc-600">
-                  Size: {sizes}
+                  Size: {sizes.join(", ")}
                 </p>
               )}
             </div>
@@ -116,53 +125,23 @@ export default async function ProductPage({ params, searchParams }) {
             />
           </div>
 
-          {/* Desktop info column — preserved from previous design */}
-          <div className="hidden lg:block lg:order-none lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:pt-6">
-            {brand && (
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                {brand}
-              </p>
-            )}
-            <h1
-              className="mt-2 font-sans text-[clamp(22px,2.2vw,28px)] font-medium leading-[1.25] tracking-tight text-zinc-900"
-            >
-              {title}
-            </h1>
-            {price && (
-              <p className="mt-8 font-mono text-[13px] text-zinc-700">
-                {price}
-              </p>
-            )}
-            {!available && (
-              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-                Sold
-              </p>
-            )}
-            {description && (
-              <p
-                className="mt-10 font-sans text-[13px] leading-[1.7] text-zinc-600"
-              >
-                {description}
-              </p>
-            )}
-            <div className="mt-12">
-              <a
-                href={`${productUrl}?utm_source=depot`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-900 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-500 hover:decoration-zinc-500 transition-colors"
-              >
-                Shop &rarr;
-              </a>
-            </div>
-            <div className="mt-5">
-              <BackToFeedLink
-                className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-900 hover:decoration-zinc-900 transition-colors"
-              />
-            </div>
-          </div>
+          {/* Desktop info panel — right column */}
+          <ProductInfoPanel
+            brand={brand}
+            storeName={storeName}
+            title={title}
+            price={price}
+            sizes={sizes}
+            available={available}
+            storeDomain={storeDomain}
+            handle={handle}
+          />
 
         </div>
+
+        {/* Desktop about section — full-width below the grid */}
+        <DesktopAboutSection description={description} />
+
       </div>
     </div>
   );

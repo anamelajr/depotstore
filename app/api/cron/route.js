@@ -43,6 +43,13 @@ export async function GET(request) {
         available: p.available,
         synced_at: syncStart,
         description: p.rawDescription ?? null,
+        // Mechanical projection from Shopify — overwrites every run
+        // (unlike brand/title/category/subcategory, which are editorial
+        // and COALESCE-protected in Step 2). supabase-js converts the JS
+        // array to a Postgres `text[]` literal natively; do NOT
+        // JSON.stringify or join — that would stash literal '["S","M"]'
+        // text as the first array element instead.
+        size: p.sizes && p.sizes.length > 0 ? p.sizes : null,
       }));
 
       if (syncRows.length === 0) {
