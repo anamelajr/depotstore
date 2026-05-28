@@ -1,6 +1,7 @@
 import rickOwens from "./rick-owens.js";
+import reiTest from "./rei-test.js";
 
-const ENTRIES = [rickOwens];
+const ENTRIES = [rickOwens, reiTest];
 
 const BY_SLUG = new Map(ENTRIES.map((e) => [e.slug, e]));
 
