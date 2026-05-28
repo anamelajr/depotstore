@@ -39,6 +39,7 @@ export async function GET(request) {
         store_name: p.storeName,
         price: p.price,
         image_url: p.imageUrl,
+        image_url_2: p.imageUrl2,
         product_url: p.productUrl,
         available: p.available,
         synced_at: syncStart,

@@ -2,6 +2,7 @@
 
 import { track } from "@vercel/analytics";
 import Link from "next/link";
+import HoverSwapImage from "./HoverSwapImage.js";
 
 export default function ProductCard({ product }) {
   const {
@@ -10,6 +11,7 @@ export default function ProductCard({ product }) {
     brand,
     price: rawPrice,
     imageUrl,
+    imageUrl2,
     storeName,
     productUrl,
     available,
@@ -48,12 +50,7 @@ export default function ProductCard({ product }) {
       {/* Image */}
       <div className="relative aspect-[4/5] shrink-0 overflow-hidden bg-zinc-950">
         {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={displayTitle}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-            loading="lazy"
-          />
+          <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={displayTitle} />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-xs text-zinc-600">
             No image

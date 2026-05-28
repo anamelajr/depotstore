@@ -61,6 +61,11 @@ export function normalizeProduct(product, store) {
     ? product.images.map((img) => img?.src).filter(Boolean)
     : [];
   const imageUrl = images[0] ?? null;
+  // Second gallery image for the desktop hover-swap. Dedup at the source:
+  // Shopify occasionally re-uploads the same asset as images[1] (so
+  // images[1] === images[0]); collapse that to NULL once here rather than
+  // comparing URLs at every render site.
+  const imageUrl2 = images[1] && images[1] !== images[0] ? images[1] : null;
 
   const rawDescription =
     typeof product?.body_html === "string"
@@ -90,6 +95,7 @@ export function normalizeProduct(product, store) {
     name,
     price,
     imageUrl,
+    imageUrl2,
     images,
     storeName: store.storeName,
     storeDomain: store.domain,

@@ -9,7 +9,7 @@ vi.mock("../../../lib/productQueries.js", () => ({
   countInterleavedProducts: vi.fn(async () => ({ data: 0, error: null })),
   withVisibility: vi.fn((q) => q),
   PRODUCT_ROW_SELECT_WITH_CATEGORY:
-    "name,title,brand,price,image_url,store_name,store_domain,product_url,available,handle,category",
+    "name,title,brand,price,image_url,image_url_2,store_name,store_domain,product_url,available,handle,category",
   mapProductRow: vi.fn((row) => row),
 }));
 
