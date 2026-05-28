@@ -79,3 +79,52 @@ export function patchEditorialIndex(source, slug) {
   const newInner = inner ? `${inner}, ${ident}` : ident;
   return joined.replace(entriesRe, `const ENTRIES = [${newInner}];`);
 }
+
+// Counterpart to patchEditorialIndex: removes an entry's registration from
+// content/editorial/index.js. The import line and the ENTRIES identifier are
+// removed INDEPENDENTLY — the dangerous one-sided state (import gone but
+// ENTRIES still references the identifier) already throws a ReferenceError on
+// load, and is reachable through manual editing, so this helper must repair it
+// rather than no-op on it. Idempotent only when BOTH are already absent.
+export function unpatchEditorialIndex(source, slug) {
+  const ident = slugToIdentifier(slug);
+  const importLine = `import ${ident} from "./${slug}.js";`;
+
+  // ENTRIES anchor must exist — mirrors add-path; route catches the throw.
+  const entriesRe = /const ENTRIES = \[([^\]]*)\];/;
+  const match = source.match(entriesRe);
+  if (!match) {
+    throw new Error(
+      "unpatchEditorialIndex: could not locate `const ENTRIES = [...]` anchor"
+    );
+  }
+
+  const importPresent = source.includes(importLine);
+  const items = match[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const identPresent = items.includes(ident);
+
+  // Idempotent no-op only when neither part references the entry.
+  if (!importPresent && !identPresent) {
+    return source;
+  }
+
+  let next = source;
+
+  // Remove the import line and its trailing newline (if present).
+  if (importPresent) {
+    next = next.replace(`${importLine}\n`, "");
+    // Fallback if the import was the last line with no trailing newline.
+    next = next.replace(importLine, "");
+  }
+
+  // Remove the identifier from ENTRIES (exact-match, not substring).
+  if (identPresent) {
+    const newInner = items.filter((item) => item !== ident).join(", ");
+    next = next.replace(entriesRe, `const ENTRIES = [${newInner}];`);
+  }
+
+  return next;
+}

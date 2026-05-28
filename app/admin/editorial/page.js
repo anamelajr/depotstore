@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import DeleteEntryButton from "./_components/DeleteEntryButton.js";
 
 async function loadEntries() {
   const dir = join(process.cwd(), "content", "editorial");
@@ -49,11 +50,13 @@ export default async function EditorialList() {
       </header>
       <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
         {entries.map((e) => (
-          <li key={e.slug}>
+          <li key={e.slug} style={{ display: "flex", alignItems: "stretch" }}>
             <Link
               href={`/admin/editorial/${e.slug}`}
               style={{
                 display: "flex",
+                flex: 1,
+                minWidth: 0,
                 padding: 12,
                 background: "#18181a",
                 border: "1px solid #2a2a2c",
@@ -70,6 +73,7 @@ export default async function EditorialList() {
                 {e.publishedAt}
               </span>
             </Link>
+            <DeleteEntryButton slug={e.slug} title={e.title} />
           </li>
         ))}
       </ul>
