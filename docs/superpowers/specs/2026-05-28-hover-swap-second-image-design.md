@@ -30,8 +30,9 @@ The data layer currently stores only a single `image_url` per product, so this i
    2. `cron/route.js` — add `image_url_2` to Step-1 upsert (plain overwrite — NOT through `enrich_product` RPC).
    3. `productQueries.js` — single source of truth: SELECT, mapper, RPC column list.
    4. `app/lib/useHoverCapable.js` — new client hook gating the second image's mount to hover-capable pointers.
-   5. 4 card components — render image 2 with crossfade, gated on `useHoverCapable`.
-   6. 2 test fixtures — update key/column count assertions.
+   5. `app/components/HoverSwapImage.js` — new `"use client"` component that owns the hook and renders both images (so the three Server-Component cards never call a hook directly).
+   6. 4 card components — render `<HoverSwapImage />` inside the existing wrapper (1 client + 3 Server Components, all stay as-is).
+   7. 2 test fixtures — update key/column count assertions.
 4. **Vercel preview build** — confirm green.
 5. **Manual cron fire on preview** — `curl -H "Authorization: Bearer $CRON_SECRET" "$PREVIEW_URL/api/cron"` to backfill `image_url_2` immediately rather than waiting an hour.
 6. **Verify on preview** (desktop hover + phone tap).
@@ -81,9 +82,22 @@ Three small edits:
 
 `PRODUCT_ROW_SELECT_WITH_CATEGORY` composes from the base string — no edit needed.
 
-### Shared hook: `useHoverCapable` (new file)
+### Client boundary: why a shared `HoverSwapImage` component, not a per-card hook
 
-**Path:** `app/lib/useHoverCapable.js` (new) — a small client hook that returns whether the device is a real hover-capable, fine-pointer device. This **gates the mount of the second `<img>`** so mobile/touch devices never insert it into the DOM and therefore never fetch `image_url_2` (the bandwidth fix from round-1 review).
+**Round-2 review correction.** An earlier draft said "all four card components are already `"use client"`, so each can call `useHoverCapable()` directly." That is false and would not build. The actual boundary in the repo:
+
+- **`app/components/ProductCard.js`** — `"use client"` (the only one).
+- **`app/components/MoreFromStore.js`** — **Server Component**, and it is `export default async function` that fetches Supabase directly.
+- **`app/editorial/_components/PiecesFeatured.js`** — **Server Component** (no `"use client"`).
+- **`app/editorial/_components/MoreFromDesigner.js`** — **Server Component** (no `"use client"`).
+
+A React hook (`useState`/`useEffect`) cannot run inside a Server Component, so calling `useHoverCapable()` in three of the four cards fails the Next build. The naive fix — add `"use client"` to `MoreFromStore` — is **illegal**: a client component may not be `async`, and `MoreFromStore` is an async data-fetching Server Component (CLAUDE.md: "`MoreFromStore` queries Supabase directly … Don't consolidate it back to HTTP" — it must stay a Server Component).
+
+**Resolution:** extract the entire hover-swap behavior into one client-only child component, `HoverSwapImage`. The four cards stay exactly the kind of component they are today (one client, three server); each renders the existing wrapper `<div>` (which owns `group`, the aspect ratio, and the sold overlay) and drops `<HoverSwapImage … />` inside it, passing only **plain serializable props** (`imageUrl`, `imageUrl2`, `alt`). No card needs converting; no Server Component becomes a client component.
+
+### New file: `app/lib/useHoverCapable.js`
+
+A small client hook — `"use client"`-internal, consumed **only** by `HoverSwapImage`, never by the cards. Returns whether the device is a real hover-capable, fine-pointer device, which gates the **mount** of the second `<img>` so mobile/touch devices never insert it into the DOM and therefore never fetch `image_url_2` (the bandwidth fix from round-1 review).
 
 ```js
 "use client";
@@ -106,52 +120,67 @@ export function useHoverCapable() {
 }
 ```
 
-Each of the four card components calls `const hoverCapable = useHoverCapable();` and adds it as the first condition on the second image. All four are already `"use client"`, so no component conversion is needed.
+### New file: `app/components/HoverSwapImage.js` (`"use client"`)
 
-### Card components (pattern repeated 4 times)
-
-The transformation is the same across all four files. The current shape is:
+Owns `useHoverCapable`, renders the base image plus the gated, crossfading second image with the broken-image fallback. This is the single place the hook lives, so it works identically under all four cards regardless of their server/client status.
 
 ```jsx
-<div className="… aspect-[4/5] … overflow-hidden …">
-  <img src={imageUrl} alt={…} className="h-full w-full object-cover …" loading="lazy" />
-</div>
-```
+"use client";
+import { useHoverCapable } from "@/app/lib/useHoverCapable";
 
-Becomes:
-
-```jsx
-<div className="relative aspect-[4/5] … overflow-hidden …">
-  <img src={imageUrl} alt={…} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-  {hoverCapable && imageUrl2 && imageUrl2 !== imageUrl ? (
-    <img
-      src={imageUrl2}
-      alt=""
-      aria-hidden="true"
-      loading="lazy"
-      decoding="async"
-      fetchPriority="low"
-      onError={(e) => { e.currentTarget.style.display = "none"; }}
-      className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-[350ms] ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100"
-    />
-  ) : null}
-</div>
+export default function HoverSwapImage({ imageUrl, imageUrl2, alt }) {
+  const hoverCapable = useHoverCapable();
+  const showSecond = hoverCapable && imageUrl2 && imageUrl2 !== imageUrl;
+  return (
+    <>
+      <img
+        src={imageUrl}
+        alt={alt}
+        className="absolute inset-0 h-full w-full object-cover"
+        loading="lazy"
+      />
+      {showSecond ? (
+        <img
+          src={imageUrl2}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          fetchPriority="low"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-[350ms] ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100"
+        />
+      ) : null}
+    </>
+  );
+}
 ```
 
 The `hoverCapable` mount gate is the **primary** desktop-only mechanism (it prevents the mobile fetch). The `[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100` CSS variant is retained as belt-and-braces: it keeps image 2 hidden during the brief post-hydration window before `useEffect` runs, and guards the edge case where the media-query state flips between renders. Keeping both is intentional, not redundant cruft.
 
-**Broken-image fallback (`onError`).** A stale Shopify CDN URL or transient 404 on `image_url_2` would otherwise reveal a blank/broken image on hover — and because image 2 is hidden until interaction, it evades page-load smoke checks. The `onError` handler hides the second `<img>` outright; image 1 (the base layer underneath) then shows through unchanged on hover. This is a DOM-node hide (`e.currentTarget.style.display`), not React state, so it drops into all four call sites — including the inline-mapped editorial/MoreFromStore grids — without extracting a stateful sub-component. No `onLoad`/load-success gate is needed: an *unloaded* (not errored) image 2 at `opacity-100` simply renders transparent and image 1 shows through until it finishes loading, so only the genuine error case requires handling.
+**Broken-image fallback (`onError`).** A stale Shopify CDN URL or transient 404 on `image_url_2` would otherwise reveal a blank/broken image on hover — and because image 2 is hidden until interaction, it evades page-load smoke checks. The `onError` handler hides the second `<img>` outright; image 1 (the base layer underneath) then shows through unchanged on hover. It now lives inside `HoverSwapImage`, so every card gets it for free. It is a DOM-node hide (`e.currentTarget.style.display`), not React state — fine, because the node is recreated on each remount. No `onLoad`/load-success gate is needed: an *unloaded* (not errored) image 2 at `opacity-100` simply renders transparent and image 1 shows through until it finishes loading, so only the genuine error case requires handling.
+
+### Card components (wire up `HoverSwapImage`, 4 sites)
+
+Each card keeps its existing wrapper `<div>` and replaces the single `<img>` with `<HoverSwapImage imageUrl={…} imageUrl2={…} alt={…} />`. The wrapper must have `relative` (so the absolutely-positioned images fill it), `group` (so the CSS hover variant fires), and `overflow-hidden`. The sold overlay, where present, stays the **last** sibling inside the wrapper so it paints over both images.
+
+```jsx
+<div className="relative aspect-[4/5] … overflow-hidden …">
+  <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={…} />
+  {/* sold overlay, if any, stays last */}
+</div>
+```
 
 > **React API note:** this project runs React 19.2.4 (`package.json`). Use camelCase `fetchPriority`, NOT lowercase `fetchpriority` — React 19 ignores the lowercase form (passes through with deprecation warning on every card render).
 
-Per-file notes:
+Per-file notes (none of these import `useHoverCapable` — they only render `HoverSwapImage`, so the three Server Components stay Server Components):
 
-- **`app/components/ProductCard.js`** (lines 49-69): destructure `imageUrl2` from `product` on line 12. Wrapper already has `relative` and the parent already has `group`. Drop `transition-transform duration-500 group-hover:scale-[1.02]` from image 1's className. Sold overlay stays last so it paints over both images.
-- **`app/components/MoreFromStore.js`** (lines 49-58): one-file JSX edit. `imageUrl2` already flows in via the shared mapper (confirmed: file imports `PRODUCT_ROW_SELECT` + `mapProductRow` on lines 5-6). **The parent card wrapper does NOT have `group` today** — change line 49 from `<div className="block">` to `<div className="group block">`. Then apply the image-block swap on lines 50-58 (note the wrapper is `aspect-[3/4]`, not `aspect-[4/5]` — keep the existing aspect, just add `relative`).
-- **`app/editorial/_components/PiecesFeatured.js`** (lines 11-20): wrapper already has `aspect-[4/5] w-full overflow-hidden bg-zinc-200` — add `relative`. Parent (line 10) already has `group`. `imageUrl2` flows in via the same productQueries path (confirmed: `fetchEditorialProducts.js` lines 5-6 import `PRODUCT_ROW_SELECT` + `mapProductRow`).
+- **`app/components/ProductCard.js`** (lines 49-69): client component. Destructure `imageUrl2` from `product` on line 12. Wrapper already has `relative` and the parent already has `group`. Replace image 1's `<img>` with `<HoverSwapImage … />`; drop the old `transition-transform duration-500 group-hover:scale-[1.02]` (the scale is removed per the transition decision). Sold overlay stays last so it paints over both images.
+- **`app/components/MoreFromStore.js`** (lines 49-58): **async Server Component — keep it that way.** `imageUrl2` already flows in via the shared mapper (confirmed: file imports `PRODUCT_ROW_SELECT` + `mapProductRow` on lines 5-6). **The card wrapper does NOT have `group` today** — change line 49 from `<div className="block">` to `<div className="group block">`. Add `relative` to the image wrapper (keep its `aspect-[3/4]`, not `aspect-[4/5]`) and render `<HoverSwapImage … />` inside it. Do **not** add `"use client"` here.
+- **`app/editorial/_components/PiecesFeatured.js`** (lines 11-20): Server Component. Wrapper already has `aspect-[4/5] w-full overflow-hidden bg-zinc-200` — add `relative`. Parent (line 10) already has `group`. Render `<HoverSwapImage … />`; `imageUrl2` flows in via the same productQueries path (confirmed: `fetchEditorialProducts.js` lines 5-6 import `PRODUCT_ROW_SELECT` + `mapProductRow`). Do **not** add `"use client"`.
 - **`app/editorial/_components/MoreFromDesigner.js`** (lines 11-20): identical edit to PiecesFeatured.
 
-**Hover gate — two layers:** the `useHoverCapable` JS hook is the **primary** gate (controls whether image 2 mounts at all → no mobile fetch). The CSS arbitrary variant `[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100` is the **secondary/visual** gate (controls the crossfade). The CSS variant is used inline, not as a global `tailwind.config` change: this project uses Tailwind v4 with CSS-first config (no `tailwind.config.js`), so changing global hover behavior would silently affect every existing `hover:` utility across the app. Inline keeps the gate obvious at the call site. The `_` inside `[…]` is Tailwind's escape for spaces inside arbitrary variants — required syntax.
+**Hover gate — two layers:** the `useHoverCapable` JS hook (inside `HoverSwapImage`) is the **primary** gate (controls whether image 2 mounts at all → no mobile fetch). The CSS arbitrary variant `[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100` is the **secondary/visual** gate (controls the crossfade). The CSS variant lives on the second `<img>` inside `HoverSwapImage` and depends on the **card wrapper** carrying `group` — so every wrapper must have `group` (see per-file notes; `MoreFromStore` is the one that needs it added). The variant is used inline, not as a global `tailwind.config` change: this project uses Tailwind v4 with CSS-first config (no `tailwind.config.js`), so changing global hover behavior would silently affect every existing `hover:` utility across the app. Inline keeps the gate obvious at the call site. The `_` inside `[…]` is Tailwind's escape for spaces inside arbitrary variants — required syntax.
 
 ### Test fixtures that will break
 
@@ -172,7 +201,7 @@ Both need updating in the same commit so CI stays green:
 2. **RPC swap successful** — Supabase MCP `execute_sql`:
    `SELECT image_url_2 FROM get_interleaved_products(p_limit => 1) LIMIT 1;` returns a row (likely NULL on day one — fine).
 3. **Tests pass** — `npm test` (or whatever the project runs) — both fixture updates from above must land.
-4. **Preview build green** on Vercel.
+4. **Preview build green** on Vercel — this is the gate that catches a Server/Client boundary mistake: if a hook leaks into a Server Component (e.g. `useHoverCapable` called outside `HoverSwapImage`), the Next build fails with "You're importing a component that needs `useState`/`useEffect`. It only works in a Client Component." Confirm `MoreFromStore.js`, `PiecesFeatured.js`, `MoreFromDesigner.js` still have **no** `"use client"` and `MoreFromStore` is still `async`.
 5. **Manual cron fire** — `curl -H "Authorization: Bearer $CRON_SECRET" "$PREVIEW_URL/api/cron"` returns `{ totalUpserted: N, ... }` with empty `summary.errors[]`.
 6. **Backfill spot-check** — Supabase MCP:
    ```sql
