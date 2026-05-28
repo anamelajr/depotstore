@@ -33,6 +33,9 @@ export default function DeleteEntryButton({ slug, title }) {
           `Deleted "${title}", but its image folder (public/editorial/${slug}/) couldn't be removed — clean it up manually.`
         );
       }
+      // Removing the slug file triggers a dev Fast Refresh that re-renders
+      // this list anyway; refresh explicitly for immediate feedback. Publish
+      // the deletion via the header "Publish changes" button.
       router.refresh();
     } catch (err) {
       alert(`Delete failed: ${err.message}`);
