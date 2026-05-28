@@ -27,14 +27,24 @@ delete button wired into the (server-rendered) list page.
 Counterpart to the existing add-only `patchEditorialIndex`. Reuse `slugToIdentifier`.
 
 - Compute `ident = slugToIdentifier(slug)` and `importLine = `import ${ident} from "./${slug}.js";``.
-- **Idempotent:** if `importLine` is absent, return `source` unchanged (so deleting an
-  already-unregistered entry still lets the route proceed to file removal).
-- Remove the import line **and** its trailing newline.
-- Remove the identifier from `const ENTRIES = [...]` using the **same anchored regex**
-  the add path uses (`/const ENTRIES = \[([^\]]*)\];/`). Parse the inner list by
-  splitting on `,`, `trim()`, filter out exactly `ident` (exact-match, not substring —
-  avoids clobbering `rickOwens` when deleting `rick`), rejoin with `, `. Empty → `[]`.
-- Throw if the ENTRIES anchor is missing (mirrors add-path behavior; route catches).
+- **Remove the import line and the `ENTRIES` identifier INDEPENDENTLY** (Codex finding —
+  do NOT key idempotency off the import line alone):
+  - If `importLine` is present, remove it **and** its trailing newline. If absent, skip.
+  - Separately, remove `ident` from `const ENTRIES = [...]` using the **same anchored
+    regex** the add path uses (`/const ENTRIES = \[([^\]]*)\];/`). Parse the inner list by
+    splitting on `,`, `trim()`, filter out exactly `ident` (exact-match, not substring —
+    avoids clobbering `rickOwens` when deleting `rick`), rejoin with `, `. Empty → `[]`.
+  - **Rationale:** the dangerous one-sided state is *import gone but `ENTRIES` still
+    references the identifier* — that file already throws an undefined-identifier
+    ReferenceError on load. A registry-cleanup tool must repair it, not no-op on it. This
+    state is reachable through ordinary manual editing (the exact error this feature
+    exists to prevent), so the helper must remove each part on its own.
+- **Idempotent:** return `source` unchanged only when BOTH the import line and the
+  `ENTRIES` identifier are already absent (so re-running a delete, or deleting an
+  already-unregistered entry, is a safe no-op and the route still proceeds to file
+  removal).
+- Throw if the ENTRIES anchor (`const ENTRIES = [...]`) is missing entirely (mirrors
+  add-path behavior; route catches).
 
 ### 2. `app/api/admin/delete-editorial/route.js` (new, POST)
 
@@ -47,18 +57,8 @@ Mirror the conventions in `app/api/admin/save/route.js` and
   uses: `/^[a-z0-9][a-z0-9-]*$/`. Reject otherwise with 400.
 - Resolve paths from `process.cwd()`: `content/editorial/<slug>.js`,
   `content/editorial/index.js`, `public/editorial/<slug>/`.
-- **Serialize the registry critical section (Codex finding 1).** Steps 1–2 below run
-  inside a shared in-process lock (see helper in change 4) so two requests can never
-  interleave their read-modify-write of `index.js`. This closes the concurrent-delete
-  crash: without it, two deletes for `[a, b]` can each read the same starting index, and
-  the stale last writer restores the other's import for a file that's already been
-  unlinked — and because `index.js` statically imports slug files, the public editorial
-  section then crashes. (Note the asymmetry vs the existing save race: a stale *create*
-  orphans a file harmlessly; a stale *delete* imports a *missing* file → crash, so this
-  is worth closing rather than just documenting.) The same lock should also wrap the save
-  route's index patch so both writers share one queue.
-- **Order, inside the lock (chosen so the site never imports a missing file, and so a
-  partial failure leaves NO dirty state):**
+- **Order (chosen so the site never imports a missing file, and so a partial failure
+  leaves NO dirty state):**
   1. Read `index.js` into `originalIndex` (keep it in memory for rollback). Compute
      `unpatchEditorialIndex(originalIndex, slug)` and write it **atomically** via tmp +
      `fs.rename` (the `save-homepage-edit` pattern: `${file}.tmp.${pid}.${Date.now()}`,
@@ -75,23 +75,34 @@ Mirror the conventions in `app/api/admin/save/route.js` and
        publish allowlist (`listDirtyAllowlisted` scans `content/`), so a *failed* delete
        could later be published as a silent partial delete. Rolling back restores the
        all-or-nothing invariant: either fully deleted, or fully intact.
-- **After the lock — image cleanup (best-effort, reported):**
-  3. `fs.rm(public/editorial/<slug>/, { recursive: true, force: true })`. `force: true`
-     swallows ENOENT (missing dir = success). On a real failure (EPERM/EBUSY/…) do NOT
-     fail the request — the registry+slug-file deletion (the actual intent) already
-     succeeded — but capture `imagesRemoved: false` so the result is honest (Codex
-     finding 3: don't report clean success while orphaned public assets remain). Runs
-     outside the lock; it touches only this slug's own folder.
+  3. Image cleanup (best-effort, reported): `fs.rm(public/editorial/<slug>/, { recursive:
+     true, force: true })`. `force: true` swallows ENOENT (missing dir = success). On a
+     real failure (EPERM/EBUSY/…) do NOT fail the request — the registry+slug-file
+     deletion (the actual intent) already succeeded — but capture `imagesRemoved: false`
+     so the result is honest (Codex finding 3: don't report clean success while orphaned
+     public assets remain).
 - Return `{ ok: true, slug, indexUpdated, imagesRemoved }` on success (`imagesRemoved`
   may be `false` if step 3 failed — a soft warning, not an error). 400 on bad slug; 500
   on index-write failure (step 1) or non-ENOENT slug-file deletion failure (step 2, with
   `index.js` rolled back first), each with a descriptive `error` message.
 
-**Lock scope caveat:** the lock is a module-level in-process promise queue — it serializes
-within a single Node process, which is exactly the dev-server model here (one
-`npm run dev`, route 404'd in prod via `middleware.js`). It is not, and does not need to
-be, distributed locking; the plan should state this explicitly so the guarantee isn't
-overread.
+**Concurrency: documented single-writer assumption (NOT a lock).** Step 1 is a
+read-modify-write of `index.js` and is intentionally NOT serialized. The crash this could
+theoretically produce (two near-simultaneous mutations interleaving so the last writer
+restores an import for an already-deleted file) requires concurrent registry mutations
+from a *single human operator* — through a `confirm()`-gated button, on a route that
+`middleware.js` 404s in production, served by one local `npm run dev` process. That path
+does not exist in real use, and the worst case is a local crash recoverable with
+`git checkout content/editorial/index.js`, caught before merge by the Vercel-preview gate.
+A lock was proposed and rejected across the adversarial-review rounds: scoping it
+correctly would require
+restructuring the save route's full read→write-slug-file→write-index critical section to
+share one queue — real surgery on stable code to defend a zero-probability scenario, and a
+partially-scoped lock is worse (complexity + false confidence) than an honest assumption.
+**Trigger to revisit:** if `/admin` ever becomes multi-user or moves server-side (i.e.
+more than one concurrent writer is possible), add a shared in-process promise-queue lock
+wrapping the *entire* registry+slug-file critical section in **both** the save and delete
+routes — not just the index write.
 
 ### 3. List page wiring
 
@@ -116,26 +127,6 @@ small client component.
   (title/slug/date) as one child and `<DeleteEntryButton>` as a **sibling** — NOT nested
   inside the Link — so clicking delete never navigates. Keep all existing list styling.
 
-### 4. `app/lib/indexMutationLock.js` (new) — shared in-process serialization
-
-A minimal module-level promise queue so registry mutations never interleave. No deps, no
-new infra:
-
-```js
-let queue = Promise.resolve();
-export function withIndexLock(fn) {
-  const run = queue.then(fn, fn);     // run after the previous job settles
-  queue = run.then(() => {}, () => {}); // swallow so one failure can't poison the chain
-  return run;                          // caller still sees fn's resolution/rejection
-}
-```
-
-- The delete route wraps steps 1–2 in `withIndexLock(...)`.
-- **Also wrap the save route's `index.js` patch** (`app/api/admin/save/route.js`) in the
-  same `withIndexLock` so save and delete share one queue — otherwise a concurrent
-  save+delete could still interleave. This is the only edit to the save route.
-- Scope is per-process (see caveat above), which matches the single dev-server model.
-
 ### Out of scope / note
 - **Publishing the deletion** to preview/main already works through the existing
   Publish flow: `listDirtyAllowlisted()` reports deleted paths and `git add -- <path>`
@@ -144,12 +135,10 @@ export function withIndexLock(fn) {
 
 ## Files
 
-- `app/lib/patchEditorialIndex.js` — add `unpatchEditorialIndex` (export).
-- `app/lib/indexMutationLock.js` — **new**: shared in-process `withIndexLock` queue.
-- `app/api/admin/delete-editorial/route.js` — new route (steps 1–2 inside the lock,
-  index rollback on step-2 failure, image cleanup outside the lock with `imagesRemoved`).
-- `app/api/admin/save/route.js` — wrap the existing `index.js` patch in `withIndexLock`
-  (shared queue with delete). Only change to this file.
+- `app/lib/patchEditorialIndex.js` — add `unpatchEditorialIndex` (export); remove import
+  line and `ENTRIES` identifier independently.
+- `app/api/admin/delete-editorial/route.js` — new route (index write → slug unlink with
+  index rollback on failure → best-effort image cleanup reporting `imagesRemoved`).
 - `app/admin/editorial/_components/DeleteEntryButton.js` — new client component.
 - `app/admin/editorial/page.js` — restructure `<li>` to add the button as a sibling.
 - (Optional) `app/lib/__tests__/patchEditorialIndex*.test.*` — add `unpatchEditorialIndex`
@@ -180,12 +169,11 @@ export function withIndexLock(fn) {
    (e.g. `chmod 000` it) → Delete → response is `ok` with `imagesRemoved: false`; the
    entry/registry are gone but the UI alerts a manual-cleanup warning. A missing image
    dir still yields `ok` with `imagesRemoved: true`.
-7. **Concurrency (finding 1):** with two dummy entries `[aa-x, bb-y]`, fire two delete
-   requests near-simultaneously (e.g. two `curl` POSTs in a `&` pair, or two rapid button
-   clicks across tabs). Assert the final `index.js` imports neither, references no missing
-   file, and still parses — the lock must serialize them. Run a few times.
-8. Unit test (if added): `node --test` (or the repo's test runner) over
+7. Unit test (if added): `node --test` (or the repo's test runner) over
    `unpatchEditorialIndex` — single-entry→empty, middle removal, first/last removal,
-   idempotent-when-absent, substring-safety (`rick` vs `rickOwens`).
-9. Publish check (optional, end-to-end): after a delete, use the existing Publish flow
+   idempotent-when-both-absent, substring-safety (`rick` vs `rickOwens`), and the
+   **one-sided-corruption case**: import already gone but `ENTRIES` still references the
+   identifier → the identifier is still stripped from `ENTRIES` (repairs a half-corrupt
+   registry rather than no-opping).
+8. Publish check (optional, end-to-end): after a delete, use the existing Publish flow
    and confirm the resulting PR diff shows the file deletions staged.
