@@ -1,10 +1,15 @@
 "use client";
 import { useHoverCapable } from "../lib/useHoverCapable.js";
+import { shopifyImageUrl } from "../lib/shopifyImage.js";
 
 // Single home for the hover-swap behavior so it works identically under all
 // four cards regardless of their server/client status. The three Server
 // Component cards render this child instead of calling the hook directly.
-export default function HoverSwapImage({ imageUrl, imageUrl2, alt }) {
+//
+// width defaults to 800: crisp at the ~400px card these surfaces render on a
+// 2× retina display, while letting Shopify's CDN serve a right-sized image
+// instead of the multi-MB master.
+export default function HoverSwapImage({ imageUrl, imageUrl2, alt, width = 800 }) {
   const hoverCapable = useHoverCapable();
   // hoverCapable gate is the PRIMARY desktop-only mechanism: mobile/touch
   // never mounts the second <img>, so it never fetches image_url_2.
@@ -12,14 +17,14 @@ export default function HoverSwapImage({ imageUrl, imageUrl2, alt }) {
   return (
     <>
       <img
-        src={imageUrl}
+        src={shopifyImageUrl(imageUrl, width)}
         alt={alt}
         className="absolute inset-0 h-full w-full object-cover"
         loading="lazy"
       />
       {showSecond ? (
         <img
-          src={imageUrl2}
+          src={shopifyImageUrl(imageUrl2, width)}
           alt=""
           aria-hidden="true"
           loading="lazy"
