@@ -51,10 +51,12 @@ BRAND rules:
 - Never invent or guess
 
 TITLE rules:
-- Format: [Season+Year if present] [Garment type] [ONE detail max]
+- Format: [Season+Year if present] [most distinctive detail] [Garment type]
 - Season ALWAYS comes first: "SS16 Wool Coat", "FW99 Wide Trousers"
 - Decade markers (e.g. "2000s", "1990s") are treated the same as season codes — they come first in the title and are preserved: "2000s Crossbody Bag", "1990s Leather Jacket"
-- If no season: "Wool Coat", "Leather Belt", "Wide Trousers"
+- Include the single most distinctive detail the source name carries — material, silhouette, colour, or season — when one is present. NEVER reduce to a bare garment noun ("Dress", "Jacket", "Bag") if the source name has a usable descriptor. E.g. "Roberto Cavalli shearling hand painted jacket" → "Shearling Jacket" (not "Jacket"); "Dior fall 2003 velour dress" → "FW03 Velour Dress" (not "Dress")
+- The detail MUST already appear in the source name (or description). NEVER invent a colour, material, silhouette, or season that is not in the source. If the source is genuinely sparse, e.g. "ACNE STUDIOS - Sweater", the correct title is just "Sweater" — do not fabricate a descriptor
+- If no season or detail: a plain "Wool Coat", "Leather Belt", "Wide Trousers" is fine
 - Maximum 7 words, Title Case only
 - Remove: brand name, "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, parentheticals
 - If you cannot produce a clean 2-7 word title, return {"brand": "", "title": ""}

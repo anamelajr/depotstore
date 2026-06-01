@@ -170,8 +170,15 @@ export async function POST(request) {
           // "remove collection names in quotes, parentheticals". The
           // titleWords >= 1 lower bound also rules out the name-equals-brand
           // case (stripping "FENDI" from "FENDI" yields empty → 0 words).
+          // Sanitize the raw name FIRST so a leading parenthetical
+          // (e.g. "(New Arrival)") is removed while still balanced. If the
+          // brand strip ran first it could delete the opening "(" mid-name,
+          // leaving an orphaned ")" and the prefix text that the balanced
+          // /\([^)]*\)/ strip can no longer match (production id 5139850).
           const fallbackTitle = sanitizeFallbackTitle(
-            toTitleCase(nameWithoutBrand(row.name, handleBrand))
+            toTitleCase(
+              nameWithoutBrand(sanitizeFallbackTitle(row.name), handleBrand)
+            )
           );
           const titleWords = fallbackTitle.split(/\s+/).filter(Boolean).length;
           if (titleWords >= 1 && titleWords <= 7) {

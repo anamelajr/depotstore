@@ -13,7 +13,7 @@ function recoverFromHandleFallback(name, handle) {
   const handleBrand = brandFromHandle(handle);
   if (!handleBrand) return null;
   const fallbackTitle = sanitizeFallbackTitle(
-    toTitleCase(nameWithoutBrand(name, handleBrand))
+    toTitleCase(nameWithoutBrand(sanitizeFallbackTitle(name), handleBrand))
   );
   const titleWords = fallbackTitle.split(/\s+/).filter(Boolean).length;
   if (titleWords < 1 || titleWords > 7) return null;
@@ -118,5 +118,19 @@ describe("handle-fallback gate — integrated", () => {
       "fendi-jacket",
     );
     expect(result).toEqual({ brand: "FENDI", title: "Vintage Jacket" });
+  });
+  it("recovers the Undercover wallet — leading parenthetical stripped before brand removal (id 5139850)", () => {
+    // Regression for the ordering bug: nameWithoutBrand used to delete the
+    // opening "(" before sanitizeFallbackTitle could strip the balanced
+    // "(New Arrival)", leaving "New Arrival) - …" in the title. Sanitizing
+    // the raw name first removes the whole parenthetical while balanced.
+    const result = recoverFromHandleFallback(
+      "(New Arrival) UNDERCOVER - FW04 « But Beautiful » Aged velevet wallet",
+      "new-arrival-undercover-fw04-but-beautiful-aged-velevet-wallet",
+    );
+    expect(result).toEqual({
+      brand: "UNDERCOVER",
+      title: "FW04 Aged Velevet Wallet",
+    });
   });
 });
