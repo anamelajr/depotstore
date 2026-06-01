@@ -22,6 +22,24 @@ The one-off backfill ([scripts/backfillTitleClean.mjs:199](../scripts/backfillTi
 already skips these via `titleContainsAllowedBrand(proposed)`. The task is to
 close the same hole in the **live** path and in the **recurring audit**.
 
+### Relationship to the first plan (already shipped, do not conflict)
+
+This is a pure **extension** of the successfully-executed
+[plan-title-cleaning-fix.md](plan-title-cleaning-fix.md). Every change here is
+additive and must not weaken what shipped:
+
+- **Prompt:** widen the `Remove:` rule and add a collab/era example *alongside*
+  the existing TITLE rules; reconcile the line-62 give-up wording with the
+  already-shipped line-58 sparse precedent. The over-compression guard (line 57,
+  "never reduce to a bare noun if a descriptor exists") and the "keep a
+  distinctive detail" intent are preserved verbatim.
+- **Backfill:** the shipped bucket-2 `runBackfill`, its decision rules, and its
+  frozen snapshot are **not touched**. New work is a new `--audit` mode, a new
+  `matchesBrandLeak` predicate, new `runValidate` controls, and (follow-on) a
+  separate brand-leak write set + new snapshot file.
+- **No code-behavior change to `/api/enrich`, the RPC, schema, or visibility
+  filters.** The only runtime change is the prompt text.
+
 ### Key finding: the live path and the backfill are asymmetric
 
 The backfill operates on rows that **already have a valid (sparse) title**, so
@@ -69,6 +87,29 @@ the model extracted. Widen it so the title carries **garment descriptors only**:
   (consistent with the over-compression fix — never reduce to a bare noun):
   e.g. `"Gucci by Tom Ford shearling jacket" → "Shearling Jacket"`,
   `"Chrome Hearts × Comme des Garçons tee" → "Tee"`.
+- **Reconcile the word-count contract in the same edit (do not skip this).** The
+  prompt currently tells the model to return `{"brand":"","title":""}` if it
+  "cannot produce a clean **2-7 word** title"
+  ([cleanTitle.js:62](../app/lib/cleanTitle.js)), yet line 58 — shipped by the
+  first plan — already blesses a 1-word result for a genuinely-sparse source
+  (`ACNE STUDIOS - Sweater → Sweater`). Removing a collaborator / era-designer
+  can legitimately leave a 1-word noun (`Tee`), so the new examples sit on the
+  line-58 side of that contradiction. Make the floor explicit: **a single
+  descriptive noun is a valid title when the source is genuinely sparse after
+  brand/designer removal — do NOT return empty for it.** The code already
+  accepts 1-word titles (`titleValid` requires only `titleWords <= 7`, no lower
+  bound — [cleanTitle.js:88](../app/lib/cleanTitle.js)); the risk is purely that
+  the model obeys the literal "2-7 word" wording, returns empty → `cleanTitle`
+  null → the live route's `title === null` hide at attempt 3
+  ([route.js:298-311](../app/api/enrich/route.js)). That is the exact
+  hide-on-cosmetic failure this plan exists to avoid, so it is fixed in the
+  prompt up front, not left for after-the-fact validation to catch.
+  - **Non-regression (first plan stays intact).** This only aligns the line-62
+    *give-up threshold* with the already-shipped line 58; it does **not** loosen
+    the over-compression rule. Line 57 ("never reduce to a bare garment noun if
+    the source has a usable descriptor") still governs rich sources, so a
+    detail-bearing name still yields `Shearling Jacket`, never bare `Jacket`.
+    The 1-word allowance is scoped to genuinely-sparse-after-removal cases only.
 
 **Keep the existing `brandInTitle` echo guard as-is** ([cleanTitle.js:108-114](../app/lib/cleanTitle.js)).
 Do **not** widen it to the full allowlist — that returns `null`, which hides.
@@ -99,14 +140,39 @@ function matchesBrandLeak(row) {
 }
 ```
 
-**Home:** add a read-only `--audit` report mode to
+**Home (detection):** add a read-only `--audit` report mode to
 [scripts/backfillTitleClean.mjs](../scripts/backfillTitleClean.mjs) that reuses
 `fetchAllRows()` and reports the **union** of `matchesBucket2` and
-`matchesBrandLeak` ids (writes nothing). The existing backfill already imports
-`titleContainsAllowedBrand` and uses it to skip persistent leaks
-([line 199](../scripts/backfillTitleClean.mjs)), so the audit feeds straight into
-the same sweep. (Wiring an actual cron is out of scope; this gives the predicate
-a concrete, runnable home as the plan intended.)
+`matchesBrandLeak` ids (writes nothing). This is detection only — it surfaces a
+candidate list. The existing bucket-2 `runBackfill` and its frozen snapshot are
+**left untouched**; `--audit` is a new, additive mode. (Wiring an actual cron is
+out of scope; this gives the predicate a concrete, runnable home as the plan
+intended.)
+
+**Remediation (brand-leak rows need their OWN bounded write set).** The shipped
+backfill cannot fix what this audit finds, and that is by design: its write set
+is `frozen bucket-2 snapshot ∩ matchesBucket2`
+([backfillTitleClean.mjs:147-158](../scripts/backfillTitleClean.mjs)), and
+brand-leak titles are **multi-word** (`Comme Des Garçons Tee`), so they fail
+`matchesBucket2` (which requires `wordCount(title) === 1`) and are absent from
+the bucket-2 snapshot. Pointing the audit at "the same sweep" would report real
+leaks forever while the backfill never touches them, leaving COALESCE-locked
+leaked titles visible. So remediation **mirrors** the bucket-2 machinery as a
+**separate, additive** path (the shipped bucket-2 logic and snapshot are never
+modified):
+1. Review the `--audit` brand-leak output and freeze the approved ids into a
+   **new** `docs/snapshots/<date>-brand-leak-targets.json` (same role as the
+   bucket-2 snapshot — the hard blast-radius ceiling).
+2. Add a brand-leak write set bounded to
+   `frozen brand-leak snapshot ∩ matchesBrandLeak`, re-cleaning each row with the
+   tightened prompt and writing **title only** under the identical CAS
+   (`.eq("title", oldTitle)`) + stale-source (`.eq("name", oldName)`) guards.
+   The existing `SKIP:brand_in_title` guard still applies: a row whose re-clean
+   still leaks is left as-is and stays flagged (limitation 2 below).
+Until that snapshot + write set is wired, the audit is **detection-only** and
+the leaked titles persist — stated honestly rather than implying an automatic
+fix. Building that snapshot + write set can be a follow-on; this plan defines
+its shape so detection is never mistaken for remediation.
 
 **Document two limitations** in the plan doc:
 
@@ -132,13 +198,24 @@ not `"Tom Ford…"`; `"Tee"`). This is the guard that the brand-strip wording
 doesn't regress the over-compression work. The existing sparse + good-multiword
 controls remain as the no-invention / no-regression check.
 
+**The collab-sparse case (`Chrome Hearts × CDG tee → Tee`) is a BLOCKING
+control:** a `null` / empty result for it is a **failure**, not an acceptable
+sample outcome — it means the word-count contract is still pushing the model to
+empty (the hide-path risk above) and the prompt must be re-tightened before
+shipping. Distinguish a real contract failure from a transient API
+`SKIP:openai_null` by re-running the single control before concluding.
+
 ## Critical files
 
 - [app/lib/cleanTitle.js](../app/lib/cleanTitle.js) — widen the `Remove: brand name`
   TITLE rule + add a collab/era example. Keep `brandInTitle` echo guard as-is.
-- [scripts/backfillTitleClean.mjs](../scripts/backfillTitleClean.mjs) — add
-  `matchesBrandLeak` + a read-only `--audit` report mode; add collab/era
-  controls to `runValidate()`.
+- [scripts/backfillTitleClean.mjs](../scripts/backfillTitleClean.mjs) —
+  **additive only:** add `matchesBrandLeak` + a read-only `--audit` report mode
+  + collab/era controls to `runValidate()`; (follow-on) a separate brand-leak
+  write set bounded to a new snapshot. The shipped bucket-2 `runBackfill`,
+  decision rules, and its frozen snapshot are not modified.
+- New `docs/snapshots/<date>-brand-leak-targets.json` (follow-on) — the reviewed
+  brand-leak id ceiling; sibling to the bucket-2 snapshot, which is untouched.
 - [app/lib/brand.js](../app/lib/brand.js) — `titleContainsAllowedBrand` reused
   verbatim (no change).
 - [docs/plan-title-cleaning-fix.md](plan-title-cleaning-fix.md) — update
@@ -151,8 +228,11 @@ controls remain as the no-invention / no-regression check.
 ## Verification
 
 1. `node scripts/backfillTitleClean.mjs --validate` — new collab/era controls
-   drop the foreign brand and keep the detail; sparse + good-multiword controls
-   unchanged (no invented detail, no regression).
+   drop the foreign brand and keep the detail; the collab-sparse control
+   (`Chrome Hearts × CDG tee → Tee`) returns a non-empty 1-word title (a
+   `null`/empty there is a **blocking failure** — re-tighten the word-count
+   wording); sparse + good-multiword controls unchanged (no invented detail, no
+   regression of the first plan).
 2. `node scripts/backfillTitleClean.mjs --audit` — read-only; review the
    union'd bucket-2 + brand-leak flagged set. Writes nothing.
 3. (Optional) On the Vercel preview branch, inspect a re-cleaned card via the
