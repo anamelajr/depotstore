@@ -1,6 +1,5 @@
-import rickOwens from "./rick-owens.js";
 
-const ENTRIES = [rickOwens];
+const ENTRIES = [];
 
 const BY_SLUG = new Map(ENTRIES.map((e) => [e.slug, e]));
 
