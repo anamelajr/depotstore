@@ -1,7 +1,7 @@
 import { chunkArray } from "../../lib/chunk.js";
 import {
   fetchInterleavedProducts,
-  withVisibility,
+  withCuratedVisibility,
   PRODUCT_ROW_SELECT,
   mapProductRow,
 } from "../../lib/productQueries.js";
@@ -32,7 +32,7 @@ async function fetchCurated(client, curatedProducts) {
 
   for (const [domain, handles] of byDomain.entries()) {
     for (const chunk of chunkArray(handles, 100)) {
-      const { data, error } = await withVisibility(
+      const { data, error } = await withCuratedVisibility(
         client
           .from("products")
           .select(PRODUCT_ROW_SELECT)

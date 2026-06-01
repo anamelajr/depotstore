@@ -17,6 +17,14 @@ export function withVisibility(query) {
   return query.eq("available", true).eq("hidden", false);
 }
 
+// Editorial curated artifacts intentionally include SOLD pieces (available=false)
+// so they persist with a SOLD overlay. Hidden rows (allowlist-rejected /
+// self-branded) are still excluded. DO NOT use outside curated editorial reads:
+// every other product read MUST use withVisibility (available=true + hidden=false).
+export function withCuratedVisibility(query) {
+  return query.eq("hidden", false);
+}
+
 // Canonical SELECT for direct `.from("products").select(...)` reads. Every
 // product-read surface used to spell out its own column list; the lists
 // drifted (some included `id`, some included `category`, none agreed on

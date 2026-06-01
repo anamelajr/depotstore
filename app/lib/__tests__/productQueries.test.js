@@ -7,6 +7,7 @@ import {
   PRODUCT_ROW_SELECT_WITH_CATEGORY,
   mapProductRow,
   withVisibility,
+  withCuratedVisibility,
 } from "../productQueries.js";
 
 function makeClient() {
@@ -166,5 +167,25 @@ describe("withVisibility", () => {
     const chain = { eq: vi.fn() };
     chain.eq.mockReturnValueOnce(chain).mockReturnValueOnce(final);
     expect(withVisibility(chain)).toBe(final);
+  });
+});
+
+describe("withCuratedVisibility", () => {
+  it("applies hidden=false but does NOT touch available (sold-inclusive)", () => {
+    const eq = vi.fn();
+    const query = { eq };
+    eq.mockReturnValue(query);
+    const result = withCuratedVisibility(query);
+    expect(eq).toHaveBeenCalledTimes(1);
+    expect(eq).toHaveBeenCalledWith("hidden", false);
+    expect(eq).not.toHaveBeenCalledWith("available", true);
+    expect(result).toBe(query);
+  });
+
+  it("returns the chained builder so callers can keep composing", () => {
+    const final = { sentinel: true };
+    const chain = { eq: vi.fn() };
+    chain.eq.mockReturnValue(final);
+    expect(withCuratedVisibility(chain)).toBe(final);
   });
 });
