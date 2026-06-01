@@ -130,10 +130,19 @@ route). The frozen target set lives in
 [docs/snapshots/2026-06-01-title-backfill-targets.json](docs/snapshots/2026-06-01-title-backfill-targets.json)
 (170 ids: 1 artifact + 169 over-compression). Procedure:
 
-1. **Re-derive & diff.** Run the bucket-2 predicate (below) against production,
-   diff the live id set against the frozen snapshot, and **log** additions /
-   removals. Drift is expected (hourly sync) — surface it, don't silently widen
-   or narrow the run.
+1. **Re-derive, diff, and bound.** Run the bucket-2 predicate (below) against
+   production and diff the live id set against the frozen snapshot. **The write
+   set is the intersection `frozen snapshot ∩ current predicate`** — never the
+   live predicate alone. Drift is reported, not acted on:
+   - **Additions** (live ids matching the predicate but absent from the snapshot,
+     e.g. a product synced after diagnosis) are **logged and NOT written** — they
+     were never reviewed. They get picked up by a future re-snapshot + run (the
+     detect-and-sweep loop in *Enforcement & monitoring*).
+   - **Removals** (snapshot ids no longer matching — already fixed, hidden, sold)
+     simply fall out of the intersection.
+   This makes the frozen snapshot the hard blast-radius ceiling: the run can only
+   ever touch one of the 170 reviewed ids. No `--accept-drift` escape hatch — to
+   include new rows, re-snapshot and re-review.
 2. **Recompute.** For each candidate, read `(name, description, title)` and call
    the improved `cleanTitle({ name, rawDescription: description })`. Keep the
    `name` and `title` you read — both are write guards in step 4.
@@ -154,9 +163,13 @@ route). The frozen target set lives in
    name onto the *new* product. Either mismatch updates zero rows (logged, not
    forced). `newTitle` binds as a parameter, never interpolated into SQL. **Touch
    `title` only**; `brand`/`category`/`enrich_attempts` untouched.
-5. **Dry-run first.** A `--dry-run` flag prints `id, store_domain, old_title,
-   proposed_title, decision` for every candidate and writes nothing. Review the
-   diff, then re-run to apply.
+5. **Dry-run first, over the same frozen ids.** A `--dry-run` flag prints `id,
+   store_domain, old_title, proposed_title, decision` for every candidate and
+   writes nothing. Both the dry-run and the apply iterate the **same frozen
+   snapshot id list** (step 1's intersection), so what the operator reviews is
+   exactly what the apply can write — no dry-run→apply TOCTOU window where a
+   newly-drifted row sneaks into the write set. Review the diff, then re-run to
+   apply.
 
 Rationale for a direct title-only UPDATE over a `title=NULL`+`enrich_attempts=0`
 reset: avoids the raw-name flash between reset and re-enrich; avoids re-running
@@ -278,3 +291,9 @@ ORDER BY id;
   Enforcement & monitoring note documenting why an inline anti-over-compression
   guard is deliberately *not* used (would risk hiding inventory) in favour of a
   recurring audit query.
+- 2026-06-01 (round 3): Third Codex pass — bounded the backfill write set to
+  `frozen snapshot ∩ current predicate` so drift additions are reported but never
+  written, and required the dry-run and apply to iterate the same frozen id list
+  (closes the dry-run→apply window). Adopted the intersection rather than the
+  proposed hard-abort / `--accept-drift` flag, which the intersection makes
+  unnecessary.
