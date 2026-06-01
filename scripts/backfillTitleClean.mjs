@@ -45,7 +45,7 @@ dotenv.config({ path: ENV_PATH });
 
 // Import AFTER dotenv so cleanTitle reads OPENAI_API_KEY at call time.
 const { cleanTitle } = await import("../app/lib/cleanTitle.js");
-const { titleLeaksAllowedBrand, normalizeBrand } = await import("../app/lib/brand.js");
+const { titleLeaksAllowedBrand, titleLeaksAllowedBrandStrict, normalizeBrand } = await import("../app/lib/brand.js");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -112,6 +112,11 @@ async function fetchAllRows() {
     const { data, error } = await supabaseAdmin
       .from("products")
       .select("id, name, title, description, store_domain, available, hidden")
+      // Stable key before paging: without ORDER BY, Postgres gives no cross-page
+      // order guarantee, so a concurrent sync write between .range() calls can
+      // shift a boundary row and the scan skips it (then the backfill reports a
+      // frozen snapshot id as a drift "removal") or double-counts it.
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`Fetch error: ${error.message}`);
     if (!data || data.length === 0) break;
@@ -324,14 +329,14 @@ async function runBackfill() {
     // RETURNED brand against the title, so a brand that isn't the one it
     // extracted (a collab partner, an era-designer like "Tom Ford" under a
     // "GUCCI" chip) can still leak into the title and duplicate the brand chip
-    // on the card. titleLeaksAllowedBrand checks the title against the whole
-    // curated allowlist in BOTH spaced and compact form, so a compact spelling
-    // like "MiuMiu"/"APC" is caught too — matching the recurring audit's
-    // detector. It is a strict superset of titleContainsAllowedBrand, so this
-    // swap can only skip MORE (never write a leak the old guard would have
-    // missed). Skipping keeps the row's existing valid 1-word title; it falls to
-    // the recurring audit rather than getting a leaked rewrite.
-    else if (titleLeaksAllowedBrand(proposed)) decision = "SKIP:brand_in_title";
+    // on the card. titleLeaksAllowedBrandStrict checks the proposed title against
+    // the whole curated allowlist in BOTH spaced and compact form, so a compact
+    // spelling like "MiuMiu"/"APC" is caught too. Unlike the loose detector the
+    // recurring audit uses, it anchors at word boundaries — a write BLOCKER must
+    // not skip a legitimate enrichment just because a short brand ("ami" → AMI
+    // Paris) is an incidental substring of a real word ("Silk Camisole",
+    // "Ceramic Ring"). Skipping keeps the row's existing valid 1-word title.
+    else if (titleLeaksAllowedBrandStrict(proposed)) decision = "SKIP:brand_in_title";
     else decision = "WRITE";
 
     console.log(`${id}\t${row.store_domain}\t${JSON.stringify(row.title)}\t${JSON.stringify(proposed ?? "")}\t${decision}`);

@@ -110,6 +110,37 @@ export function titleLeaksAllowedBrand(rawTitle) {
   return false;
 }
 
+// Word-boundary variant of titleLeaksAllowedBrand for the WRITE path
+// (scripts/backfillTitleClean.mjs's SKIP:brand_in_title guard). The loose
+// substring detector above is correct for the read-only audit — over-flagging
+// only adds review candidates — but as a write BLOCKER it makes false positives
+// permanent: "ami" (AMI Paris) is a substring of "camisole"/"ceramic"/"dynamic",
+// so the loose form silently refuses legitimate enrichments like "Silk Camisole".
+//
+// This variant anchors every allowlist token at word boundaries inside the
+// normalized, space-separated title — the same discipline brandFromHandle uses
+// (`(^|-)slug(-|$)`) so "ami" can't match "ceramic". Both title and brand pass
+// through normalizeBrand, which collapses punctuation to single spaces, so a
+// padded-substring test on ` ${brand} ` is an exact whole-token(s) match. It
+// keeps the whole-allowlist coverage (a collab partner / era-designer like
+// "Tom Ford" under a GUCCI chip is still caught) and both spaced and compact
+// spellings ("Miu Miu" / "MiuMiu"), but only when the brand stands as its own
+// word(s). It can therefore miss a fully-concatenated leak with no separators
+// ("miumiubag") — acceptable on the write path, where the loose audit still
+// surfaces such rows for review.
+export function titleLeaksAllowedBrandStrict(rawTitle) {
+  const normalizedTitle = normalizeBrand(rawTitle);
+  if (!normalizedTitle) return false;
+  const padded = ` ${normalizedTitle} `;
+  for (const brand of BRAND_SET_NORMALIZED) {
+    if (padded.includes(` ${brand} `)) return true;
+  }
+  for (const brand of BRAND_SET_COMPACT) {
+    if (padded.includes(` ${brand} `)) return true;
+  }
+  return false;
+}
+
 // Precomputed brand → handle-slug map. Each brand emits up to two slug
 // variants: dashed (`miu-miu`) and compact (`miumiu`). The compact variant
 // mirrors the BRAND_SET_COMPACT path that isAllowedBrand already trusts —
