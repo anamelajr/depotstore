@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../../lib/supabase.js";
 import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
 import { chunkArray } from "../../lib/chunk.js";
 import { checkCdgAliasDrift } from "../../lib/searchAliases.js";
+import { refreshFxRates } from "../../lib/fx.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -275,6 +276,24 @@ export async function GET(request) {
     fetch(enrichUrl, { method: "POST", headers: enrichHeaders }).catch(() => {})
   );
   summary.enrichTriggered = true;
+
+  // Refresh FX rates off the response path. refreshFxRates is timeout-bounded
+  // (~5 s AbortController), so a hung provider never delays the cron response
+  // or the enrich_runs log. Unlike the enrich trigger above, do NOT swallow
+  // silently: log structured success/failure so a blocked or malformed
+  // Frankfurter doesn't age rates invisibly behind a healthy sync summary.
+  // On success fx_rates.fetched_at advances; a run of fx_refresh_fail logs with
+  // a stale fetched_at is the alertable condition. This path is isolated from
+  // the successfulDomains stale-delete guard.
+  waitUntil(
+    refreshFxRates()
+      .then(() => console.log(JSON.stringify({ event: "fx_refresh_ok" })))
+      .catch((e) =>
+        console.error(
+          JSON.stringify({ event: "fx_refresh_fail", error: e?.message ?? String(e) }),
+        ),
+      ),
+  );
 
   try {
     await supabaseAdmin.from("enrich_runs").insert({

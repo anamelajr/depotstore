@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { getEntryBySlug, getAllSlugs } from "../../../content/editorial/index.js";
 import EditorialHero from "../_components/EditorialHero.js";
@@ -31,7 +32,19 @@ export default async function EditorialEntryPage({ params }) {
   const entry = getEntryBySlug(slug);
   if (!entry) notFound();
 
-  const { curated, moreFrom } = await fetchEditorialProducts({
+  // The root layout reads cookies() for the currency selector, which opts this
+  // page into dynamic (per-request) rendering — that removes the €→£ price
+  // flicker the static build would otherwise show. Wrapping the product fetch
+  // in unstable_cache keeps the live inventory data on the hourly cadence so
+  // going dynamic doesn't hit Supabase on every request. Explicit per-slug
+  // keyPart belt-and-suspenders against a future closure-capture mis-impl
+  // (unstable_cache also keys on the arguments below).
+  const getCachedEditorialProducts = unstable_cache(
+    fetchEditorialProducts,
+    ["editorial-products", slug],
+    { revalidate: 3600 },
+  );
+  const { curated, moreFrom } = await getCachedEditorialProducts({
     curatedProducts: entry.curatedProducts,
     brandFilter: entry.brandFilter,
     moreFromLimit: 8,

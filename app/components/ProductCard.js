@@ -3,6 +3,7 @@
 import { track } from "@vercel/analytics";
 import Link from "next/link";
 import HoverSwapImage from "./HoverSwapImage.js";
+import Price from "./Price.js";
 
 export default function ProductCard({ product }) {
   const {
@@ -18,7 +19,6 @@ export default function ProductCard({ product }) {
     handle,
     storeDomain,
   } = product ?? {};
-  const price = rawPrice?.replace(/\.00$/, "") ?? null;
   const SHORT_NAMES = {
     "Les Archives Paris": "Les Archives",
     "Numero 13 Vintage": "Numero 13",
@@ -80,9 +80,7 @@ export default function ProductCard({ product }) {
             </div>
           </div>
           <div className="mt-auto flex items-baseline justify-between gap-2 pt-2">
-            <div className="font-mono text-[12px] text-zinc-200">
-              {price ?? "—"}
-            </div>
+            <Price eur={rawPrice} className="font-mono text-[12px] text-zinc-200" />
             {storeName ? (
               <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
                 {badgeName}
@@ -104,9 +102,7 @@ export default function ProductCard({ product }) {
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-between">
-            <div className="font-mono text-[12px] text-zinc-200 whitespace-nowrap">
-              {price ?? "—"}
-            </div>
+            <Price eur={rawPrice} className="font-mono text-[12px] text-zinc-200 whitespace-nowrap" />
             {storeName ? (
               <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
                 {badgeName}

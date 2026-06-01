@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
+import RegionMenu from "./RegionMenu";
 
 function MenuIcon() {
   return (
@@ -113,9 +114,7 @@ export default function TopBar({
       <div className="flex flex-1 items-center justify-end gap-6">
         {!isMenuOpen && (
           <>
-            <Link href="/#newsletter" className={baseLink}>
-              Newsletter
-            </Link>
+            <RegionMenu />
             <Link href="/saved" className={baseLink}>
               Saved
             </Link>
