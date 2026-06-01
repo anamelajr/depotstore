@@ -51,7 +51,7 @@ for now; note it to the user.
 - The product detail page renders sold items (shows a "Sold" label, no 404), so
   a sold card can still link to a working page.
 
-## Changes (3 files, no DB / RPC / cron / enrich changes)
+## Changes (3 source files + tests; no DB / RPC / cron / enrich changes)
 
 ### 1. Curated-only visibility helper — `app/lib/productQueries.js`
 
@@ -82,8 +82,12 @@ top review risk).
 ### 2. Use it in the curated fetch only — `app/editorial/_lib/fetchEditorialProducts.js`
 
 In `fetchCurated`, swap `withVisibility(...)` → `withCuratedVisibility(...)`.
-Leave `fetchBrandPool` on `withVisibility` so "More from" and the backfill
-fillers stay live-only. No other change needed:
+`withVisibility` is currently used **only** in `fetchCurated`, so update the
+import accordingly (drop `withVisibility`, add `withCuratedVisibility`) to avoid
+an unused-import lint error. Note `fetchBrandPool` does **not** use
+`withVisibility` — it calls the `get_interleaved_products` RPC, whose visibility
+(`available + hidden`) is enforced server-side in SQL — so "More from" and the
+backfill fillers stay live-only with no change here. No other change needed:
 
 - Sold-but-listed curated items now return with `available = false`.
 - Author ordering, the `curatedKeys` dedupe, and the `minCurated`/backfill logic
@@ -110,10 +114,49 @@ it untouched guarantees the feature is exclusive to *Pieces featured*. The
 existing href already encodes `available`, so the sold card links to a product
 page that shows "Sold" — keep it clickable.
 
+### 4. Tests (required — the original plan wrongly said "no other change")
+
+An existing test encodes the old contract and must change, and the new helper
+needs its own coverage. Verified facts that shape this:
+
+- [fetchEditorialProducts.test.mjs:52-60](app/editorial/_lib/fetchEditorialProducts.test.mjs:52)
+  currently asserts the curated query applies **both** `eq:available === true`
+  and `eq:hidden === false` (passes 3/3 today via `node --test`). The swap drops
+  the `available` filter, so this assertion would fail — the test must be updated.
+- **Caveat — this file is not run by `npm test`.** `vitest run` reports "No test
+  files found" for it: the vitest `include` is `app/**/__tests__/**/*.test.{js,mjs}`,
+  but this file sits at `app/editorial/_lib/` and uses the `node:test` API, not
+  vitest. It only runs via `node --test <file>`. There is also **no test CI**
+  (the only workflow, `.github/workflows/sync.yml`, just pings `/api/cron`). So
+  the breakage is latent, not a CI failure — but still a real broken test.
+
+Test work:
+
+1. **Update** `app/editorial/_lib/fetchEditorialProducts.test.mjs`:
+   - Change the curated-query assertion to expect `eq:hidden === false` and that
+     `eq:available` is **not** applied (absent); rename the test accordingly
+     (e.g. "curated query filters hidden only, includes sold").
+   - Add a case: a curated product with `available: false` (via the `row(...)`
+     `extras` arg) is still returned by `fetchEditorialProducts`'s curated output.
+2. **Add** a `withCuratedVisibility` unit test to
+   [app/lib/__tests__/productQueries.test.js](app/lib/__tests__/productQueries.test.js)
+   (vitest — actually runs under `npm test`), mirroring the existing
+   `withVisibility` test: assert it applies `hidden=false` and does **not** touch
+   `available`, and returns the chained builder. This gives the new exception
+   enforced regression coverage in the default workflow.
+3. The existing `withVisibility` test
+   ([productQueries.test.js:153](app/lib/__tests__/productQueries.test.js:153))
+   stays green because we add a sibling helper rather than mutating it — no edit.
+4. *Optional follow-up (out of scope):* convert the orphaned editorial test to
+   the vitest API and relocate it under an `__tests__/` dir so `npm test` covers
+   the curated/more-from/backfill paths. Flag it; don't bundle it here.
+
 ## Scope guarantees (sold items stay ONLY here)
 
-- Only `fetchCurated` uses `withCuratedVisibility`; `fetchBrandPool` (More-from +
-  backfill) and every other `productQueries` consumer keep `withVisibility`.
+- Only `fetchCurated` uses `withCuratedVisibility`. `fetchBrandPool` (More-from +
+  backfill) goes through the `get_interleaved_products` RPC (visibility enforced
+  in SQL), and every other `productQueries` consumer keeps `withVisibility` — all
+  stay live-only.
 - The overlay is added only to PiecesFeatured's card copy.
 - General feed, interleaved RPCs, and `/api/products` are untouched.
 
@@ -133,8 +176,13 @@ in production — don't rely on them. Use a **real** sold-but-listed handle
 `available = false AND hidden = false`).
 
 1. Pick a real `available = false, hidden = false` product and note its
-   `store_domain` + `handle`. Curate it into a test editorial entry (via the
-   local admin), commit the entry.
+   `store_domain` + `handle`. **Do not** use the admin curated-products picker —
+   its search goes through `/api/admin/search-products`, which filters
+   `available = true` ([search-products/route.js:26](app/api/admin/search-products/route.js:26)),
+   so a sold row will never appear there. Instead add the `{ storeDomain, handle }`
+   pair **directly** to a test entry's `curatedProducts` array in its
+   `content/editorial/<slug>.js` file (that's exactly the shape the admin would
+   write), and commit.
 2. **Set/confirm test data first, then deploy the preview** — the editorial page
    is `revalidate = 3600`, so a fresh preview build renders current data;
    mutating data after deploy would show a stale cached page.
