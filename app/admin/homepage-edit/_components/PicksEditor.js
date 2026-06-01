@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PublishButton from "../../_components/PublishButton.js";
+import { shopifyImageUrl } from "../../../lib/shopifyImage.js";
 
 const inputStyle = {
   width: "100%",
@@ -138,7 +139,7 @@ export default function PicksEditor({ initialPicks }) {
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 {p.image_url && (
-                  <img src={p.image_url} alt="" style={{ width: 32, height: 40, objectFit: "cover", borderRadius: 2 }} />
+                  <img src={shopifyImageUrl(p.image_url, 80)} alt="" style={{ width: 32, height: 40, objectFit: "cover", borderRadius: 2 }} />
                 )}
                 <span style={{ flex: 1 }}>
                   <span style={{ color: "#e7e7e2" }}>{p.title || p.name}</span>

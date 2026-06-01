@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { shopifyImageUrl } from "../lib/shopifyImage.js";
 
 const WHEEL_COOLDOWN_MS = 750;
 
@@ -229,7 +230,7 @@ export default function ProductGallery({ images, alt }) {
                 isActive ? "border-zinc-900" : "border-transparent"
               }`}
             >
-              <img src={src} alt="" className="h-full w-full object-cover" />
+              <img src={shopifyImageUrl(src, 256)} alt="" className="h-full w-full object-cover" />
             </button>
           );
         })}
@@ -241,7 +242,7 @@ export default function ProductGallery({ images, alt }) {
         <div className="hidden lg:flex lg:relative lg:w-full lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:items-start lg:justify-center">
           <img
             ref={heroRef}
-            src={activeSrc}
+            src={shopifyImageUrl(activeSrc, 1400)}
             alt={alt}
             className="h-full w-auto max-w-full object-contain"
           />
@@ -296,7 +297,7 @@ export default function ProductGallery({ images, alt }) {
                 className="relative flex-none w-full aspect-[3/4] snap-start snap-always"
               >
                 <img
-                  src={src}
+                  src={shopifyImageUrl(src, 1400)}
                   alt={i === 0 ? alt : ""}
                   className="h-full w-full object-cover"
                 />
