@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import HoverSwapImage from "./HoverSwapImage.js";
+import Price from "./Price.js";
 import {
   withVisibility,
   PRODUCT_ROW_SELECT,
@@ -66,9 +67,7 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
                 {p.title ?? p.name ?? "Untitled"}
               </p>
               {p.price ? (
-                <p className="mt-1.5 font-mono text-[11px] text-zinc-700">
-                  {p.price}
-                </p>
+                <Price eur={p.price} className="mt-1.5 block font-mono text-[11px] text-zinc-700" />
               ) : null}
             </div>
           );

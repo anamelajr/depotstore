@@ -2,12 +2,18 @@
 
 import { Suspense, useState } from "react";
 import Nav from "./Nav";
+import { CurrencyProvider } from "./CurrencyProvider";
 
-export default function LayoutClient({ children, stores = [] }) {
+export default function LayoutClient({
+  children,
+  stores = [],
+  initialCurrency = "EUR",
+  rates,
+}) {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   return (
-    <>
+    <CurrencyProvider initialCurrency={initialCurrency} rates={rates}>
       <Suspense fallback={null}>
         <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
       </Suspense>
@@ -48,6 +54,6 @@ export default function LayoutClient({ children, stores = [] }) {
           </div>
         </div>
       )}
-    </>
+    </CurrencyProvider>
   );
 }

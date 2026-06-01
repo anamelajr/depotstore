@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { NAV_TOP_LEVEL, SUBCATEGORIES_BY_SHORTKEY } from "../lib/categories.js";
 import { buildFreshFeedUrl } from "../lib/feed-utils";
+import { useCurrency } from "./CurrencyProvider";
+import { CURRENCIES } from "../lib/currency";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
@@ -50,6 +52,56 @@ export default function MobileNavMenu({ isOpen, onClose }) {
   );
 }
 
+// Compact Language/Currency control for the mobile menu footer. Mirrors the
+// desktop RegionPanel: English active, Français inert, currency flips selection
+// and closes the menu so the converted prices behind it are visible.
+function RegionSection({ onClose }) {
+  const { currency, setCurrency } = useCurrency();
+  const sectionLabel = "font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-600";
+
+  return (
+    <div className="flex flex-col gap-3 pb-1">
+      <div className="flex items-center gap-4">
+        <span className={sectionLabel}>Language</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-50">
+          English
+        </span>
+        <span
+          aria-disabled="true"
+          className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600"
+        >
+          Français
+        </span>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className={sectionLabel}>Currency</span>
+        {Object.entries(CURRENCIES).map(([code, { symbol, label }]) => {
+          const active = currency === code;
+          return (
+            <button
+              key={code}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                setCurrency(code);
+                onClose();
+              }}
+              className={`font-mono text-[10px] uppercase tracking-[0.18em] ${
+                active ? "text-zinc-50" : "text-zinc-500"
+              }`}
+            >
+              {symbol} {label}
+            </button>
+          );
+        })}
+      </div>
+      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-600">
+        Prices are converted from EUR
+      </span>
+    </div>
+  );
+}
+
 function RootView({ onClose, onOpenShop }) {
   return (
     <>
@@ -90,6 +142,7 @@ function RootView({ onClose, onOpenShop }) {
           <span>EDITORIAL</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </Link>
         <div className="mt-auto pt-8 border-t border-zinc-900 flex flex-col gap-4">
+          <RegionSection onClose={onClose} />
           <Link href="/about" onClick={onClose} className="font-sans text-[11px] text-zinc-500">
             About
           </Link>

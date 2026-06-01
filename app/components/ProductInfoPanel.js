@@ -1,3 +1,5 @@
+import Price from "./Price.js";
+
 export default function ProductInfoPanel({
   brand,
   storeName,
@@ -36,7 +38,7 @@ export default function ProductInfoPanel({
       {/* Price */}
       {price && (
         <div className="mt-4 border-b border-zinc-200 pb-4">
-          <p className="font-mono text-[13px] text-zinc-700">{price}</p>
+          <Price eur={price} className="font-mono text-[13px] text-zinc-700" />
         </div>
       )}
 

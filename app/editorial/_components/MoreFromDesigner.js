@@ -1,5 +1,6 @@
 import Link from "next/link";
 import HoverSwapImage from "../../components/HoverSwapImage.js";
+import Price from "../../components/Price.js";
 
 function EditorialProductCard({ product }) {
   const href =
@@ -27,7 +28,7 @@ function EditorialProductCard({ product }) {
         {displayTitle}
       </p>
       <div className="mt-1.5 flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[11px] text-zinc-800">{product.price ?? "—"}</span>
+        <Price eur={product.price} className="font-mono text-[11px] text-zinc-800" />
         {product.storeName ? (
           <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
             {product.storeName}

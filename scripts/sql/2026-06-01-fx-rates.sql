@@ -14,7 +14,12 @@
 -- IMPORTANT — seed with TODAY'S REAL rates, not the FALLBACK_RATES constant.
 -- If the seed equals 0.85/1.08 and the read later fails silently, live and
 -- fallback values are indistinguishable and verification passes on broken
--- infra. Look up the current EUR->GBP/USD and substitute below.
+-- infra. The values below are real EUR->GBP/USD from Frankfurter (ECB ref
+-- rate dated 2026-05-29). The hourly cron (refreshFxRates) overwrites them on
+-- its next run, so exactness at apply-time is not critical — they only need to
+-- differ from 0.85/1.08 so live vs. fallback stays distinguishable. If you are
+-- applying this much later, feel free to refresh from
+-- https://api.frankfurter.dev/v1/latest?from=EUR&to=GBP,USD first.
 --
 -- Apply via Supabase SQL Editor (MCP is read-only). Run BEFORE merging the
 -- code that reads it, so the first deploy's getFxRates() finds a row.
@@ -30,9 +35,9 @@ CREATE TABLE IF NOT EXISTS public.fx_rates (
   CONSTRAINT fx_rates_singleton CHECK (id = 1)
 );
 
--- Idempotent seed of row 1. Replace <real_gbp>/<real_usd> with today's rates.
+-- Idempotent seed of row 1 with real EUR->GBP/USD (Frankfurter, 2026-05-29).
 INSERT INTO public.fx_rates (id, base, gbp, usd, fetched_at)
-  VALUES (1, 'EUR', <real_gbp>, <real_usd>, now())
+  VALUES (1, 'EUR', 0.86723, 1.1644, now())
   ON CONFLICT (id) DO UPDATE
   SET gbp = EXCLUDED.gbp, usd = EXCLUDED.usd, fetched_at = EXCLUDED.fetched_at;
 

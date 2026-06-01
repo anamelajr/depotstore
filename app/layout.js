@@ -1,9 +1,13 @@
+import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/react";
 import LayoutClient from "./components/LayoutClient";
 import Footer from "./components/Footer";
 import { getActiveStores } from "./lib/stores.js";
+import { getFxRates } from "./lib/fx.js";
 import "./globals.css";
+
+const ALLOWED_CURRENCIES = ["EUR", "GBP", "USD"];
 
 const satoshi = localFont({
   src: [
@@ -34,13 +38,36 @@ export const metadata = {
 
 export default async function RootLayout({ children }) {
   const stores = await getActiveStores();
+
+  // Reading the cookie here is what opts the tree into dynamic rendering, so
+  // the first server paint already carries the visitor's currency (no flash).
+  const cookieCurrency = (await cookies()).get("depot_currency")?.value;
+  const initialCurrency = ALLOWED_CURRENCIES.includes(cookieCurrency)
+    ? cookieCurrency
+    : "EUR";
+
+  // `source` is server-side diagnostics only — pass the nested `rates` down,
+  // never the wrapper (CurrencyProvider/formatPrice expect { GBP, USD }).
+  const { rates, source } = await getFxRates();
+  if (source === "fallback") {
+    console.warn(
+      JSON.stringify({ event: "fx_layout_fallback", note: "serving FALLBACK_RATES" }),
+    );
+  }
+
   return (
     <html
       lang="en"
       className={`h-full antialiased ${satoshi.variable} ${generalSans.variable}`}
     >
       <body className="min-h-full flex flex-col">
-        <LayoutClient stores={stores}>{children}</LayoutClient>
+        <LayoutClient
+          stores={stores}
+          initialCurrency={initialCurrency}
+          rates={rates}
+        >
+          {children}
+        </LayoutClient>
         <Footer />
       </body>
       <Analytics />

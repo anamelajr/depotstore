@@ -6,6 +6,7 @@ import DesktopAboutSection from "../../components/DesktopAboutSection";
 import Accordion from "../../components/Accordion";
 import SaveShareRow from "../../components/SaveShareRow";
 import MoreFromStore from "../../components/MoreFromStore";
+import Price from "../../components/Price.js";
 import { resolveProductDetail } from "../../lib/resolveProductDetail";
 import Link from "next/link";
 
@@ -55,7 +56,7 @@ export default async function ProductPage({ params, searchParams }) {
             {/* Price + meta */}
             <div className="mt-8 px-6">
               {price && (
-                <p className="font-mono text-[13px] text-zinc-700">{price}</p>
+                <Price eur={price} className="font-mono text-[13px] text-zinc-700" />
               )}
               {!available && (
                 <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
