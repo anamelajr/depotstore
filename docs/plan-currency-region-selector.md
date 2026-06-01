@@ -107,35 +107,28 @@ sort changes (conversion is monotonic, so EUR-base sort == converted sort).
 - **`app/api/cron/route.js`** — refresh FX in a **non-blocking** path. Preferred: run
   `refreshFxRates()` inside `waitUntil(...)` (the handler already uses `waitUntil` at L274
   for the enrich trigger) so a slow provider never delays the cron response or its
-  `enrich_runs` log. If `fxRefreshed` must appear in the response JSON instead, keep it an
-  **isolated** awaited `try { await refreshFxRates() } catch` placed **after** the
-  stale-delete and outside the sync `Promise.allSettled` — but only safe because
-  `refreshFxRates` is now timeout-bounded (above). Either way it can never touch the
+  `enrich_runs` log. **Do not copy the enrich trigger's silent `.catch(() => {})`** — the
+  FX refresh must log structured success/failure so a blocked or malformed Frankfurter
+  doesn't age rates invisibly behind a healthy-looking sync summary:
+  `waitUntil(refreshFxRates().then(() => console.log(JSON.stringify({event:"fx_refresh_ok"}))).catch((e) => console.error(JSON.stringify({event:"fx_refresh_fail", error: e?.message ?? String(e)}))))`.
+  On success, `fx_rates.fetched_at` advances (the freshness signal); a run of `fx_refresh_fail`
+  logs with a stale `fetched_at` is the alertable condition. If `fxRefreshed` must instead
+  appear in the response JSON, keep it an **isolated** awaited `try { await refreshFxRates() }
+  catch` placed **after** the stale-delete and outside the sync `Promise.allSettled` — safe
+  because `refreshFxRates` is timeout-bounded (above). Either way it can never touch the
   `successfulDomains` delete guard. (Schedule is dashboard-configured; no `vercel.json`.)
 
-### Out-of-band (do before merge — MCP is read-only)
-Create + seed the `fx_rates` table via the **Supabase SQL Editor**:
-```sql
-create table if not exists public.fx_rates (
-  id integer primary key default 1,
-  base text not null default 'EUR',
-  gbp numeric not null, usd numeric not null,
-  fetched_at timestamptz not null default now(),
-  constraint fx_rates_singleton check (id = 1)
-);
--- Seed with TODAY'S REAL rates (look them up first), NOT the FALLBACK_RATES
--- constant (0.85/1.08). If the seed equals the fallback and the table read
--- later fails silently, live and fallback values are indistinguishable and
--- verification passes on broken infra. Replace the placeholders below:
-insert into public.fx_rates (id, base, gbp, usd)
-  values (1, 'EUR', <real_gbp>, <real_usd>)
-  on conflict (id) do nothing;
-alter table public.fx_rates enable row level security; -- no policies: server-only
+### DB migration (tracked + applied before merge)
+The `fx_rates` table ships as a **tracked migration**, matching the repo convention
+(`scripts/sql/*` — e.g. the enrich-product RPC, subcategory, size, image_url_2 all live
+there): **[`scripts/sql/2026-06-01-fx-rates.sql`](../scripts/sql/2026-06-01-fx-rates.sql)**.
+Like every migration here it is **run manually in the Supabase SQL Editor** (MCP is
+read-only) **before** the code that reads it merges. The file: creates the single-row
+table, idempotently upserts row 1 (seed with **today's real** rates, not the `0.85/1.08`
+fallback constant — placeholders `<real_gbp>/<real_usd>`), enables RLS with no policies,
+and ends with a **guard query** that must return 0 rows (fails loud if the fallback values
+were seeded by mistake).
 
--- Guard: this MUST return 0 rows after seeding. If it returns the row, you
--- seeded the fallback values and the distinguishability check is defeated.
-select * from public.fx_rates where gbp = 0.85 and usd = 1.08;
-```
 FX source: **Frankfurter** (`https://api.frankfurter.app/latest?from=EUR&to=GBP,USD`) —
 free, no key, ECB-based.
 
@@ -145,7 +138,8 @@ Shopify-sync EUR base in `shopifyFetch.js`/`resolveProductDetail.js`; the cron
 stale-delete logic; and the **footer newsletter signup form** (only the header link goes).
 
 ## Verification (on a Vercel preview, not localhost)
-1. Run the `fx_rates` SQL in Supabase first, then push the branch and open the preview URL.
+1. Apply `scripts/sql/2026-06-01-fx-rates.sql` in the Supabase SQL Editor first (seed real
+   rates; confirm its guard query returns 0 rows), then push the branch and open the preview.
 2. **Desktop header:** shows `EN · €`, Newsletter gone, Saved present. Panel opens → English
    active/white, Français muted + click does nothing; €/£/$ clickable; note reads exactly
    "Prices are converted from EUR".
