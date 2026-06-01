@@ -134,33 +134,37 @@ gabbana`). Reuse the JS function for exact parity and a single source of truth
 
 ```js
 // audit predicate (read-only) — mirror of matchesBucket2's shape.
-// titleLeaksAllowedBrand composes the brand forms the rest of the app
-// recognizes (see Coverage below). It is a NEW, additive helper; the shipped
-// titleContainsAllowedBrand that the bucket-2 backfill depends on is unchanged.
+// titleLeaksAllowedBrand = normalized + compact brand forms (see Coverage).
+// It is a NEW, additive helper; the shipped titleContainsAllowedBrand that the
+// bucket-2 backfill depends on is unchanged.
 function matchesBrandLeak(row) {
   return row.available === true && row.hidden === false &&
          row.title != null && titleLeaksAllowedBrand(row.title);
 }
 ```
 
-**Coverage — match every brand form the app already recognizes.** The shipped
+**Coverage — also catch compact spellings.** The shipped
 `titleContainsAllowedBrand` substring-matches only the **space-normalized**
-allowlist (`BRAND_SET_NORMALIZED`), so it misses forms the rest of the app
-treats as real and that users see on the card:
-- **Compact spellings** — `"MiuMiu Bag"` / `"APC Jacket"` return `false`
-  (confirmed), though `isAllowedBrand` accepts them via `BRAND_SET_COMPACT`.
-- **Product-facing aliases** — `ProductCard` renders some brands as `CDG`
-  (`"JUNYA WATANABE CDG"`, `"CDG Homme Plus"` —
-  [ProductCard.js:27-29](../app/components/ProductCard.js)) and `searchAliases`
-  maps `cdg → comme` ([searchAliases.js:16](../app/lib/searchAliases.js));
-  `"CDG Tee"` returns `false` (confirmed).
+allowlist (`BRAND_SET_NORMALIZED`), so it misses compact spellings the app
+already treats as real: `"MiuMiu Bag"` / `"APC Jacket"` return `false`
+(confirmed), though `isAllowedBrand` accepts them via `BRAND_SET_COMPACT`. So
+`titleLeaksAllowedBrand` is a **new, additive** helper composing the existing
+normalized check with a compact-variant check — reusing `BRAND_SET_COMPACT`
+(export it from `brand.js`; do not duplicate the list). The shipped
+`titleContainsAllowedBrand` and the bucket-2 backfill that calls it stay exactly
+as-is.
 
-So `titleLeaksAllowedBrand` is a **new, additive** helper that composes the
-existing normalized check with a compact-variant check (reusing the existing
-`BRAND_SET_COMPACT` — export it; do not duplicate the list) and the existing
-product-facing alias data (reuse the ProductCard display map / `searchAliases` —
-invent no new alias list). The shipped `titleContainsAllowedBrand` and the
-bucket-2 backfill that calls it stay exactly as-is.
+> **Product-facing short aliases (a literal `"CDG"` in a title) are out of
+> scope.** `ProductCard` displays some brands as `CDG`
+> ([ProductCard.js:26-29](../app/components/ProductCard.js)) and search maps
+> `cdg → comme` ([searchAliases.js:15-16](../app/lib/searchAliases.js)), but
+> those maps are **non-exported locals** (`SHORT_BRANDS` is even function-scoped
+> inside the component). Reusing them would mean **editing two shipped files**,
+> which this additive extension deliberately avoids. The cost is small: real
+> leaks use the full brand name (`Comme Des Garçons Tee`), already caught by the
+> normalized check; only a rare literal-`"CDG"`-in-title slips, and the audit is
+> a review flag, not a gate. Centralizing the alias maps into a shared module is
+> a clean **follow-on** if such leaks ever surface (limitation 3).
 
 **Home (detection):** add a read-only `--audit` report mode to
 [scripts/backfillTitleClean.mjs](../scripts/backfillTitleClean.mjs) that reuses
@@ -202,20 +206,25 @@ the leaked titles persist — stated honestly rather than implying an automatic
 fix. Building that snapshot + write set can be a follow-on; this plan defines
 its shape so detection is never mistaken for remediation.
 
-**Document two limitations** in the plan doc:
+**Document three limitations** in the plan doc:
 
 1. **Substring false positives.** The detector is substring, not token-bounded,
    so short normalized brands (`ami`, `mm6`, `ysl`, `424`) hit incidentally —
    e.g. `"Ceramic Vase Top"` flags via `ami` ⊂ "cer**ami**c" (confirmed). This
    is acceptable: the audit is a **review flag**, never an auto-fix or hide, so
-   widening coverage (compact / alias, above) only adds more candidates to
-   review — the safe direction. Do **not** edit the shipped
-   `titleContainsAllowedBrand` (the bucket-2 backfill depends on its current
-   behavior); compose the extra coverage in the new `titleLeaksAllowedBrand`.
+   widening coverage (compact, above) only adds more candidates to review — the
+   safe direction. Do **not** edit the shipped `titleContainsAllowedBrand` (the
+   bucket-2 backfill depends on its current behavior); compose the extra coverage
+   in the new `titleLeaksAllowedBrand`.
 2. **Sweep depends on the prompt.** The backfill *skips* (`SKIP:brand_in_title`)
    any row whose re-clean still leaks, so the audit→backfill loop only *fixes* a
    leak when the tightened prompt yields a clean re-clean. A persistently-leaking
    residual **stays flagged**, not silently rewritten.
+3. **Product-facing short aliases are not auto-detected.** A literal `"CDG"`
+   (etc.) in a title is missed, because reusing the alias maps would mean editing
+   shipped files (see the Coverage note). Real leaks use full brand names and are
+   caught; the residual is left to spot-check. Centralizing the alias maps into a
+   shared module is the bounded follow-on if these ever appear.
 
 ## Validate the prompt change
 
@@ -234,8 +243,8 @@ controls, also confirm the returned `brand` is the expected **own** brand
 (`TOM FORD`, `COMME DES GARÇONS`). A prompt-only change can yield a clean title
 while the model selects the wrong chip brand — which the live route writes via
 COALESCE and the title-only audit can never detect afterward. Add one
-**compact/alias** control (`MiuMiu`, `APC`, or a `CDG` source) to confirm the
-prompt drops those forms from the title too, mirroring the detector's coverage.
+**compact-spelling** control (`MiuMiu` or `APC`) to confirm the prompt drops
+that form from the title too, mirroring the detector's compact coverage.
 
 **The collab-sparse case (`Chrome Hearts × CDG tee → Tee`) is a BLOCKING
 control:** a `null` / empty result for it is a **failure**, not an acceptable
@@ -256,13 +265,13 @@ shipping. Distinguish a real contract failure from a transient API
 - New `docs/snapshots/<date>-brand-leak-targets.json` (follow-on) — the reviewed
   brand-leak id ceiling; sibling to the bucket-2 snapshot, which is untouched.
 - [app/lib/brand.js](../app/lib/brand.js) — **additive:** export
-  `BRAND_SET_COMPACT` and add a new `titleLeaksAllowedBrand` helper composing
-  normalized + compact + product-facing alias coverage. The shipped
-  `titleContainsAllowedBrand` stays unchanged (the bucket-2 backfill depends on
-  it).
+  `BRAND_SET_COMPACT` and add a new `titleLeaksAllowedBrand` helper composing the
+  normalized + compact checks. The shipped `titleContainsAllowedBrand` stays
+  unchanged (the bucket-2 backfill depends on it).
 - [app/components/ProductCard.js](../app/components/ProductCard.js) /
-  [app/lib/searchAliases.js](../app/lib/searchAliases.js) — read-only source of
-  the product-facing alias data the detector reuses (e.g. `CDG`); not modified.
+  [app/lib/searchAliases.js](../app/lib/searchAliases.js) — **not touched.**
+  Their product-facing alias maps (`CDG`) are deliberately out of scope
+  (limitation 3); consuming them would require editing these shipped files.
 - [docs/plan-title-cleaning-fix.md](plan-title-cleaning-fix.md) — update
   Track-2 prompt section, "Enforcement & monitoring" (add the brand-leak
   predicate + "why no inline brand-leak write guard" note mirroring the
