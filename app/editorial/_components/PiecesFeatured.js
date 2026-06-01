@@ -17,6 +17,11 @@ function EditorialProductCard({ product }) {
             alt={displayTitle}
           />
         ) : null}
+        {product.available === false ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+            <span className="font-mono text-[11px] uppercase tracking-widest text-white">SOLD</span>
+          </div>
+        ) : null}
       </div>
       {product.brand ? (
         <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-900">

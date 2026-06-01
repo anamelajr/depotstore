@@ -1,6 +1,6 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import { fetchEditorialProducts } from "./fetchEditorialProducts.js";
+import { fetchEditorialProducts } from "../fetchEditorialProducts.js";
 
 function makeFakeClient(rowsByCall) {
   const calls = [];
@@ -49,15 +49,17 @@ function row(handle, domain, brand = "Rick Owens", extras = {}) {
   };
 }
 
-test("curated query is split per store_domain and filters available + hidden", async () => {
+test("curated query filters hidden only, includes sold (no available filter)", async () => {
   const client = makeFakeClient((state, i) => {
     if (i === 0) {
       const got = Object.fromEntries(
         state.filters.map(([op, col, val]) => [`${op}:${col}`, val])
       );
       assert.equal(got["eq:store_domain"], "esco.test");
-      assert.equal(got["eq:available"], true);
+      // Curated reads use withCuratedVisibility: hidden is filtered, available
+      // is NOT — so sold-but-listed curated pieces persist with a SOLD overlay.
       assert.equal(got["eq:hidden"], false);
+      assert.ok(!("eq:available" in got), "curated query must NOT filter available");
       assert.deepEqual(got["in:handle"], ["a", "b"]);
       return { data: [row("a", "esco.test"), row("b", "esco.test")] };
     }
@@ -78,6 +80,38 @@ test("curated query is split per store_domain and filters available + hidden", a
   assert.equal(curated[1].handle, "b");
 });
 
+test("sold curated product (available: false) is still returned", async () => {
+  const client = makeFakeClient((state, i) => {
+    if (i === 0) {
+      return {
+        data: [
+          row("sold", "esco.test", "Rick Owens", { available: false }),
+          row("live", "esco.test"),
+        ],
+      };
+    }
+    return { data: [] };
+  });
+
+  const { curated } = await fetchEditorialProducts({
+    curatedProducts: [
+      { storeDomain: "esco.test", handle: "sold" },
+      { storeDomain: "esco.test", handle: "live" },
+    ],
+    brandFilter: null,
+    moreFromLimit: 0,
+    client,
+  });
+  assert.equal(curated.length, 2);
+  const sold = curated.find((p) => p.handle === "sold");
+  assert.ok(sold, "sold curated piece should be present");
+  assert.equal(sold.available, false);
+});
+
+// More-from / backfill stay live-only. That guarantee is enforced server-side
+// in SQL by get_interleaved_products (its `available + hidden` filtering cannot
+// be asserted from a JS unit test). What IS testable here: fetchCurated uses the
+// sold-inclusive direct query while More-from goes through the RPC.
 test("more-from calls get_interleaved_products RPC + excludes curated handles", async () => {
   const client = makeFakeClient((state, i) => {
     if (i === 0) return { data: [row("a", "esco.test")] };
