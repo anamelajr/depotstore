@@ -55,6 +55,13 @@ prompt rule `[ONE detail max]` in
 [app/lib/cleanTitle.js:54](app/lib/cleanTitle.js), which the model reads as
 "zero or one" and routinely picks zero — despite the stated 2–7-word floor.
 
+> **169 is the candidate set, not the change set.** A subset are *legitimately*
+> sparse — names that are just `BRAND - Garment` (`ACNE STUDIOS - Sweater`,
+> `Dress - Miu Miu`, `1017 ALYX 9SM - Belt`), where one word is the correct
+> title. Re-running `cleanTitle` on those re-resolves to the same word, so the
+> backfill's "skip if proposed ≤1 word / unchanged" rules treat them as no-ops.
+> The actual rewrite count is determined by the dry-run, not assumed to be 169.
+
 > Buckets considered and dismissed as false positives: `title == name` (12 — all
 > correctly title-cased clean source names like `BEIGE TABI BOOTS → Beige Tabi
 > Boots`); `runway`/`sold` (3 — legitimate archive descriptors).
@@ -89,12 +96,18 @@ hand-trace; confirm with the test run). First confirm `brandFromHandle` resolves
 
 **Data patch** — the code fix only protects future syncs; the existing row is
 COALESCE-locked. Direct UPDATE via the **Supabase SQL Editor** (MCP is
-read-only), snapshot first:
+read-only). **State-guarded compare-and-swap** so it is a no-op if the row was
+already corrected or changed since diagnosis:
 ```sql
-UPDATE products SET title = 'FW04 Aged Velvet Wallet' WHERE id = 5139850;
+UPDATE products SET title = 'FW04 Aged Velvet Wallet'
+WHERE id = 5139850
+  AND store_domain = 'lobscur.com'
+  AND title = 'New Arrival) - FW04 Aged Velevet Wallet'
+RETURNING id, title;
 ```
-(User chose the typo-corrected spelling `Velvet`. Brand chip `UNDERCOVER` is
-already shown separately, so it is omitted from the title.)
+Expect exactly one row returned. Zero rows ⇒ the row drifted — re-inspect before
+forcing. (User chose the typo-corrected spelling `Velvet`. Brand chip
+`UNDERCOVER` is already shown separately, so it is omitted from the title.)
 
 ### Track 2 — Re-clean the 169 over-compressed titles (prompt + backfill)
 
@@ -108,23 +121,76 @@ over-compressed names (expect detail retained) **and** a sample of already-good
 titles (expect no regression, still ≤7 words) before any mass write.
 
 **Backfill** — a one-off local maintenance script (service-role key + OpenAI
-key, same credentials `/api/enrich` uses; not a committed route). For each of the
-169 ids it calls the improved `cleanTitle({ name, rawDescription: description })`
-and, when the new title is 2–7 words, emits/executes a **title-only** UPDATE:
-```sql
-UPDATE products SET title = '<new>' WHERE id = <id>;  -- brand/category untouched
-```
-Rationale for a direct title-only UPDATE over a `title=NULL`+`enrich_attempts=0`
-reset:
-- Avoids the raw-name flash on the card between reset and re-enrich.
-- Avoids re-running the enrich route's hide gates — a `dolcevitahub.com`
-  (FILTER_BY_BRAND) row could otherwise be hidden if re-resolved brand misses
-  the allowlist. Touching only `title` removes that risk.
-- Avoids category churn.
+key, the same credentials `/api/enrich` already writes with; not a committed
+route). The frozen target set lives in
+[docs/snapshots/2026-06-01-title-backfill-targets.json](docs/snapshots/2026-06-01-title-backfill-targets.json)
+(170 ids: 1 artifact + 169 over-compression). Procedure:
 
-Snapshot the 169 `(id, title)` before running (rollback set). Skip any row whose
-new title is still ≤1 word (no improvement). The defined target set is the
-single-word-title / source-name-≥4-words predicate used in diagnosis.
+1. **Re-derive & diff.** Run the bucket-2 predicate (below) against production,
+   diff the live id set against the frozen snapshot, and **log** additions /
+   removals. Drift is expected (hourly sync) — surface it, don't silently widen
+   or narrow the run.
+2. **Recompute.** For each candidate, call the improved
+   `cleanTitle({ name, rawDescription: description })`.
+3. **Decide per row** — write only if ALL hold; otherwise skip with a logged
+   reason:
+   - `cleanTitle` returned non-null (skip + log on null — transient OpenAI
+     failure or echo/brand-leak guard rejection; never write a null result).
+   - new title is **2–7 words** (skip ≤1-word: legitimately-sparse names like
+     `ACNE STUDIOS - Sweater → Sweater` correctly re-resolve to one word).
+   - new title **differs** from the current title.
+4. **Write — parameterized, never string-built SQL.** Use the Supabase JS client
+   exactly as `/api/enrich` does — `supabaseAdmin.from("products").update({ title:
+   newTitle }).eq("id", id).eq("title", oldTitle).select("id, title")`. The
+   `.eq("title", oldTitle)` is a **compare-and-swap**: a row whose title changed
+   since step 1 updates zero rows (logged, not forced). This removes the
+   apostrophe/escaping and injection surface entirely — `newTitle` is bound as a
+   parameter, never interpolated into a SQL literal. **Touch `title` only**;
+   `brand`/`category`/`enrich_attempts` untouched.
+5. **Dry-run first.** A `--dry-run` flag prints `id, store_domain, old_title,
+   proposed_title, decision` for every candidate and writes nothing. Review the
+   diff, then re-run to apply.
+
+Rationale for a direct title-only UPDATE over a `title=NULL`+`enrich_attempts=0`
+reset: avoids the raw-name flash between reset and re-enrich; avoids re-running
+the enrich route's hide gates (a `dolcevitahub.com` FILTER_BY_BRAND row could
+otherwise be hidden if the re-resolved brand misses the allowlist); avoids
+category churn.
+
+> Why a script with `supabaseAdmin` rather than SQL pasted into the Editor:
+> CLAUDE.md routes *ad-hoc* manual SQL through the Editor, but this is a
+> programmatic, LLM-generated backfill — `/api/enrich` itself writes via the
+> service-role client, so this is consistent, and parameterized writes are the
+> only safe way to handle generated text.
+
+## Diagnostic SQL (reproducible)
+
+All counts in this plan come from these exact queries (run read-only via the
+Supabase MCP, project `pnjewddyeslsbozoeyks`, against `available=true AND
+hidden=false`). Re-run them at execution time to confirm the picture hasn't
+drifted.
+
+```sql
+-- Bucket A: unfulfilled (NULL title, visible). Diagnosed = 0.
+SELECT count(*) FROM products WHERE available AND NOT hidden AND title IS NULL;
+
+-- Bucket 1: hard artifacts (stray paren / "new arrival"). Diagnosed = 1 (id 5139850).
+SELECT id, store_domain, brand, title, name FROM products
+WHERE available AND NOT hidden
+  AND (title ILIKE '%new arrival%' OR title LIKE '%(%' OR title LIKE '%)%');
+
+-- Artifact sweep (all 0): guillemets/quotes, leading/trailing punct, lowercase
+-- start, brand-word leak, double space, >7 words.
+-- (See git history of this plan for the full battery; each returned 0.)
+
+-- Bucket 2: over-compression — single-word title from a >=4-word source name.
+-- Diagnosed = 169 (frozen in docs/snapshots/2026-06-01-title-backfill-targets.json).
+SELECT id, store_domain, brand, title AS old_title, name FROM products
+WHERE available AND NOT hidden AND title IS NOT NULL
+  AND array_length(regexp_split_to_array(btrim(title),'\s+'),1) = 1
+  AND array_length(regexp_split_to_array(btrim(name),'\s+'),1) >= 4
+ORDER BY id;
+```
 
 ## Critical files
 
@@ -132,7 +198,8 @@ single-word-title / source-name-≥4-words predicate used in diagnosis.
 - [app/lib/handleFallback.js](app/lib/handleFallback.js) — helpers (read-only reference; the bug is the composition, not the helpers).
 - [app/lib/__tests__/handleFallback.test.js](app/lib/__tests__/handleFallback.test.js) — mirror update + regression test.
 - [app/lib/cleanTitle.js](app/lib/cleanTitle.js) — prompt tighten (Track 2).
-- New one-off backfill script under `scripts/` (Track 2) — local run, not a route.
+- [docs/snapshots/2026-06-01-title-backfill-targets.json](docs/snapshots/2026-06-01-title-backfill-targets.json) — frozen Track-2 target set (audit baseline).
+- New one-off backfill script under `scripts/` (Track 2) — local run, `supabaseAdmin` parameterized writes + `--dry-run`, not a route.
 
 ## Verification
 
@@ -140,20 +207,34 @@ single-word-title / source-name-≥4-words predicate used in diagnosis.
    integrated cases + new Undercover canary all green.
 2. After the Track-1 data patch, re-run the diagnostic SQL: artifact buckets
    (`new arrival`, stray paren) = 0; NULL-title-visible stays 0.
-3. After the Track-2 backfill, re-run the single-word-with-rich-source query —
-   count drops from 169 to ~0 (only legitimately-sparse names like
-   `1017 ALYX 9SM - Belt → Belt` may remain). Confirm visible-row count and
-   per-store visible counts (esp. `dolcevitahub.com`) are unchanged (nothing got
-   hidden).
+3. Track-2 dry-run: review the `id, old_title, proposed_title, decision` table
+   and the snapshot add/remove diff before applying. After the apply, re-run the
+   bucket-2 predicate — the count drops, but **not to 0**: legitimately-sparse
+   names (`1017 ALYX 9SM - Belt → Belt`, `Dress - Miu Miu → Dress`) correctly
+   stay single-word and are expected to remain. Confirm total visible-row count
+   and per-store visible counts (esp. `dolcevitahub.com`) are unchanged (the
+   title-only writes touch no visibility column, so nothing should hide).
 4. On the Vercel preview branch: inspect the Undercover product card and a
    handful of re-cleaned `yourgarmentz.com` cards via the preview tools.
 
 ## Notes / risks
 
-- All writes route through the **Supabase SQL Editor** or the local backfill
-  script (service-role); the Supabase MCP here is read-only. Snapshot before
-  each destructive run (CLAUDE.md workflow).
+- All writes route through the **Supabase SQL Editor** (the single Track-1 patch)
+  or the local backfill script's parameterized `supabaseAdmin` writes; the
+  Supabase MCP here is read-only.
+- Every production write is **state-guarded** (compare-and-swap on the current
+  title) so reruns and concurrent edits can't clobber newer state — the backfill
+  is idempotent.
+- Backfill titles are **never** interpolated into SQL strings; they bind as
+  parameters through the JS client. Avoids the apostrophe-breakage / generated-
+  text-to-SQL hazard.
 - Branch + Vercel preview; do not push to `main`. Merge only on explicit
   instruction.
 - The prompt change affects all future enrichment — the sample regression check
   on already-good titles is the guard against introducing a new defect class.
+
+## Revision history
+
+- 2026-06-01: Hardened the Track-2 backfill after a Codex adversarial review —
+  parameterized state-guarded writes (was raw SQL by id), embedded the exact
+  diagnostic SQL, and froze the target set in `docs/snapshots/`.
