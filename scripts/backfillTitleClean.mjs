@@ -45,7 +45,7 @@ dotenv.config({ path: ENV_PATH });
 
 // Import AFTER dotenv so cleanTitle reads OPENAI_API_KEY at call time.
 const { cleanTitle } = await import("../app/lib/cleanTitle.js");
-const { titleContainsAllowedBrand, titleLeaksAllowedBrand, normalizeBrand } = await import("../app/lib/brand.js");
+const { titleLeaksAllowedBrand, normalizeBrand } = await import("../app/lib/brand.js");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -53,7 +53,14 @@ if (!SUPABASE_URL || !SERVICE_ROLE) {
   console.error(`Missing Supabase env in ${ENV_PATH} (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)`);
   process.exit(1);
 }
-if (!process.env.OPENAI_API_KEY) {
+// --audit is read-only detection (no OpenAI calls), so it must be runnable with
+// only Supabase read creds — that is the whole point of a recurring audit. Every
+// other effective mode (default backfill, --validate) calls cleanTitle and needs
+// the key; without it every call returns null (a silent all-skip). VALIDATE wins
+// the dispatch over AUDIT, so only PURE audit (--audit without --validate) is
+// exempt from the key requirement.
+const AUDIT_ONLY = AUDIT && !VALIDATE;
+if (!AUDIT_ONLY && !process.env.OPENAI_API_KEY) {
   console.error(`Missing OPENAI_API_KEY in ${ENV_PATH} — every cleanTitle would return null (silent all-skip).`);
   process.exit(1);
 }
@@ -317,10 +324,14 @@ async function runBackfill() {
     // RETURNED brand against the title, so a brand that isn't the one it
     // extracted (a collab partner, an era-designer like "Tom Ford" under a
     // "GUCCI" chip) can still leak into the title and duplicate the brand chip
-    // on the card. titleContainsAllowedBrand checks the title against the whole
-    // curated allowlist. Skipping keeps the row's existing valid 1-word title;
-    // it falls to the recurring audit rather than getting a leaked rewrite.
-    else if (titleContainsAllowedBrand(proposed)) decision = "SKIP:brand_in_title";
+    // on the card. titleLeaksAllowedBrand checks the title against the whole
+    // curated allowlist in BOTH spaced and compact form, so a compact spelling
+    // like "MiuMiu"/"APC" is caught too — matching the recurring audit's
+    // detector. It is a strict superset of titleContainsAllowedBrand, so this
+    // swap can only skip MORE (never write a leak the old guard would have
+    // missed). Skipping keeps the row's existing valid 1-word title; it falls to
+    // the recurring audit rather than getting a leaked rewrite.
+    else if (titleLeaksAllowedBrand(proposed)) decision = "SKIP:brand_in_title";
     else decision = "WRITE";
 
     console.log(`${id}\t${row.store_domain}\t${JSON.stringify(row.title)}\t${JSON.stringify(proposed ?? "")}\t${decision}`);
