@@ -116,9 +116,13 @@ TITLE rules so a distinguishing detail is retained when present — e.g. replace
 `[ONE detail max]` with guidance to *include the single most distinctive detail
 (material, silhouette, color, or season) when the source name carries one; never
 reduce to a bare garment noun if a usable descriptor exists*, while keeping the
-≤7-word cap and 2-word floor. Validate the new prompt on a ~15-row sample of the
-over-compressed names (expect detail retained) **and** a sample of already-good
-titles (expect no regression, still ≤7 words) before any mass write.
+≤7-word cap and 2-word floor. **The detail must already appear in the source
+name — never invent one.** A sparse name like `ACNE STUDIOS - Sweater` must stay
+`Sweater`, not gain a fabricated colour/material; this is the guard against the
+new prompt trading over-compression for hallucination. Validate the new prompt on
+a ~15-row sample of the over-compressed names (expect detail retained) **and** a
+sample of already-good + legitimately-sparse titles (expect no regression, no
+invented detail) before any mass write.
 
 **Backfill** — a one-off local maintenance script (service-role key + OpenAI
 key, the same credentials `/api/enrich` already writes with; not a committed
@@ -130,8 +134,9 @@ route). The frozen target set lives in
    diff the live id set against the frozen snapshot, and **log** additions /
    removals. Drift is expected (hourly sync) — surface it, don't silently widen
    or narrow the run.
-2. **Recompute.** For each candidate, call the improved
-   `cleanTitle({ name, rawDescription: description })`.
+2. **Recompute.** For each candidate, read `(name, description, title)` and call
+   the improved `cleanTitle({ name, rawDescription: description })`. Keep the
+   `name` and `title` you read — both are write guards in step 4.
 3. **Decide per row** — write only if ALL hold; otherwise skip with a logged
    reason:
    - `cleanTitle` returned non-null (skip + log on null — transient OpenAI
@@ -141,12 +146,14 @@ route). The frozen target set lives in
    - new title **differs** from the current title.
 4. **Write — parameterized, never string-built SQL.** Use the Supabase JS client
    exactly as `/api/enrich` does — `supabaseAdmin.from("products").update({ title:
-   newTitle }).eq("id", id).eq("title", oldTitle).select("id, title")`. The
-   `.eq("title", oldTitle)` is a **compare-and-swap**: a row whose title changed
-   since step 1 updates zero rows (logged, not forced). This removes the
-   apostrophe/escaping and injection surface entirely — `newTitle` is bound as a
-   parameter, never interpolated into a SQL literal. **Touch `title` only**;
-   `brand`/`category`/`enrich_attempts` untouched.
+   newTitle }).eq("id", id).eq("title", oldTitle).eq("name", oldName).select("id,
+   title")`. The `.eq("title", oldTitle)` is a **compare-and-swap** (don't clobber
+   a manual fix); the `.eq("name", oldName)` is a **stale-source guard** — cron
+   overwrites `name` from Shopify every sync but leaves a non-null `title` alone,
+   so without it a mid-run re-sync could land a title computed from the *old*
+   name onto the *new* product. Either mismatch updates zero rows (logged, not
+   forced). `newTitle` binds as a parameter, never interpolated into SQL. **Touch
+   `title` only**; `brand`/`category`/`enrich_attempts` untouched.
 5. **Dry-run first.** A `--dry-run` flag prints `id, store_domain, old_title,
    proposed_title, decision` for every candidate and writes nothing. Review the
    diff, then re-run to apply.
@@ -162,6 +169,34 @@ category churn.
 > programmatic, LLM-generated backfill — `/api/enrich` itself writes via the
 > service-role client, so this is consistent, and parameterized writes are the
 > only safe way to handle generated text.
+
+### Enforcement & monitoring — why no inline anti-over-compression guard
+
+Over-compression is a *quality* regression, not a data-integrity violation (the
+title is valid, just sparse), so it is enforced by review + monitoring, not by a
+runtime gate. An inline guard in `cleanTitle`/enrich was considered and
+**deliberately rejected**:
+
+- "Detect a bare garment noun when the source has recoverable detail" is a
+  *semantic* judgment, the same one the model makes — a code heuristic can't draw
+  it reliably and would misfire on legitimately-sparse names.
+- Worse, a guard that returns `null` feeds the enrich null-branch, which **hides
+  the row at attempt 3** ([route.js:291-303](app/api/enrich/route.js)). That
+  would convert a cosmetic one-word title into an invisible product — the exact
+  "hide on an edge case kills legitimate rows" failure mode CLAUDE.md warns
+  against. A cosmetic issue must never be able to hide inventory.
+- `cleanTitle` calls a live model, so its output can't be pinned by deterministic
+  unit tests anyway.
+
+Enforcement instead:
+1. **Prompt fix + dry-run** handle the existing 169 (this plan).
+2. **Recurring audit** for the future: run the bucket-2 diagnostic SQL (below) on
+   a schedule; it is cheap, deterministic, and cannot hide anything. New
+   over-compressions surface as a list to sweep with the same backfill — a
+   detect-and-sweep loop, not a prompt-compliance bet or a risky inline reject.
+
+Deterministic regression tests still apply to **Track 1** (`handleFallback`), whose
+helpers are pure functions — only the LLM-dependent Track-2 output resists them.
 
 ## Diagnostic SQL (reproducible)
 
@@ -238,3 +273,8 @@ ORDER BY id;
 - 2026-06-01: Hardened the Track-2 backfill after a Codex adversarial review —
   parameterized state-guarded writes (was raw SQL by id), embedded the exact
   diagnostic SQL, and froze the target set in `docs/snapshots/`.
+- 2026-06-01 (round 2): Second Codex pass — added a `.eq("name", oldName)`
+  stale-source write guard, a "never invent detail" prompt guardrail, and an
+  Enforcement & monitoring note documenting why an inline anti-over-compression
+  guard is deliberately *not* used (would risk hiding inventory) in favour of a
+  recurring audit query.
