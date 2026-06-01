@@ -23,12 +23,11 @@ interleaved RPCs + `resolveCategoryFilter` in `app/lib/categories.js`.
   parent disagrees with the row's already-set category — silently burning
   enrich retries on re-classification candidates.
 - **`cleanTitle.js`'s `null` is retryable.** It covers transient OpenAI
-  failures (5xx, rate-limit, 8 s timeout) as well as genuinely
-  unclassifiable rows — treat as transient, not terminal.
+  failures as well as genuinely unclassifiable rows — treat as transient,
+  not terminal.
 - **Brand-from-handle fallback stays deterministic.** Regex against the
   curated allowlist only; never prompt the model with the handle
-  (hallucinated brand → passes allowlist → invisible bad data). Slug list
-  keeps dashed AND compact variants, longest-first.
+  (hallucinated brand → passes allowlist → invisible bad data).
 - **Cron stale-delete is scoped to `successfulDomains`, never global.** A
   domain is added only when sync returned `count > 0`. `fetchStoreProducts`
   must throw on non-200 AND on 200-with-malformed `products` — a silent
@@ -47,9 +46,9 @@ interleaved RPCs + `resolveCategoryFilter` in `app/lib/categories.js`.
   the drift risk is the hand-replicated pair: `enrich_attempts < MAX` and
   `brand|title|category IS NULL`. A mismatch pins `remaining > 0` forever,
   burning all 30 self-chain hops on no-ops.
-- **In-loop `row.X` reads require X in the batch SELECT projection.** Filters
-  and projections are independent: `.lt("enrich_attempts", MAX)` works
-  unselected, but then `row.enrich_attempts` is `undefined` and `+ 1` → `NaN`.
+- **In-loop `row.X` reads require X in the batch SELECT projection** —
+  filtering a column doesn't select it; an unselected `row.X` is `undefined`
+  → silent `NaN`.
 - **Self-branded store hide gates are asymmetric.** For `SELF_BRANDED_STORES`,
   `/api/enrich` hides immediately on the success branch (`isSelfBranded()`
   resolved) but on the null branch only at retry exhaustion — hiding on the
@@ -87,8 +86,7 @@ interleaved RPCs + `resolveCategoryFilter` in `app/lib/categories.js`.
   reintroduces the RESET→APPLY race.
 - **Single sources of truth:** category taxonomy + `resolveCategoryFilter`
   + `CATEGORY_SLUG_TO_DB` → `app/lib/categories.js`; sort options →
-  `app/lib/sort-options.js`; product reads (visibility filter, row select
-  + mapper, interleaved-RPC call shape) → `app/lib/productQueries.js`.
+  `app/lib/sort-options.js`; product reads → `app/lib/productQueries.js`.
 - **Editorial entries are registered manually in
   `content/editorial/index.js`'s hardcoded `ENTRIES` array.** No
   filesystem auto-discovery — new entries are imported + pushed.
@@ -146,9 +144,7 @@ applying any change.
 - **dot COMME** uses `/collections/paris/products.json`, not
   `/products.json`.
 - **Brand filter is `unaccent` + `ILIKE` substring**, not strict equality
-  — covers casing drift, brand fragmentation, and diacritics. Requires
-  `extensions.unaccent` and the `p_brand` parameter on both interleaved
-  RPCs.
+  — covers casing drift, brand fragmentation, and diacritics.
 - **`MoreFromStore` queries Supabase directly** to dodge
   `NEXT_PUBLIC_BASE_URL` ambiguity on preview. Don't consolidate it back
   to HTTP.
