@@ -1,36 +1,42 @@
 import BRANDS from "../brands.js";
 
-// Normalizes brand strings for reliable comparison
-// Handles accents, punctuation, slashes, spacing differences
-export function normalizeBrand(value) {
+// Canonicalization aliases: alternate spellings / sub-labels → the allowlist's
+// canonical brand. Module-level (not a local inside normalizeBrand) so the brand
+// sets below can also fold in the raw alias spellings: BRANDS.map(normalizeBrand)
+// stores ONLY the canonical form ("maison margiela"), so a title carrying the
+// common short spelling ("Margiela Jacket") would slip past the substring
+// detectors. See ALIAS_SPELLINGS below.
+const BRAND_ALIASES = {
+  "MARGIELA": "MAISON MARGIELA",
+  "MARTIN MARGIELA": "MAISON MARGIELA",
+  "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
+  "A.P.C": "A.P.C.",
+  "ALAIA": "ALAÏA",
+  "AZZEDINE ALAÏA": "ALAÏA",
+  "AZZEDINE ALAIA": "ALAÏA",
+  "ALEXANDER MCQUEEN": "ALEXANDER MCQUEEN",
+  "BELLEVILLE SASSOON": "BELLVILLE SASSOON",
+  "CÉLINE": "CELINE",
+  "COURREGES": "COURRÈGES",
+  "FAYCAL AMOR": "FAYÇAL AMOR",
+  "GIANFRANCO FERRE": "GIANFRANCO FERRÉ",
+  "CHRISTIAN DIOR": "DIOR",
+  "DIOR HOMME": "DIOR",
+  "GIANNI VERSACE": "VERSACE",
+  "GUCCI BY TOM FORD": "GUCCI",
+  "CAVALLI CLASS": "CAVALLI",
+  "BIKKEMBERGS": "DIRK BIKKEMBERGS",
+};
+
+// Token-normalizes a brand/title string WITHOUT alias resolution: strips
+// diacritics, lowercases, expands "&", collapses every non-alphanumeric run to a
+// single space. Returns null on empty/non-string input or empty result. This is
+// the raw form used to seed the alias spellings into the brand sets, and the
+// shared back half of normalizeBrand.
+function normalizeBrandTokens(value) {
   if (!value || typeof value !== "string") return null;
 
-  const ALIASES = {
-    "MARGIELA": "MAISON MARGIELA",
-    "MARTIN MARGIELA": "MAISON MARGIELA",
-    "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
-    "A.P.C": "A.P.C.",
-    "ALAIA": "ALAÏA",
-    "AZZEDINE ALAÏA": "ALAÏA",
-    "AZZEDINE ALAIA": "ALAÏA",
-    "ALEXANDER MCQUEEN": "ALEXANDER MCQUEEN",
-    "BELLEVILLE SASSOON": "BELLVILLE SASSOON",
-    "CÉLINE": "CELINE",
-    "COURREGES": "COURRÈGES",
-    "FAYCAL AMOR": "FAYÇAL AMOR",
-    "GIANFRANCO FERRE": "GIANFRANCO FERRÉ",
-    "CHRISTIAN DIOR": "DIOR",
-    "DIOR HOMME": "DIOR",
-    "GIANNI VERSACE": "VERSACE",
-    "GUCCI BY TOM FORD": "GUCCI",
-    "CAVALLI CLASS": "CAVALLI",
-    "BIKKEMBERGS": "DIRK BIKKEMBERGS",
-  };
-
-  const upper = value.trim().toUpperCase();
-  const resolved = ALIASES[upper] !== undefined ? ALIASES[upper] : value;
-
-  const result = resolved
+  const result = value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -40,7 +46,31 @@ export function normalizeBrand(value) {
   return result || null;
 }
 
-export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
+// Normalizes brand strings for reliable comparison
+// Handles accents, punctuation, slashes, spacing differences
+export function normalizeBrand(value) {
+  if (!value || typeof value !== "string") return null;
+  const upper = value.trim().toUpperCase();
+  const resolved = BRAND_ALIASES[upper] !== undefined ? BRAND_ALIASES[upper] : value;
+  return normalizeBrandTokens(resolved);
+}
+
+// Raw alias spellings, normalized but NOT canonicalized — "margiela",
+// "martin margiela", "bikkembergs", "christian dior", etc. Folded into the brand
+// sets alongside the canonical forms so the substring detectors catch a title
+// using an alias spelling whose canonical form is not a substring of it (e.g.
+// "Margiela" vs canonical "Maison Margiela"; "Bikkembergs" vs "Dirk
+// Bikkembergs"). Aliases whose canonical IS a substring ("Christian Dior" has
+// "dior") were already caught; those are redundant-but-harmless. Derived from
+// BRAND_ALIASES — no separate source of truth.
+const ALIAS_SPELLINGS = Object.keys(BRAND_ALIASES);
+
+export const BRAND_SET_NORMALIZED = new Set(
+  [
+    ...BRANDS.map(normalizeBrand),
+    ...ALIAS_SPELLINGS.map(normalizeBrandTokens),
+  ].filter(Boolean)
+);
 
 // Whitespace-stripped variants of every allowlist entry. Catches vendors
 // that drop the space between brand tokens — e.g. "MiuMiu" vs "Miu Miu",
@@ -48,10 +78,11 @@ export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Bo
 // vendors fail the exact-normalized match and end up in /api/enrich, where
 // each one consumes ~750 input tokens just to be deleted by the allowlist
 // gate. Cheap to maintain — derived from BRANDS, no separate source of truth.
-const BRAND_SET_COMPACT = new Set(
-  BRANDS
-    .map((b) => normalizeBrand(b)?.replace(/\s+/g, ""))
-    .filter(Boolean)
+export const BRAND_SET_COMPACT = new Set(
+  [
+    ...BRANDS.map((b) => normalizeBrand(b)?.replace(/\s+/g, "")),
+    ...ALIAS_SPELLINGS.map((a) => normalizeBrandTokens(a)?.replace(/\s+/g, "")),
+  ].filter(Boolean)
 );
 
 // Allowlist membership check that survives whitespace differences.
@@ -74,6 +105,69 @@ export function titleContainsAllowedBrand(rawTitle) {
   const normalizedTitle = normalizeBrand(rawTitle);
   for (const brand of BRAND_SET_NORMALIZED) {
     if (normalizedTitle.includes(brand)) return true;
+  }
+  return false;
+}
+
+// Read-only audit detector for the recurring brand-leak sweep (see
+// docs/plan-brand-leak-fix.md, Gap 2). A SUPERSET of titleContainsAllowedBrand:
+// it composes the same normalized allowlist with the compact spellings the
+// app already trusts (BRAND_SET_COMPACT), so titles like "MiuMiu Bag" /
+// "APC Jacket" — which titleContainsAllowedBrand misses — are flagged too.
+//
+// Kept separate from titleContainsAllowedBrand on purpose:
+//   - The bucket-2 backfill's SKIP:brand_in_title guard depends on
+//     titleContainsAllowedBrand's exact current behavior; widening it would
+//     change a shipped write-path. This new helper is additive.
+//   - It normalizes ONCE and null-checks up front (titleContainsAllowedBrand
+//     throws on a punctuation-only title because normalizeBrand returns null
+//     there). This detector scans every visible row, so a single such title
+//     must not crash the sweep.
+//
+// Substring, not token-bounded: short normalized brands (e.g. "ami", "ysl")
+// hit incidentally ("ceramic" ⊃ "ami"). That is acceptable — this is a review
+// FLAG, never an auto-fix or hide, so over-flagging only adds candidates to
+// review. Both BRAND_SET_NORMALIZED and BRAND_SET_COMPACT derive from BRANDS,
+// so there is no second source of truth to drift.
+export function titleLeaksAllowedBrand(rawTitle) {
+  const normalizedTitle = normalizeBrand(rawTitle);
+  if (!normalizedTitle) return false;
+  for (const brand of BRAND_SET_NORMALIZED) {
+    if (normalizedTitle.includes(brand)) return true;
+  }
+  for (const brand of BRAND_SET_COMPACT) {
+    if (normalizedTitle.includes(brand)) return true;
+  }
+  return false;
+}
+
+// Word-boundary variant of titleLeaksAllowedBrand for the WRITE path
+// (scripts/backfillTitleClean.mjs's SKIP:brand_in_title guard). The loose
+// substring detector above is correct for the read-only audit — over-flagging
+// only adds review candidates — but as a write BLOCKER it makes false positives
+// permanent: "ami" (AMI Paris) is a substring of "camisole"/"ceramic"/"dynamic",
+// so the loose form silently refuses legitimate enrichments like "Silk Camisole".
+//
+// This variant anchors every allowlist token at word boundaries inside the
+// normalized, space-separated title — the same discipline brandFromHandle uses
+// (`(^|-)slug(-|$)`) so "ami" can't match "ceramic". Both title and brand pass
+// through normalizeBrand, which collapses punctuation to single spaces, so a
+// padded-substring test on ` ${brand} ` is an exact whole-token(s) match. It
+// keeps the whole-allowlist coverage (a collab partner / era-designer like
+// "Tom Ford" under a GUCCI chip is still caught) and both spaced and compact
+// spellings ("Miu Miu" / "MiuMiu"), but only when the brand stands as its own
+// word(s). It can therefore miss a fully-concatenated leak with no separators
+// ("miumiubag") — acceptable on the write path, where the loose audit still
+// surfaces such rows for review.
+export function titleLeaksAllowedBrandStrict(rawTitle) {
+  const normalizedTitle = normalizeBrand(rawTitle);
+  if (!normalizedTitle) return false;
+  const padded = ` ${normalizedTitle} `;
+  for (const brand of BRAND_SET_NORMALIZED) {
+    if (padded.includes(` ${brand} `)) return true;
+  }
+  for (const brand of BRAND_SET_COMPACT) {
+    if (padded.includes(` ${brand} `)) return true;
   }
   return false;
 }

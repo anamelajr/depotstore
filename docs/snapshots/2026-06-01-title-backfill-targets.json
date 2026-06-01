@@ -1,0 +1,11 @@
+{
+  "snapshot_date": "2026-06-01",
+  "purpose": "Frozen target set for docs/plan-title-cleaning-fix.md. The backfill re-derives candidates from the predicate at execution time and DIFFS against this baseline (report additions/removals) before any write. Each row write is a compare-and-swap: only proceed if the row's current title still matches old_title.",
+  "predicate_bucket2": "available=true AND hidden=false AND title IS NOT NULL AND array_length(regexp_split_to_array(btrim(title),'\\s+'),1)=1 AND array_length(regexp_split_to_array(btrim(name),'\\s+'),1)>=4",
+  "note": "A meaningful share of bucket2 are legitimately sparse (source name is just BRAND - Garment, e.g. 'ACNE STUDIOS - Sweater' -> 'Sweater'). Re-running cleanTitle on those returns the same single word -> expected no-op/skip. Only rows whose source carries recoverable detail (material/silhouette/season) should change.",
+  "bucket1_artifact": [
+    {"id": 5139850, "store_domain": "lobscur.com", "brand": "UNDERCOVER", "old_title": "New Arrival) - FW04 Aged Velevet Wallet", "name": "(New Arrival) UNDERCOVER - FW04 « But Beautiful » Aged velevet wallet"}
+  ],
+  "bucket2_count": 169,
+  "bucket2_ids": [126,968,972,981,985,1001,1052,1063,1077,1079,1105,1115,1124,1192,1212,1226,1301,1325,1330,2319,2419,2452,2461,2466,2472,2512,2517,2518,2519,2522,2523,2525,2526,2527,2528,2532,2534,2535,2537,2538,2540,2541,2545,2546,2547,2548,2549,2552,2555,2556,2557,2558,2561,2565,2567,2570,2572,2576,2578,2579,2581,2582,2583,2586,2588,2589,2592,2594,2595,2598,2599,2608,2609,2610,2611,2613,2614,2615,2619,2622,2623,2626,2627,2628,2629,2630,2633,2634,2635,2637,2640,2641,2648,2650,2651,2652,2653,2654,2655,2659,2660,2661,2662,2663,2664,2665,2666,2667,2668,2669,2670,2673,2674,2675,2677,2678,2679,2680,2682,2684,2685,2690,2691,2693,2695,2696,2697,28242,28251,28347,609226,609238,609255,609260,609277,609280,609281,609282,609283,609299,1893002,1893006,1893007,1893008,1893010,1893031,1893036,1893042,1893043,1893044,1893045,1893051,1893061,1893074,1893076,1893078,1893082,1893084,1893086,1893093,1893096,1893100,1893108,1893121,1893123,1893130,1893131,1893132,2808755]
+}
