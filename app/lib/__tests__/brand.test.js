@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   titleLeaksAllowedBrand,
   titleLeaksAllowedBrandStrict,
+  normalizeBrand,
+  isAllowedBrand,
 } from "../brand.js";
 
 // titleLeaksAllowedBrandStrict is the WRITE-path guard for
@@ -53,5 +55,60 @@ describe("titleLeaksAllowedBrandStrict — write-path leak guard", () => {
     expect(titleLeaksAllowedBrandStrict("")).toBe(false);
     expect(titleLeaksAllowedBrandStrict(null)).toBe(false);
     expect(titleLeaksAllowedBrandStrict("—")).toBe(false);
+  });
+});
+
+// Alias-only spellings whose canonical form is NOT a substring of them. The
+// brand sets are seeded from BRANDS.map(normalizeBrand), which canonicalizes
+// ("Margiela" → "maison margiela"), so without folding the raw alias keys back
+// in, a title using the common short spelling slips past every substring
+// detector. Margiela is the highest-value miss on an archive-fashion site.
+describe("brand-leak detection — alias spellings", () => {
+  it("flags the short alias spelling in both detectors", () => {
+    for (const title of [
+      "Margiela Jacket",
+      "Martin Margiela Coat",
+      "Bikkembergs Pants",
+    ]) {
+      expect(titleLeaksAllowedBrand(title)).toBe(true);
+      expect(titleLeaksAllowedBrandStrict(title)).toBe(true);
+    }
+  });
+
+  it("still flags the canonical spelling", () => {
+    expect(titleLeaksAllowedBrandStrict("Maison Margiela Jacket")).toBe(true);
+    expect(titleLeaksAllowedBrandStrict("Dirk Bikkembergs Boots")).toBe(true);
+  });
+
+  it("does not regress the camisole-class false positives", () => {
+    // Folding aliases in must not reintroduce incidental substring hits.
+    expect(titleLeaksAllowedBrandStrict("Silk Camisole")).toBe(false);
+    expect(titleLeaksAllowedBrandStrict("Ceramic Ring")).toBe(false);
+  });
+});
+
+// normalizeBrand was refactored to share normalizeBrandTokens with the set
+// builders; these pin that the public canonicalization contract is unchanged.
+describe("normalizeBrand — canonicalization preserved", () => {
+  it("canonicalizes aliases to their allowlist form", () => {
+    expect(normalizeBrand("Margiela")).toBe("maison margiela");
+    expect(normalizeBrand("Christian Dior")).toBe("dior");
+    expect(normalizeBrand("Bikkembergs")).toBe("dirk bikkembergs");
+  });
+
+  it("strips diacritics and trims", () => {
+    expect(normalizeBrand("  CÉLINE  ")).toBe("celine");
+  });
+
+  it("returns null on empty / whitespace / non-string input", () => {
+    expect(normalizeBrand("")).toBe(null);
+    expect(normalizeBrand("   ")).toBe(null);
+    expect(normalizeBrand(null)).toBe(null);
+  });
+
+  it("keeps isAllowedBrand accepting alias and compact spellings", () => {
+    expect(isAllowedBrand("Margiela")).toBe(true);
+    expect(isAllowedBrand("MiuMiu")).toBe(true);
+    expect(isAllowedBrand("Not A Brand XYZ")).toBe(false);
   });
 });

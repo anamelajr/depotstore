@@ -1,36 +1,42 @@
 import BRANDS from "../brands.js";
 
-// Normalizes brand strings for reliable comparison
-// Handles accents, punctuation, slashes, spacing differences
-export function normalizeBrand(value) {
+// Canonicalization aliases: alternate spellings / sub-labels → the allowlist's
+// canonical brand. Module-level (not a local inside normalizeBrand) so the brand
+// sets below can also fold in the raw alias spellings: BRANDS.map(normalizeBrand)
+// stores ONLY the canonical form ("maison margiela"), so a title carrying the
+// common short spelling ("Margiela Jacket") would slip past the substring
+// detectors. See ALIAS_SPELLINGS below.
+const BRAND_ALIASES = {
+  "MARGIELA": "MAISON MARGIELA",
+  "MARTIN MARGIELA": "MAISON MARGIELA",
+  "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
+  "A.P.C": "A.P.C.",
+  "ALAIA": "ALAÏA",
+  "AZZEDINE ALAÏA": "ALAÏA",
+  "AZZEDINE ALAIA": "ALAÏA",
+  "ALEXANDER MCQUEEN": "ALEXANDER MCQUEEN",
+  "BELLEVILLE SASSOON": "BELLVILLE SASSOON",
+  "CÉLINE": "CELINE",
+  "COURREGES": "COURRÈGES",
+  "FAYCAL AMOR": "FAYÇAL AMOR",
+  "GIANFRANCO FERRE": "GIANFRANCO FERRÉ",
+  "CHRISTIAN DIOR": "DIOR",
+  "DIOR HOMME": "DIOR",
+  "GIANNI VERSACE": "VERSACE",
+  "GUCCI BY TOM FORD": "GUCCI",
+  "CAVALLI CLASS": "CAVALLI",
+  "BIKKEMBERGS": "DIRK BIKKEMBERGS",
+};
+
+// Token-normalizes a brand/title string WITHOUT alias resolution: strips
+// diacritics, lowercases, expands "&", collapses every non-alphanumeric run to a
+// single space. Returns null on empty/non-string input or empty result. This is
+// the raw form used to seed the alias spellings into the brand sets, and the
+// shared back half of normalizeBrand.
+function normalizeBrandTokens(value) {
   if (!value || typeof value !== "string") return null;
 
-  const ALIASES = {
-    "MARGIELA": "MAISON MARGIELA",
-    "MARTIN MARGIELA": "MAISON MARGIELA",
-    "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
-    "A.P.C": "A.P.C.",
-    "ALAIA": "ALAÏA",
-    "AZZEDINE ALAÏA": "ALAÏA",
-    "AZZEDINE ALAIA": "ALAÏA",
-    "ALEXANDER MCQUEEN": "ALEXANDER MCQUEEN",
-    "BELLEVILLE SASSOON": "BELLVILLE SASSOON",
-    "CÉLINE": "CELINE",
-    "COURREGES": "COURRÈGES",
-    "FAYCAL AMOR": "FAYÇAL AMOR",
-    "GIANFRANCO FERRE": "GIANFRANCO FERRÉ",
-    "CHRISTIAN DIOR": "DIOR",
-    "DIOR HOMME": "DIOR",
-    "GIANNI VERSACE": "VERSACE",
-    "GUCCI BY TOM FORD": "GUCCI",
-    "CAVALLI CLASS": "CAVALLI",
-    "BIKKEMBERGS": "DIRK BIKKEMBERGS",
-  };
-
-  const upper = value.trim().toUpperCase();
-  const resolved = ALIASES[upper] !== undefined ? ALIASES[upper] : value;
-
-  const result = resolved
+  const result = value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -40,7 +46,31 @@ export function normalizeBrand(value) {
   return result || null;
 }
 
-export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Boolean));
+// Normalizes brand strings for reliable comparison
+// Handles accents, punctuation, slashes, spacing differences
+export function normalizeBrand(value) {
+  if (!value || typeof value !== "string") return null;
+  const upper = value.trim().toUpperCase();
+  const resolved = BRAND_ALIASES[upper] !== undefined ? BRAND_ALIASES[upper] : value;
+  return normalizeBrandTokens(resolved);
+}
+
+// Raw alias spellings, normalized but NOT canonicalized — "margiela",
+// "martin margiela", "bikkembergs", "christian dior", etc. Folded into the brand
+// sets alongside the canonical forms so the substring detectors catch a title
+// using an alias spelling whose canonical form is not a substring of it (e.g.
+// "Margiela" vs canonical "Maison Margiela"; "Bikkembergs" vs "Dirk
+// Bikkembergs"). Aliases whose canonical IS a substring ("Christian Dior" has
+// "dior") were already caught; those are redundant-but-harmless. Derived from
+// BRAND_ALIASES — no separate source of truth.
+const ALIAS_SPELLINGS = Object.keys(BRAND_ALIASES);
+
+export const BRAND_SET_NORMALIZED = new Set(
+  [
+    ...BRANDS.map(normalizeBrand),
+    ...ALIAS_SPELLINGS.map(normalizeBrandTokens),
+  ].filter(Boolean)
+);
 
 // Whitespace-stripped variants of every allowlist entry. Catches vendors
 // that drop the space between brand tokens — e.g. "MiuMiu" vs "Miu Miu",
@@ -49,9 +79,10 @@ export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Bo
 // each one consumes ~750 input tokens just to be deleted by the allowlist
 // gate. Cheap to maintain — derived from BRANDS, no separate source of truth.
 export const BRAND_SET_COMPACT = new Set(
-  BRANDS
-    .map((b) => normalizeBrand(b)?.replace(/\s+/g, ""))
-    .filter(Boolean)
+  [
+    ...BRANDS.map((b) => normalizeBrand(b)?.replace(/\s+/g, "")),
+    ...ALIAS_SPELLINGS.map((a) => normalizeBrandTokens(a)?.replace(/\s+/g, "")),
+  ].filter(Boolean)
 );
 
 // Allowlist membership check that survives whitespace differences.
