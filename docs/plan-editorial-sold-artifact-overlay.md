@@ -148,8 +148,16 @@ Test work (all **required** and all must run under `npm test`):
      (e.g. "curated query filters hidden only, includes sold").
    - Add a case: a curated product with `available: false` (via the `row(...)`
      `extras` arg) is still returned in `fetchEditorialProducts`'s curated output.
-   - Add a case: a curated product with `hidden: true` is **excluded** (proves the
-     new helper still drops hidden rows — guards the one real leak risk).
+   - **Hidden exclusion is asserted at the *filter* level, not the row level.**
+     The `eq:hidden === false` check above is the meaningful assertion. Do **not**
+     add a `hidden: true` row and expect row-level exclusion: the fake client only
+     records filters and returns whatever rows the test supplies (it does not
+     simulate PostgREST filtering), and production relies on the server-side
+     `.eq("hidden", false)` — `hidden` is not in `PRODUCT_ROW_SELECT`, so it is
+     never selected or mapped. Do **not** add client-side `hidden` handling to
+     force such a test green; that would be wrong. (If a row-level proof is ever
+     wanted, enhance the fake builder to apply its recorded `eq` filters before
+     returning — optional, not required here.)
    - Keep the existing "more-from calls `get_interleaved_products` RPC" assertion.
      That is the *testable* guarantee for More-from/backfill staying live-only:
      a JS unit test can prove fetchCurated uses the sold-inclusive direct query
@@ -188,33 +196,46 @@ Run `npm test` and confirm green before opening the PR.
 ## Verification (Vercel preview, not localhost)
 
 Note: the `rick-owens` curated handles are seed `.example` data and don't exist
-in production — don't rely on them. Use a **real** sold-but-listed handle
-(plentiful per the go/no-go query, e.g. pick one from dolcevitahub.com where
-`available = false AND hidden = false`).
+in production — don't rely on them. Pick a brand `X` that has **both** sold and
+live inventory (e.g. query for a brand with rows at `available = false` and rows
+at `available = true`, `hidden = false`), and use a test entry whose
+`brandFilter = X` so "More from X" is populated. From that brand pick:
+- **Item A** — sold (`available = false, hidden = false`), will be curated.
+- **Item B** — sold (`available = false, hidden = false`), brand `X`, **not**
+  curated. This is the exclusivity probe.
 
-1. Pick a real `available = false, hidden = false` product and note its
-   `store_domain` + `handle`. **Do not** use the admin curated-products picker —
-   its search goes through `/api/admin/search-products`, which filters
-   `available = true` ([search-products/route.js:26](app/api/admin/search-products/route.js:26)),
-   so a sold row will never appear there. Instead add the `{ storeDomain, handle }`
-   pair **directly** to a test entry's `curatedProducts` array in its
-   `content/editorial/<slug>.js` file (that's exactly the shape the admin would
-   write). **This is a throwaway fixture — see the cleanup gate below; it must
-   never reach `main`.** Commit it on a scratch commit you will drop, or stash it,
-   so the editorial content change stays isolated from the feature commits.
+1. Add **Item A**'s `{ storeDomain, handle }` pair **directly** to the test
+   entry's `curatedProducts` (do not use the admin picker — its search goes
+   through `/api/admin/search-products`, which filters `available = true`
+   ([search-products/route.js:26](app/api/admin/search-products/route.js:26)), so
+   a sold row never appears there). **This is a throwaway fixture — see the
+   cleanup gate; it must never reach `main`.** Keep it on a scratch commit you
+   will drop, or stash it.
 2. **Set/confirm test data first, then deploy the preview** — the editorial page
    is `revalidate = 3600`, so a fresh preview build renders current data;
    mutating data after deploy would show a stale cached page.
-3. On the editorial page, confirm the sold piece **appears** in "Pieces
-   featured" with the SOLD overlay, in its curated position.
-4. Confirm "More from {designer}" and the general `/feed` still **omit** that
-   sold item.
-5. Confirm a `hidden = true` row is still excluded from Pieces featured (no leak).
-6. Click the sold card → the product page renders with the "Sold" label.
+3. On the editorial page, confirm **Item A appears** in "Pieces featured" with
+   the SOLD overlay, in its curated position.
+4. **Exclusivity — test it correctly, not tautologically.** Item A is auto-
+   deduped out of More-from regardless of visibility (`fetchBrandPool` excludes
+   `curatedKeys`), so its absence there proves nothing. Instead probe the *live*
+   path that both More-from and the feed share — `get_interleaved_products` — with
+   a targeted query rather than eyeballing a page: hit
+   `/api/products?brand=X` (or call the RPC with `p_brand = X`) and confirm
+   **Item B does not appear** (it's sold). That proves the More-from/feed path
+   still excludes sold rows after the change. Eyeballing one item in a
+   thousand-row feed is not a valid check.
+5. Confirm hidden stays excluded end-to-end: temporarily add a `hidden = true`
+   row to `curatedProducts` and confirm it's **absent** from Pieces featured on
+   the preview (real Supabase applies `.eq("hidden", false)`; this is testable
+   here even though the unit test asserts it only at the filter level). Also a
+   throwaway fixture — revert it per the cleanup gate.
+6. Click Item A's card → the product page renders with the "Sold" label.
 
 ### Cleanup gate (do not ship verification fixtures)
 
-The step-1 curated-products edit is **test scaffolding, not a deliverable.**
+The curated-products edits from steps 1 and 5 (Item A, and the temporary
+`hidden = true` row) are **test scaffolding, not deliverables.**
 Before merge:
 
 - Drop/revert the scratch commit (or `git restore`/`git checkout` the touched
