@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import DeleteEntryButton from "./_components/DeleteEntryButton.js";
+import PublishButton from "../_components/PublishButton.js";
 
 async function loadEntries() {
   const dir = join(process.cwd(), "content", "editorial");
@@ -30,7 +32,7 @@ export default async function EditorialList() {
   const entries = await loadEntries();
   return (
     <div style={{ maxWidth: 720 }}>
-      <header style={{ display: "flex", alignItems: "center", marginBottom: 18 }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
         <h1 style={{ fontSize: 22, fontWeight: 400, margin: 0 }}>Editorial entries</h1>
         <Link
           href="/admin/editorial/new"
@@ -46,14 +48,20 @@ export default async function EditorialList() {
         >
           + New entry
         </Link>
+        <PublishButton
+          files={["content/editorial/", "public/editorial/"]}
+          label="editorial"
+        />
       </header>
       <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
         {entries.map((e) => (
-          <li key={e.slug}>
+          <li key={e.slug} style={{ display: "flex", alignItems: "stretch" }}>
             <Link
               href={`/admin/editorial/${e.slug}`}
               style={{
                 display: "flex",
+                flex: 1,
+                minWidth: 0,
                 padding: 12,
                 background: "#18181a",
                 border: "1px solid #2a2a2c",
@@ -70,6 +78,7 @@ export default async function EditorialList() {
                 {e.publishedAt}
               </span>
             </Link>
+            <DeleteEntryButton slug={e.slug} title={e.title} />
           </li>
         ))}
       </ul>
