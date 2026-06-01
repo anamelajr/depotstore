@@ -45,20 +45,23 @@ sort changes (conversion is monotonic, so EUR-base sort == converted sort).
   `FALLBACK_STORES` safety-net pattern in `app/lib/stores.js`); `getFxRates()` server read
   from Supabase `fx_rates`, falling back to `FALLBACK_RATES` on any error; `refreshFxRates()`
   fetches Frankfurter and upserts the row. Imports `supabaseAdmin`; never imported by client.
-  - **Observability (do not let fallback masquerade as live data):** when `getFxRates()`
+  - **Observability (do not let fallback masquerade as live data):** `getFxRates()` returns
+    a single wrapped object `{ rates: { GBP, USD }, source: "db" | "fallback" }`. When it
     falls back it must `console.warn` a structured line (e.g.
-    `{ event: "fx_read_fallback", reason }`) and return a `source: "fallback" | "db"`
-    marker alongside the rates so server diagnostics can tell them apart. A missing /
-    schema-drifted `fx_rates` table must be loud, not silent — otherwise stale hardcoded
-    rates ship looking correct. (`getFxRates` uses the service-role client, which bypasses
-    RLS, so the locked-RLS table is still readable server-side; the real exposure is a
-    missing table or a skipped migration step.)
+    `{ event: "fx_read_fallback", reason }`) and set `source: "fallback"`. **Contract:** the
+    nested `rates` object is the only thing passed to `CurrencyProvider`/`formatPrice` (which
+    expect `{ GBP, USD }`); `source` is for server-side logging/diagnostics only — never
+    pass the wrapper itself down. A missing / schema-drifted `fx_rates` table must be loud,
+    not silent — otherwise stale hardcoded rates ship looking correct. (`getFxRates` uses
+    the service-role client, which bypasses RLS, so the locked-RLS table is still readable
+    server-side; the real exposure is a missing table or a skipped migration step.)
   - **`refreshFxRates()` must time-bound the Frankfurter fetch** with an `AbortController`
     (~5 s), mirroring `cleanTitle.js`'s existing timeout pattern, so a hung provider can
     never stall the caller. Throw on non-200 or malformed shape (no `rates.GBP`/`rates.USD`).
 - **`app/components/CurrencyProvider.js`** (`"use client"`) — context `{ currency,
   setCurrency, language, rates }`. `setCurrency` updates state + writes cookie
-  `depot_currency` (`path=/; max-age=1y; samesite=lax`); no reload. Exports `useCurrency()`.
+  `depot_currency` (`path=/; max-age=31536000; samesite=lax` — `Max-Age` is in **seconds**,
+  not `1y`); no reload. Exports `useCurrency()`.
   **Constraint:** `useState` must seed from the `initialCurrency` **prop** (server-passed
   from the cookie), never a client `document.cookie` read in the initializer — otherwise
   SSR renders EUR and the client flips on hydration (the exact flash we're avoiding, plus
@@ -78,8 +81,9 @@ sort changes (conversion is monotonic, so EUR-base sort == converted sort).
 
 ### Edited files
 - **`app/layout.js`** — `const initialCurrency = (await cookies()).get("depot_currency")?.value`
-  (validate against allowed set, fall back `"EUR"`); `const rates = await getFxRates();`
-  pass both into `LayoutClient`. (This `cookies()` call is what makes the tree dynamic.)
+  (validate against allowed set, fall back `"EUR"`); `const { rates, source } = await getFxRates();`
+  pass `initialCurrency` + `rates` into `LayoutClient` (log/ignore `source` here — do **not**
+  pass the wrapper). (This `cookies()` call is what makes the tree dynamic.)
 - **`app/components/LayoutClient.js`** — wrap its tree in `<CurrencyProvider initialCurrency
   rates>` so both `<Nav>` (trigger) and `children` (the `<Price>`s) share one context.
 - **`app/components/nav/TopBar.js`** — replace the Newsletter `<Link>` at **lines 116–118**
@@ -119,15 +123,19 @@ create table if not exists public.fx_rates (
   fetched_at timestamptz not null default now(),
   constraint fx_rates_singleton check (id = 1)
 );
-insert into public.fx_rates (id, base, gbp, usd) values (1,'EUR',0.85,1.08)
+-- Seed with TODAY'S REAL rates (look them up first), NOT the FALLBACK_RATES
+-- constant (0.85/1.08). If the seed equals the fallback and the table read
+-- later fails silently, live and fallback values are indistinguishable and
+-- verification passes on broken infra. Replace the placeholders below:
+insert into public.fx_rates (id, base, gbp, usd)
+  values (1, 'EUR', <real_gbp>, <real_usd>)
   on conflict (id) do nothing;
 alter table public.fx_rates enable row level security; -- no policies: server-only
-```
-**Seed with *real current* rates, not the `FALLBACK_RATES` constant.** If the seed equals
-`0.85/1.08` and the table read silently fails, fallback and live values are
-indistinguishable and verification passes on broken infra. Use today's actual EUR→GBP/USD
-so a working read produces visibly different numbers than the fallback.
 
+-- Guard: this MUST return 0 rows after seeding. If it returns the row, you
+-- seeded the fallback values and the distinguishability check is defeated.
+select * from public.fx_rates where gbp = 0.85 and usd = 1.08;
+```
 FX source: **Frankfurter** (`https://api.frankfurter.app/latest?from=EUR&to=GBP,USD`) —
 free, no key, ECB-based.
 
@@ -146,7 +154,9 @@ stale-delete logic; and the **footer newsletter signup form** (only the header l
    shows `£255` and `$325`; no "≈".
 4. **No-flash:** with `depot_currency=GBP` cookie set, hard-reload a product page and an
    **editorial** page (disable JS / view source) — the `£` must be in the initial HTML.
-5. **Persistence:** reload + navigate → currency sticks.
+5. **Persistence:** reload + navigate → currency sticks. Also confirm the `depot_currency`
+   cookie has a real **expiry** (~1 year) in devtools, not `Session` — guards against the
+   `Max-Age` being mis-set and silently degrading to a session cookie.
 6. **Mobile:** open the portal menu → Language/Currency in the footer works; FR inert.
 7. **Cron:** hit `/api/cron` with the `CRON_SECRET` bearer → `fx_rates.fetched_at` updates
    and the row holds live Frankfurter values; sync summary (`totalUpserted`, `deleted`)
