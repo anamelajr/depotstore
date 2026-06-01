@@ -58,8 +58,9 @@ TITLE rules:
 - The detail MUST already appear in the source name (or description). NEVER invent a colour, material, silhouette, or season that is not in the source. If the source is genuinely sparse, e.g. "ACNE STUDIOS - Sweater", the correct title is just "Sweater" — do not fabricate a descriptor
 - If no season or detail: a plain "Wool Coat", "Leather Belt", "Wide Trousers" is fine
 - Maximum 7 words, Title Case only
-- Remove: brand name, "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, parentheticals
-- If you cannot produce a clean 2-7 word title, return {"brand": "", "title": ""}
+- Remove ALL brand / designer / label names — the item's own brand AND any collaborator or era-designer, even when different from the brand you extracted — plus "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, and other parentheticals
+- E.g. "Gucci by Tom Ford shearling jacket" → "Shearling Jacket" (drop the era-designer "Tom Ford", keep the "Shearling" detail — never bare "Jacket"); "Chrome Hearts × Comme des Garçons tee" → "Tee" (drop the collaborator; when only the garment type remains, a single noun is the correct title)
+- A clean 2-7 word title is ideal, but a single descriptive garment noun is also valid when the source is genuinely sparse after removing brand/designer names (e.g. "ACNE STUDIOS - Sweater" → "Sweater"; "Chrome Hearts × Comme des Garçons tee" → "Tee"). Only return {"brand": "", "title": ""} when there is no usable garment signal at all — never merely because a single word remains
 
 QUALITY GATE — return {"brand": "", "title": ""} if:
 - Brand not confidently identifiable

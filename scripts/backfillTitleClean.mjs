@@ -23,6 +23,7 @@
 //   node scripts/backfillTitleClean.mjs                 # dry-run (default, no writes)
 //   node scripts/backfillTitleClean.mjs --apply         # perform writes
 //   node scripts/backfillTitleClean.mjs --validate      # prompt spot-check, no DB writes
+//   node scripts/backfillTitleClean.mjs --audit         # read-only brand-leak ∪ bucket-2 report
 //   node scripts/backfillTitleClean.mjs --env <path>    # override .env.local location
 
 import * as dotenv from "dotenv";
@@ -36,6 +37,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const APPLY = argv.includes("--apply");
 const VALIDATE = argv.includes("--validate");
+const AUDIT = argv.includes("--audit");
 const envIdx = argv.indexOf("--env");
 const ENV_PATH = envIdx !== -1 ? argv[envIdx + 1] : join(__dirname, "../.env.local");
 
@@ -43,7 +45,7 @@ dotenv.config({ path: ENV_PATH });
 
 // Import AFTER dotenv so cleanTitle reads OPENAI_API_KEY at call time.
 const { cleanTitle } = await import("../app/lib/cleanTitle.js");
-const { titleContainsAllowedBrand } = await import("../app/lib/brand.js");
+const { titleContainsAllowedBrand, titleLeaksAllowedBrand, normalizeBrand } = await import("../app/lib/brand.js");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -77,6 +79,24 @@ function matchesBucket2(row) {
   );
 }
 
+// Brand-leak predicate (read-only audit, docs/plan-brand-leak-fix.md Gap 2):
+//   available AND NOT hidden AND title IS NOT NULL
+//   AND the title carries an allowlisted brand / designer name.
+// Catches the multi-word collab/era leaks bucket-2 cannot (e.g. chip GUCCI,
+// title "Tom Ford Shearling Jacket"; chip CHROME HEARTS, title "Comme Des
+// Garçons Tee") — those have multi-word titles, so wordCount(title) !== 1 and
+// matchesBucket2 never sees them. titleLeaksAllowedBrand is a substring flag
+// (some short brands hit incidentally); this is a REVIEW signal only — the
+// audit writes nothing.
+function matchesBrandLeak(row) {
+  return (
+    row.available === true &&
+    row.hidden === false &&
+    row.title != null &&
+    titleLeaksAllowedBrand(row.title)
+  );
+}
+
 async function fetchAllRows() {
   const PAGE = 1000;
   let from = 0;
@@ -96,13 +116,74 @@ async function fetchAllRows() {
 }
 
 async function runValidate() {
-  // Prompt spot-check (advisor's gate): positive controls + sparse + good
-  // multi-word titles. No DB writes. Confirms the tightened prompt RETAINS a
-  // real detail, does NOT INVENT one, and does NOT regress good titles.
+  // Prompt spot-check (advisor's gate): brand-leak + over-compressed positive
+  // controls + sparse + good multi-word titles. No DB writes. Confirms the
+  // tightened prompt DROPS a foreign label (collaborator / era-designer) while
+  // keeping the chip + detail, RETAINS a real detail for rich sources, does NOT
+  // INVENT one, and does NOT regress good titles.
+  const norm = (s) => normalizeBrand(s) ?? "";
+  const compact = (s) => norm(s).replace(/\s+/g, "");
+
+  // Brand-leak controls (docs/plan-brand-leak-fix.md). Assert the FULL returned
+  // JSON, not just the title: a clean title with the WRONG chip brand is a
+  // silent failure the title-only audit can never catch afterward.
+  const collabControls = [
+    {
+      name: "Gucci by Tom Ford shearling hand painted jacket",
+      description: "",
+      ownBrand: "GUCCI",
+      foreignBrand: "TOM FORD",
+      note: "drop era-designer Tom Ford; keep 'Shearling'; never bare 'Jacket'; chip GUCCI",
+    },
+    {
+      name: "Chrome Hearts × Comme des Garçons tee",
+      description: "",
+      ownBrand: "CHROME HEARTS",
+      foreignBrand: "COMME DES GARÇONS",
+      blockingNonEmpty: true,
+      note: "collab-sparse: must return non-empty ~'Tee'; chip CHROME HEARTS. null/empty = BLOCKING (word-count contract still forcing empty — re-tighten)",
+    },
+    {
+      name: "MiuMiu wool mini skirt",
+      description: "",
+      ownBrand: "MIU MIU",
+      foreignBrand: null,
+      note: "compact spelling: 'MiuMiu' must not survive in the title; chip MIU MIU",
+    },
+  ];
+  // True if `title` carries `brandStr` in either spaced or compact form.
+  const titleLeaks = (title, brandStr) => {
+    if (!title || !brandStr) return false;
+    const nt = norm(title);
+    return nt.includes(norm(brandStr)) || nt.replace(/\s+/g, "").includes(compact(brandStr));
+  };
+  console.log("=== Brand-leak controls (drop foreign label, keep detail, correct chip) ===");
+  for (const c of collabControls) {
+    const out = await cleanTitle({ name: c.name, rawDescription: c.description });
+    const title = out?.title ?? null;
+    const brand = out?.brand ?? null;
+    const issues = [];
+    if (!title) {
+      issues.push(
+        c.blockingNonEmpty
+          ? "*** BLOCKING: null/empty — re-run this single control once to rule out a transient OpenAI failure; if persistent, the word-count wording must be re-tightened before shipping"
+          : "null/empty title"
+      );
+    } else {
+      if (titleLeaks(title, c.foreignBrand)) issues.push(`title LEAKS foreign label ${c.foreignBrand}`);
+      if (titleLeaks(title, c.ownBrand)) issues.push("title leaks own brand (should sit on the chip only)");
+      if (c.foreignBrand && compact(brand) === compact(c.foreignBrand)) issues.push(`chip is the FOREIGN brand (${brand}), expected ${c.ownBrand}`);
+      else if (compact(brand) !== compact(c.ownBrand)) issues.push(`chip ${JSON.stringify(brand)} != expected own brand ${c.ownBrand}`);
+    }
+    const verdict = issues.length ? `FAIL — ${issues.join("; ")}` : "PASS";
+    console.log(`  name : ${c.name}\n  json : ${JSON.stringify({ brand, title })}\n  check: ${verdict}   (${c.note})`);
+    await sleep(CALL_DELAY_MS);
+  }
+
   const sparseControls = [
     { name: "ACNE STUDIOS - Sweater", description: "", expect: "sparse → stays ~1 word, no invented detail" },
   ];
-  console.log("=== Prompt validation: positive controls (over-compressed, expect richer) ===");
+  console.log("\n=== Prompt validation: positive controls (over-compressed, expect richer) ===");
   const snapshot = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8"));
   const sampleIds = snapshot.bucket2_ids.slice(0, 12);
   const { data: sampleRows, error } = await supabaseAdmin
@@ -140,6 +221,49 @@ async function runValidate() {
     );
     await sleep(CALL_DELAY_MS);
   }
+}
+
+async function runAudit() {
+  // Read-only recurring audit (docs/plan-brand-leak-fix.md Gap 2). Reports the
+  // UNION of the over-compression set (matchesBucket2) and the brand-leak set
+  // (matchesBrandLeak). Makes NO OpenAI calls and writes NOTHING — pure
+  // detection over the same fetchAllRows() the backfill uses.
+  //
+  // This is detection only. Remediating brand-leak rows needs its OWN bounded
+  // write set + a frozen docs/snapshots/<date>-brand-leak-targets.json (the
+  // bucket-2 backfill cannot fix them: its write set is the bucket-2 snapshot ∩
+  // matchesBucket2, and leak titles are multi-word so they fail matchesBucket2).
+  // That snapshot + write set is a follow-on; until it is wired, flagged leaks
+  // persist.
+  console.log("=== Read-only audit: over-compression (bucket-2) ∪ brand-leak ===\n");
+  console.log("Paginating products...");
+  const allRows = await fetchAllRows();
+  const bucket2 = allRows.filter(matchesBucket2).sort((a, b) => a.id - b.id);
+  const brandLeak = allRows.filter(matchesBrandLeak).sort((a, b) => a.id - b.id);
+  const bucket2Ids = new Set(bucket2.map((r) => r.id));
+  const brandLeakIds = new Set(brandLeak.map((r) => r.id));
+  const unionIds = [...new Set([...bucket2Ids, ...brandLeakIds])].sort((a, b) => a - b);
+  const onlyBrandLeak = brandLeak.filter((r) => !bucket2Ids.has(r.id));
+
+  console.log(`Scanned ${allRows.length} rows.`);
+  console.log(`bucket-2 (1-word title from >=4-word name) : ${bucket2Ids.size}`);
+  console.log(`brand-leak (title carries an allowlisted brand) : ${brandLeakIds.size}`);
+  console.log(`  of which NOT already in bucket-2 : ${onlyBrandLeak.length}`);
+  console.log(`union (candidates to review)        : ${unionIds.length}\n`);
+
+  console.log("=== brand-leak rows (the new signal — review these) ===");
+  console.log(["id", "store_domain", "title", "name"].join("\t"));
+  for (const r of brandLeak) {
+    console.log(`${r.id}\t${r.store_domain}\t${JSON.stringify(r.title)}\t${JSON.stringify(r.name)}`);
+  }
+
+  console.log(`\nunion ids: ${JSON.stringify(unionIds)}`);
+  console.log(
+    "\nAudit is READ-ONLY — wrote nothing. Substring matching means some short" +
+      " brands (ami/ysl/mm6/424) flag incidentally; this is a review list, not an" +
+      " auto-fix. Remediation (frozen brand-leak snapshot + bounded write set) is" +
+      " a follow-on — see docs/plan-brand-leak-fix.md."
+  );
 }
 
 async function runBackfill() {
@@ -240,6 +364,7 @@ async function runBackfill() {
 (async () => {
   try {
     if (VALIDATE) await runValidate();
+    else if (AUDIT) await runAudit();
     else await runBackfill();
   } catch (e) {
     console.error(e);

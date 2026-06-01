@@ -124,6 +124,18 @@ a ~15-row sample of the over-compressed names (expect detail retained) **and** a
 sample of already-good + legitimately-sparse titles (expect no regression, no
 invented detail) before any mass write.
 
+> **Follow-on prompt tightening (see [docs/plan-brand-leak-fix.md](plan-brand-leak-fix.md)).**
+> Executing this backfill surfaced a second defect: re-cleaning an over-compressed
+> title can leak a *different* allowlisted brand (a collaborator / era-designer)
+> into the title — e.g. chip `GUCCI`, title `Tom Ford Shearling Jacket`. The
+> `cleanTitle` prompt's `Remove:` rule was therefore widened to drop ALL brand /
+> designer / label names (own brand AND collaborator / era-designer), and its
+> give-up wording was reconciled with the line-58 sparse precedent so a single
+> descriptive noun (`Tee`) is no longer pushed to empty (which would feed the
+> enrich null-branch hide). The over-compression rule above is unchanged — a rich
+> source still keeps its detail; only the genuinely-sparse-after-removal case is
+> allowed to be one word.
+
 **Backfill** — a one-off local maintenance script (service-role key + OpenAI
 key, the same credentials `/api/enrich` already writes with; not a committed
 route). The frozen target set lives in
@@ -207,6 +219,25 @@ Enforcement instead:
    a schedule; it is cheap, deterministic, and cannot hide anything. New
    over-compressions surface as a list to sweep with the same backfill — a
    detect-and-sweep loop, not a prompt-compliance bet or a risky inline reject.
+3. **Brand-leak audit** (added by [docs/plan-brand-leak-fix.md](plan-brand-leak-fix.md)):
+   `scripts/backfillTitleClean.mjs --audit` reports, read-only, the union of the
+   bucket-2 set and a **brand-leak** set — titles carrying an allowlisted brand /
+   designer name (`titleLeaksAllowedBrand`, the normalized + compact allowlist).
+   This catches the multi-word collab / era-designer leaks bucket-2 cannot (it
+   requires a 1-word title). Same detect-and-sweep posture: read-only flag now;
+   remediation needs its **own** frozen snapshot + bounded write set (a follow-on),
+   because the bucket-2 backfill's write set can never touch a multi-word leak.
+
+   **Why no inline brand-leak write guard (mirrors the over-compression rationale
+   above).** Extending `cleanTitle`'s `brandInTitle` check to the full allowlist
+   would return `null`, feeding the same null-branch that **hides at attempt 3**
+   for `FILTER_BY_BRAND` / self-branded / `title===null` stores — converting a
+   cosmetic leak into an invisible product. Unlike the backfill (which operates on
+   rows that already have a valid title to leave in place), the live path writes
+   `title` only when it was NULL, so there is no existing title to fall back to —
+   a write-time "skip" has no safe live meaning. The live lever is the **prompt**
+   (drop foreign labels); the deterministic allowlist check lives only in the
+   **read-only audit**, where it cannot hide anything.
 
 Deterministic regression tests still apply to **Track 1** (`handleFallback`), whose
 helpers are pure functions — only the LLM-dependent Track-2 output resists them.
@@ -239,6 +270,18 @@ WHERE available AND NOT hidden AND title IS NOT NULL
   AND array_length(regexp_split_to_array(btrim(name),'\s+'),1) >= 4
 ORDER BY id;
 ```
+
+**Brand-leak predicate (JS, not SQL — added by
+[docs/plan-brand-leak-fix.md](plan-brand-leak-fix.md)).** Flag any visible row
+whose title carries an allowlisted brand / designer name:
+`available AND NOT hidden AND title IS NOT NULL AND titleLeaksAllowedBrand(title)`.
+Run it via `scripts/backfillTitleClean.mjs --audit` (read-only). It is implemented
+in JS deliberately: `titleLeaksAllowedBrand` normalizes (accent-strip, `&`→`and`,
+punctuation→space) over the 157-entry allowlist plus its compact spellings, which
+a Postgres `title ~* '(...)'` regex cannot reproduce without drift
+(`alaïa`/`alaia`, `dolce & gabbana`/`dolce and gabbana`, `MiuMiu`/`Miu Miu`). The
+match is substring, not token-bounded, so short brands (`ami`, `ysl`) flag
+incidentally — acceptable because the audit is a review list, never an auto-fix.
 
 ## Critical files
 

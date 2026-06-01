@@ -48,7 +48,7 @@ export const BRAND_SET_NORMALIZED = new Set(BRANDS.map(normalizeBrand).filter(Bo
 // vendors fail the exact-normalized match and end up in /api/enrich, where
 // each one consumes ~750 input tokens just to be deleted by the allowlist
 // gate. Cheap to maintain — derived from BRANDS, no separate source of truth.
-const BRAND_SET_COMPACT = new Set(
+export const BRAND_SET_COMPACT = new Set(
   BRANDS
     .map((b) => normalizeBrand(b)?.replace(/\s+/g, ""))
     .filter(Boolean)
@@ -73,6 +73,38 @@ export function titleContainsAllowedBrand(rawTitle) {
   if (!rawTitle) return false;
   const normalizedTitle = normalizeBrand(rawTitle);
   for (const brand of BRAND_SET_NORMALIZED) {
+    if (normalizedTitle.includes(brand)) return true;
+  }
+  return false;
+}
+
+// Read-only audit detector for the recurring brand-leak sweep (see
+// docs/plan-brand-leak-fix.md, Gap 2). A SUPERSET of titleContainsAllowedBrand:
+// it composes the same normalized allowlist with the compact spellings the
+// app already trusts (BRAND_SET_COMPACT), so titles like "MiuMiu Bag" /
+// "APC Jacket" — which titleContainsAllowedBrand misses — are flagged too.
+//
+// Kept separate from titleContainsAllowedBrand on purpose:
+//   - The bucket-2 backfill's SKIP:brand_in_title guard depends on
+//     titleContainsAllowedBrand's exact current behavior; widening it would
+//     change a shipped write-path. This new helper is additive.
+//   - It normalizes ONCE and null-checks up front (titleContainsAllowedBrand
+//     throws on a punctuation-only title because normalizeBrand returns null
+//     there). This detector scans every visible row, so a single such title
+//     must not crash the sweep.
+//
+// Substring, not token-bounded: short normalized brands (e.g. "ami", "ysl")
+// hit incidentally ("ceramic" ⊃ "ami"). That is acceptable — this is a review
+// FLAG, never an auto-fix or hide, so over-flagging only adds candidates to
+// review. Both BRAND_SET_NORMALIZED and BRAND_SET_COMPACT derive from BRANDS,
+// so there is no second source of truth to drift.
+export function titleLeaksAllowedBrand(rawTitle) {
+  const normalizedTitle = normalizeBrand(rawTitle);
+  if (!normalizedTitle) return false;
+  for (const brand of BRAND_SET_NORMALIZED) {
+    if (normalizedTitle.includes(brand)) return true;
+  }
+  for (const brand of BRAND_SET_COMPACT) {
     if (normalizedTitle.includes(brand)) return true;
   }
   return false;
