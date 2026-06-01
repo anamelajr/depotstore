@@ -43,8 +43,19 @@ sort changes (conversion is monotonic, so EUR-base sort == converted sort).
   "≈"). Exports `CURRENCIES = { EUR/GBP/USD: { symbol, label } }`.
 - **`app/lib/fx.js`** — `FALLBACK_RATES = { GBP: 0.85, USD: 1.08 }` (mirrors the
   `FALLBACK_STORES` safety-net pattern in `app/lib/stores.js`); `getFxRates()` server read
-  from Supabase `fx_rates` (falls back to `FALLBACK_RATES` on any error); `refreshFxRates()`
+  from Supabase `fx_rates`, falling back to `FALLBACK_RATES` on any error; `refreshFxRates()`
   fetches Frankfurter and upserts the row. Imports `supabaseAdmin`; never imported by client.
+  - **Observability (do not let fallback masquerade as live data):** when `getFxRates()`
+    falls back it must `console.warn` a structured line (e.g.
+    `{ event: "fx_read_fallback", reason }`) and return a `source: "fallback" | "db"`
+    marker alongside the rates so server diagnostics can tell them apart. A missing /
+    schema-drifted `fx_rates` table must be loud, not silent — otherwise stale hardcoded
+    rates ship looking correct. (`getFxRates` uses the service-role client, which bypasses
+    RLS, so the locked-RLS table is still readable server-side; the real exposure is a
+    missing table or a skipped migration step.)
+  - **`refreshFxRates()` must time-bound the Frankfurter fetch** with an `AbortController`
+    (~5 s), mirroring `cleanTitle.js`'s existing timeout pattern, so a hung provider can
+    never stall the caller. Throw on non-200 or malformed shape (no `rates.GBP`/`rates.USD`).
 - **`app/components/CurrencyProvider.js`** (`"use client"`) — context `{ currency,
   setCurrency, language, rates }`. `setCurrency` updates state + writes cookie
   `depot_currency` (`path=/; max-age=1y; samesite=lax`); no reload. Exports `useCurrency()`.
@@ -82,12 +93,21 @@ sort changes (conversion is monotonic, so EUR-base sort == converted sort).
   `MoreFromStore.js:70`, `editorial/_components/PiecesFeatured.js:35`,
   `editorial/_components/MoreFromDesigner.js:30`.
 - **`app/editorial/[slug]/page.js`** — wrap `fetchEditorialProducts` in
-  `unstable_cache(fn, ["editorial-products"], { revalidate: 3600 })` so the hourly data
-  cache survives the page going dynamic.
-- **`app/api/cron/route.js`** — add an **isolated** `try { await refreshFxRates() } catch`
-  near the `enrich_runs` logging, **after** the stale-delete and outside the sync
-  `Promise.allSettled`, so a Frankfurter timeout can never touch the `successfulDomains`
-  delete guard. (Schedule is dashboard-configured; no `vercel.json`.)
+  `unstable_cache` so the hourly data cache survives the page going dynamic.
+  **Cache key must be per-slug.** `unstable_cache` already keys on the *arguments* passed
+  (and `fetchEditorialProducts` receives each entry's `curatedProducts`/`brandFilter` as
+  args — verified against Next 16.2.0 docs), so distinct slugs already get distinct entries.
+  But pass an **explicit** slug keyPart as belt-and-suspenders against a future
+  closure-capture mis-implementation:
+  `unstable_cache(fetchEditorialProducts, ["editorial-products", slug], { revalidate: 3600 })`.
+- **`app/api/cron/route.js`** — refresh FX in a **non-blocking** path. Preferred: run
+  `refreshFxRates()` inside `waitUntil(...)` (the handler already uses `waitUntil` at L274
+  for the enrich trigger) so a slow provider never delays the cron response or its
+  `enrich_runs` log. If `fxRefreshed` must appear in the response JSON instead, keep it an
+  **isolated** awaited `try { await refreshFxRates() } catch` placed **after** the
+  stale-delete and outside the sync `Promise.allSettled` — but only safe because
+  `refreshFxRates` is now timeout-bounded (above). Either way it can never touch the
+  `successfulDomains` delete guard. (Schedule is dashboard-configured; no `vercel.json`.)
 
 ### Out-of-band (do before merge — MCP is read-only)
 Create + seed the `fx_rates` table via the **Supabase SQL Editor**:
@@ -103,6 +123,11 @@ insert into public.fx_rates (id, base, gbp, usd) values (1,'EUR',0.85,1.08)
   on conflict (id) do nothing;
 alter table public.fx_rates enable row level security; -- no policies: server-only
 ```
+**Seed with *real current* rates, not the `FALLBACK_RATES` constant.** If the seed equals
+`0.85/1.08` and the table read silently fails, fallback and live values are
+indistinguishable and verification passes on broken infra. Use today's actual EUR→GBP/USD
+so a working read produces visibly different numbers than the fallback.
+
 FX source: **Frankfurter** (`https://api.frankfurter.app/latest?from=EUR&to=GBP,USD`) —
 free, no key, ECB-based.
 
@@ -123,6 +148,20 @@ stale-delete logic; and the **footer newsletter signup form** (only the header l
    **editorial** page (disable JS / view source) — the `£` must be in the initial HTML.
 5. **Persistence:** reload + navigate → currency sticks.
 6. **Mobile:** open the portal menu → Language/Currency in the footer works; FR inert.
-7. **Cron:** hit `/api/cron` with the `CRON_SECRET` bearer → response shows `fxRefreshed:
-   true`, `fx_rates.fetched_at` updates, sync summary unaffected.
+7. **Cron:** hit `/api/cron` with the `CRON_SECRET` bearer → `fx_rates.fetched_at` updates
+   and the row holds live Frankfurter values; sync summary (`totalUpserted`, `deleted`)
+   unaffected. (If FX runs in `waitUntil`, verify via `fetched_at`/logs rather than a
+   response flag.)
 8. **Sort unchanged:** price asc/desc ordering identical before and after.
+
+### Negative-path checks (added per adversarial review)
+9. **Two editorial slugs render distinct grids:** load two different editorial articles
+   back-to-back; confirm each shows its own `curatedProducts`/brand grid (guards the
+   per-slug cache key — finding 1).
+10. **Missing/broken `fx_rates`:** temporarily point at an env without the table (or rename
+    it) → prices must still render via fallback AND `getFxRates` must emit the
+    `fx_read_fallback` warn / `source: "fallback"` marker (finding 3). Live vs. fallback
+    must be distinguishable (seed differs from `0.85/1.08`).
+11. **FX provider timeout:** simulate a hung Frankfurter (block the host) → `refreshFxRates`
+    aborts at ~5 s, the cron completes normally, and the last-good `fx_rates` row is
+    retained (finding 2).
