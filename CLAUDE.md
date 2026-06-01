@@ -7,10 +7,9 @@ price, search.
 ## Before editing
 
 Product-read changes go through `app/lib/productQueries.js` (visibility
-filter, row select + mapper, interleaved-RPC call shape) — all five
-consumers compose it. Category-filter changes still need a parallel pass
-over the interleaved RPCs + `resolveCategoryFilter` in
-`app/lib/categories.js`.
+filter, row select + mapper, interleaved-RPC call shape) — every consumer
+composes it. Category-filter changes still need a parallel pass over the
+interleaved RPCs + `resolveCategoryFilter` in `app/lib/categories.js`.
 
 ## Invariants
 
@@ -18,13 +17,11 @@ over the interleaved RPCs + `resolveCategoryFilter` in
 - **Editorial fields (`brand`, `title`, `category`, `subcategory`) write only
   if NULL.** Enforced by cron's Step-2 upsert and the `enrich_product` RPC's
   COALESCE. A plain `UPDATE` reintroduces the clobber race.
-- **`subcategory` write is parent-gated inside the RPC.** Only COALESCE-writes
-  `p_subcategory` when the row's effective parent (existing `category` if
-  set, else `p_category`) equals `p_category`. An unguarded
-  `COALESCE(subcategory, p_subcategory)` violates
-  `products_subcategory_matches_category` when the classifier's leaf parent
-  disagrees with the row's already-set category, burning enrich retries
-  silently on re-classification candidates.
+- **`subcategory` write is parent-gated inside the RPC** (see the `CASE`
+  below). An unguarded `COALESCE(subcategory, p_subcategory)` violates
+  `products_subcategory_matches_category` whenever the classifier's leaf
+  parent disagrees with the row's already-set category — silently burning
+  enrich retries on re-classification candidates.
 - **`cleanTitle.js`'s `null` is retryable.** It covers transient OpenAI
   failures (5xx, rate-limit, 8 s timeout) as well as genuinely
   unclassifiable rows — treat as transient, not terminal.
@@ -50,15 +47,13 @@ over the interleaved RPCs + `resolveCategoryFilter` in
   the drift risk is the hand-replicated pair: `enrich_attempts < MAX` and
   `brand|title|category IS NULL`. A mismatch pins `remaining > 0` forever,
   burning all 30 self-chain hops on no-ops.
-- **In-loop `row.X` reads require X in the batch SELECT projection.**
-  PostgREST filters and projections are independent: `.lt("enrich_attempts",
-  MAX)` works without selecting the column, but `row.enrich_attempts` is
-  then `undefined` and `+ 1` silently becomes `NaN`.
-- **Self-branded store hide gates are asymmetric.** For domains in
-  `SELF_BRANDED_STORES`, `/api/enrich` hides immediately when
-  `isSelfBranded()` resolves on the success branch, but on the null branch
-  hides ONLY at retry exhaustion. Hiding on the first null would
-  permanently kill legitimate-brand rows on one transient OpenAI failure.
+- **In-loop `row.X` reads require X in the batch SELECT projection.** Filters
+  and projections are independent: `.lt("enrich_attempts", MAX)` works
+  unselected, but then `row.enrich_attempts` is `undefined` and `+ 1` → `NaN`.
+- **Self-branded store hide gates are asymmetric.** For `SELF_BRANDED_STORES`,
+  `/api/enrich` hides immediately on the success branch (`isSelfBranded()`
+  resolved) but on the null branch only at retry exhaustion — hiding on the
+  first null would kill legitimate-brand rows on one transient OpenAI failure.
 - **Allowlist-rejected rows are hidden, not deleted.**
   `update({ hidden: true, enrich_attempts: MAX })` scoped to `row.id`.
   `delete()` reintroduces the sync-recreate / enrich-rereject loop that
@@ -66,13 +61,18 @@ over the interleaved RPCs + `resolveCategoryFilter` in
 - **`hidden` is `NOT NULL` (default `false`); every `available = true` read
   must also filter `hidden = false`.** `.eq("hidden", false)` excludes
   NULL, so if the column drifts nullable, hide-aware filters silently leak.
-  Use `withVisibility` from `app/lib/productQueries.js`; all callers
-  compose it.
+  Use `withVisibility` from `app/lib/productQueries.js`; every consumer
+  composes it. **Sole carve-out: `withCuratedVisibility` (same file) filters
+  `hidden = false` only — editorial curated reads keep SOLD
+  (`available = false`) pieces under a SOLD overlay. Consolidating it to
+  `withVisibility` silently drops sold pieces; using it elsewhere leaks sold
+  items into the feed.**
 - **`get_interleaved_products` RPC must return `name`.** `ProductCard` falls
   back to it when `title` is null.
-- **Price is stored as TEXT** (`'€29.99'`). DB ordering is lexicographic, so
-  `/api/products` price sorts fetch all matching rows and sort numerically
-  in JS before paginating.
+- **Price is stored as TEXT** (`'€29.99'`) in EUR — the canonical, sorted
+  base; currency conversion is presentational (client-side), never written
+  back. DB ordering is lexicographic, so `/api/products` price sorts fetch
+  all matching rows and sort numerically in JS before paginating.
 - **`FALLBACK_STORES` in `stores.js`** is the safety net when Supabase is
   unreachable. Do not delete.
 - **`maxDuration = 300`** on `/api/cron` and `/api/enrich`. Lowering it
@@ -100,10 +100,11 @@ over the interleaved RPCs + `resolveCategoryFilter` in
 - **`save-homepage-edit` writes atomically via tmp + rename.** Prevents a
   truncated file from a mid-write interruption crashing the homepage on
   the next read.
-- **Editorial save rollback is asymmetric.** If `<slug>.js` writes but
-  `index.js` patch fails AND the slug file did not exist before this
-  save, the slug file is unlinked. For existing entries, no rollback —
-  prior content is already overwritten.
+- **Editorial save/delete rollback is asymmetric.** Save: if `<slug>.js`
+  writes but the `index.js` patch fails AND the slug file is new, it's
+  unlinked; existing entries get no rollback (content already overwritten).
+  Delete unpatches `index.js` first, then removes the slug file; a failed
+  removal rolls the unpatch back.
 
 ## DB objects not in git
 
@@ -151,19 +152,21 @@ applying any change.
 - **`MoreFromStore` queries Supabase directly** to dodge
   `NEXT_PUBLIC_BASE_URL` ambiguity on preview. Don't consolidate it back
   to HTTP.
+- **Adding a currency touches four sites.** The supported set is hardcoded
+  in `currency.js`, `CurrencyProvider.js`, `layout.js`, and `fx.js`'s rate
+  parse. Hourly cron refreshes the `fx_rates` singleton, degrading to
+  `FALLBACK_RATES` on fetch failure.
 - **Nav heights are coupled.** `--nav-height: 56px` (in `globals.css`)
   must match `h-[56px]` on desktop nav; mobile nav stays `h-[50px]`.
 - **`overflow-x-hidden` promotes `overflow-y` to auto** and creates a new
   scrolling ancestor — breaks `position: sticky` descendants. Use
   `overflow-x-clip` on feed wrappers.
 - **Font variables are two-layer.** `next/font/local` exposes
-  `--font-satoshi` / `--font-general-sans`; `@theme inline` in
-  `globals.css` maps Tailwind's `--font-sans` / `--font-mono` /
-  `--font-serif` onto them. Collapsing the layers re-introduces a
-  self-referential `@theme` that fails silently if anyone drops `inline`.
-  Raw-HTML injection (Leaflet markup in `ParisMap.js`) must reference the
-  next/font variable directly — Tailwind utilities can't reach a detached
-  DOM.
+  `--font-satoshi` / `--font-general-sans`; `@theme inline` in `globals.css`
+  maps Tailwind's `--font-sans` / `-mono` / `-serif` onto them (dropping
+  `inline` makes `@theme` self-referential and fails silently). Raw-HTML
+  injection (Leaflet markup in `ParisMap.js`) must reference the next/font
+  variable directly — Tailwind utilities can't reach a detached DOM.
 - **Admin tool is local-only.** `/admin/*` and `/api/admin/*` return 404
   in production via `middleware.js`. Admin routes that read editorial
   modules use `fs.readFile` + `new Function`, not dynamic `import()` —
