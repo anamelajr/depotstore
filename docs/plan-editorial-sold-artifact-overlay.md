@@ -130,26 +130,43 @@ needs its own coverage. Verified facts that shape this:
   (the only workflow, `.github/workflows/sync.yml`, just pings `/api/cron`). So
   the breakage is latent, not a CI failure — but still a real broken test.
 
-Test work:
+Test work (all **required** and all must run under `npm test`):
 
-1. **Update** `app/editorial/_lib/fetchEditorialProducts.test.mjs`:
+1. **Convert + relocate the editorial integration test so `npm test` runs it.**
+   Move `app/editorial/_lib/fetchEditorialProducts.test.mjs` →
+   `app/editorial/_lib/__tests__/fetchEditorialProducts.test.mjs` (matches the
+   vitest `include` glob `app/**/__tests__/**`), and swap the runner from
+   `node:test` to vitest: `import test from "node:test"` →
+   `import { test } from "vitest"`, and fix the relative import to
+   `../fetchEditorialProducts.js`. The `node:assert/strict` assertions can stay —
+   they throw on failure, which vitest reports as a failed test. This is the
+   only way the actual `fetchCurated` behavior is enforced by the default test
+   command; today it has **zero** `npm test` coverage. ~5 mechanical lines.
+2. **Update that test's curated assertions** for the new behavior:
    - Change the curated-query assertion to expect `eq:hidden === false` and that
-     `eq:available` is **not** applied (absent); rename the test accordingly
+     `eq:available` is **not** applied (absent); rename it accordingly
      (e.g. "curated query filters hidden only, includes sold").
    - Add a case: a curated product with `available: false` (via the `row(...)`
-     `extras` arg) is still returned by `fetchEditorialProducts`'s curated output.
-2. **Add** a `withCuratedVisibility` unit test to
-   [app/lib/__tests__/productQueries.test.js](app/lib/__tests__/productQueries.test.js)
-   (vitest — actually runs under `npm test`), mirroring the existing
-   `withVisibility` test: assert it applies `hidden=false` and does **not** touch
-   `available`, and returns the chained builder. This gives the new exception
-   enforced regression coverage in the default workflow.
-3. The existing `withVisibility` test
+     `extras` arg) is still returned in `fetchEditorialProducts`'s curated output.
+   - Add a case: a curated product with `hidden: true` is **excluded** (proves the
+     new helper still drops hidden rows — guards the one real leak risk).
+   - Keep the existing "more-from calls `get_interleaved_products` RPC" assertion.
+     That is the *testable* guarantee for More-from/backfill staying live-only:
+     a JS unit test can prove fetchCurated uses the sold-inclusive direct query
+     while More-from goes through the RPC (whose `available + hidden` filtering is
+     enforced server-side in SQL and therefore **cannot** be asserted here — note
+     this explicitly so no one mistakes RPC visibility for untested).
+3. **Add** a `withCuratedVisibility` unit test to
+   [app/lib/__tests__/productQueries.test.js](app/lib/__tests__/productQueries.test.js),
+   mirroring the existing `withVisibility` test: assert it applies `hidden=false`,
+   does **not** touch `available`, and returns the chained builder.
+4. The existing `withVisibility` test
    ([productQueries.test.js:153](app/lib/__tests__/productQueries.test.js:153))
-   stays green because we add a sibling helper rather than mutating it — no edit.
-4. *Optional follow-up (out of scope):* convert the orphaned editorial test to
-   the vitest API and relocate it under an `__tests__/` dir so `npm test` covers
-   the curated/more-from/backfill paths. Flag it; don't bundle it here.
+   stays green and **unchanged** because we add a sibling helper rather than
+   mutating it — and it remains the guard against a site-wide sold-row leak (any
+   change dropping `available` from `withVisibility` fails `npm test`).
+
+Run `npm test` and confirm green before opening the PR.
 
 ## Scope guarantees (sold items stay ONLY here)
 
@@ -182,7 +199,9 @@ in production — don't rely on them. Use a **real** sold-but-listed handle
    so a sold row will never appear there. Instead add the `{ storeDomain, handle }`
    pair **directly** to a test entry's `curatedProducts` array in its
    `content/editorial/<slug>.js` file (that's exactly the shape the admin would
-   write), and commit.
+   write). **This is a throwaway fixture — see the cleanup gate below; it must
+   never reach `main`.** Commit it on a scratch commit you will drop, or stash it,
+   so the editorial content change stays isolated from the feature commits.
 2. **Set/confirm test data first, then deploy the preview** — the editorial page
    is `revalidate = 3600`, so a fresh preview build renders current data;
    mutating data after deploy would show a stale cached page.
@@ -192,3 +211,19 @@ in production — don't rely on them. Use a **real** sold-but-listed handle
    sold item.
 5. Confirm a `hidden = true` row is still excluded from Pieces featured (no leak).
 6. Click the sold card → the product page renders with the "Sold" label.
+
+### Cleanup gate (do not ship verification fixtures)
+
+The step-1 curated-products edit is **test scaffolding, not a deliverable.**
+Before merge:
+
+- Drop/revert the scratch commit (or `git restore`/`git checkout` the touched
+  `content/editorial/*` file) so no verification fixture remains.
+- **The final PR diff must contain zero `content/editorial/*` changes.** This
+  change ships only code + tests (`app/lib/productQueries.js`,
+  `app/editorial/_lib/fetchEditorialProducts.js` + its relocated test,
+  `app/editorial/_components/PiecesFeatured.js`,
+  `app/lib/__tests__/productQueries.test.js`). Real curated-content edits are a
+  separate, intentional author action — never a side effect of this PR.
+- Sanity check before opening the PR: `git diff main...HEAD --name-only` should
+  list none of `content/editorial/`.
