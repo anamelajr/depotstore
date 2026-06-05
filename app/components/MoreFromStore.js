@@ -38,11 +38,11 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
   const heading = storeName ? `More from ${storeName}` : "More from this store";
 
   return (
-    <section className="mt-16 px-6 pb-14">
+    <section className="mt-16 px-6 lg:px-0 pb-14">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900">
         {heading}
       </p>
-      <div className="mt-6 grid grid-cols-2 gap-5">
+      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-6">
         {products.map((p) => {
           const href = p.handle && p.storeDomain
             ? `/product/${p.handle}?store=${p.storeDomain}&available=${p.available !== false}`

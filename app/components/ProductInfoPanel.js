@@ -1,4 +1,6 @@
+import Link from "next/link";
 import Price from "./Price.js";
+import { buildFreshFeedUrl } from "../lib/feed-utils.js";
 
 export default function ProductInfoPanel({
   brand,
@@ -8,6 +10,7 @@ export default function ProductInfoPanel({
   sizes,
   available,
   storeDomain,
+  storeLocation,
   handle,
 }) {
   const ctaHref = `https://${storeDomain}/products/${handle}?utm_source=depot`;
@@ -66,16 +69,20 @@ export default function ProductInfoPanel({
         </a>
       </div>
 
-      {/* Availability — dot + status. The black CTA two lines above
-          already reads "BUY AT {STORE}", so a "· at {storeName}" suffix
-          here would duplicate. */}
-      <div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-        <span
-          className={`block h-1.5 w-1.5 rounded-full flex-none ${
-            available ? "bg-emerald-500" : "bg-zinc-400"
-          }`}
-        />
-        <span>{available ? "Available" : "Sold"}</span>
+      {/* Store info — name · location with a link to the store feed. */}
+      <div className="mt-6 pt-6 border-t border-zinc-200">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900">
+          {storeName}
+          {storeLocation && (
+            <span className="text-zinc-400"> · {storeLocation}</span>
+          )}
+        </p>
+        <Link
+          href={buildFreshFeedUrl({ store: storeDomain })}
+          className="mt-3 inline-block font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-500"
+        >
+          Browse store →
+        </Link>
       </div>
     </div>
   );
