@@ -29,9 +29,13 @@ proportions + below-the-fold browsing, using only existing data.** No DB changes
 4. **Bring "More From Store" to desktop** as a 4-across grid below the image (currently
    mobile-only, 2-across).
 5. **No category/details block. No Save/Share.** Keep the column minimal.
-6. **About section: no change.** `DesktopAboutSection` already returns null when there's no
-   description, and `resolveProductDetail` generates one at request time, so it already
-   renders correctly.
+6. **About section stays — and renders on ~every desktop PDP.** `resolveProductDetail`
+   generates a description at request time via `generateDescription` (`name: product.title`,
+   always present) and caches it back to `editorial_description`, so `DesktopAboutSection` is
+   effectively always present — not the rare empty case first assumed (the DB column is ~1%
+   filled, but the section is populated live). No change to About itself. **Deliberate
+   below-hero order, confirmed with the user after an adversarial review: grid → About →
+   MoreFromStore** (conventional PDP flow; description by the piece, browsing at the bottom).
 
 ## Changes
 
@@ -69,8 +73,9 @@ aligned with the hero. Fine-tune on the Vercel preview, being ready to drop to *
   `detail` at line 23).
 - **Move `<MoreFromStore>` (remove + add, not duplicate):** delete the instance currently
   inside the `order-2 lg:hidden` mobile block (~lines 122–126) **and** add a single sibling
-  instance **after `<DesktopAboutSection>`**. Leaving both renders it twice on mobile (double
-  Supabase fetch) — the classic failure here. One instance now serves both breakpoints. Keep
+  instance **after `<DesktopAboutSection>`** (deliberate order — see Decision 6). Leaving both
+  renders it twice on mobile (double Supabase fetch) — the classic failure here. One instance
+  now serves both breakpoints. Keep
   props (`storeDomain`, `currentHandle`, `storeName`). On mobile it lands in the same visual
   position as today (after the mobile info block; `DesktopAboutSection` is `hidden lg:grid`).
 
@@ -99,6 +104,8 @@ intentional, not empty/broken?* — not merely "image is shorter."
   column shows brand / title / price / (size if present) / BUY / store line; **no green dot**;
   "More from dot COMME" renders as a 4-up grid below. Tune the cap (~55–70vh) until the
   balance looks right.
+- **Below-hero order (desktop):** "About this piece" appears first, then "More from {store}"
+  — assert this ordering on a product that has a description (i.e. ~all of them).
 - **Sold product:** CTA reads "VIEW ON {store}"; no availability text anywhere.
 - **Single-image and no-image products:** layout holds at the capped height.
 - **Mobile:** unchanged, except `MoreFromStore` still appears once at the end (not twice);
