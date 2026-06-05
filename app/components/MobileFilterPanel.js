@@ -248,7 +248,7 @@ function FilterRoot({
               <span className="font-mono text-[10px] tracking-[0.28em] uppercase text-zinc-50">
                 <span className="text-zinc-500 mr-2">{t("filter.brand")}</span>{draftBrand}
               </span>
-              <button onClick={onClearDraftBrand} aria-label="Clear brand" className="text-zinc-300 text-[14px] leading-none">×</button>
+              <button onClick={onClearDraftBrand} aria-label={t("filter.clearBrand")} className="text-zinc-300 text-[14px] leading-none">×</button>
             </div>
             <div className="h-4" />
           </>

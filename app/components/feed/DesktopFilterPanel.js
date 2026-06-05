@@ -117,7 +117,7 @@ export default function DesktopFilterPanel({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Refine filters"
+        aria-label={t("filter.refineLabel")}
         aria-hidden={!isOpen}
         inert={!isOpen}
         className={`hidden md:flex flex-col fixed left-0 top-0 h-screen w-[360px] bg-[#0a0a0a] border-r border-zinc-800 z-50 transition-transform duration-300 ease-out ${
@@ -133,7 +133,7 @@ export default function DesktopFilterPanel({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            aria-label="Close filters"
+            aria-label={t("filter.closeLabel")}
             className="font-mono text-[18px] leading-none text-zinc-400 transition-colors hover:text-zinc-50"
           >
             ×

@@ -13,6 +13,7 @@ import MobileFeedActionBar from "../components/MobileFeedActionBar";
 import MobileFilterPanel from "../components/MobileFilterPanel";
 import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_MAP } from "../lib/sort-options";
+import { useLanguage } from "../components/LanguageProvider";
 
 const LOAD_SIZE = 30;
 
@@ -23,6 +24,7 @@ export default function FeedClient({ stores = [] }) {
   ];
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { t } = useLanguage();
 
   // URL-derived filter state (no page in URL anymore)
   const searchQuery = searchParams.get("search") || "";
@@ -407,7 +409,7 @@ export default function FeedClient({ stores = [] }) {
                     disabled={loadingMore}
                     className="w-full border border-zinc-700 py-4 px-6 font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-400 transition-all duration-200 hover:border-zinc-400 hover:text-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed active:bg-zinc-900/40"
                   >
-                    {loadingMore ? "—" : "Load More"}
+                    {loadingMore ? "—" : t("feed.loadMore")}
                   </button>
                 )}
               </div>

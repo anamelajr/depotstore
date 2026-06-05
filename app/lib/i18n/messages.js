@@ -44,15 +44,21 @@ export const MESSAGES = {
     "filter.refine": "Refine",
     "filter.viewAll": "View All",
     "filter.allStores": "All stores",
+    // Filter aria-labels (screen-reader only)
+    "filter.refineLabel": "Refine filters",
+    "filter.closeLabel": "Close filters",
+    "filter.clearBrand": "Clear brand",
     // Feed action bar (button labels — verbs)
     "feed.filter": "Filters",
     "feed.sort": "Sort",
+    "feed.loadMore": "Load More",
     // Sort option labels
     "sort.default": "Default",
     "sort.newest": "Newest",
     "sort.oldest": "Oldest",
     "sort.priceLow": "Price low → high",
     "sort.priceHigh": "Price high → low",
+    "sort.menuLabel": "Sort options",
     // Product cards + info
     "product.sold": "Sold",
     "product.soldOverlay": "Sold",
@@ -161,15 +167,21 @@ export const MESSAGES = {
     "filter.refine": "Affiner",
     "filter.viewAll": "Tout afficher",
     "filter.allStores": "Toutes les boutiques",
+    // Filter aria-labels (screen-reader only)
+    "filter.refineLabel": "Affiner les filtres",
+    "filter.closeLabel": "Fermer les filtres",
+    "filter.clearBrand": "Effacer la marque",
     // Feed action bar (button labels — verbs)
     "feed.filter": "Filtrer",
     "feed.sort": "Trier",
+    "feed.loadMore": "Voir plus d'articles",
     // Sort option labels
     "sort.default": "Par défaut",
     "sort.newest": "Plus récent",
     "sort.oldest": "Plus ancien",
     "sort.priceLow": "Prix croissant",
     "sort.priceHigh": "Prix décroissant",
+    "sort.menuLabel": "Options de tri",
     // Product cards + info
     "product.sold": "Vendu",
     "product.soldOverlay": "Vendu",
