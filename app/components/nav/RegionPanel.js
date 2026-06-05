@@ -3,10 +3,8 @@
 import { CURRENCIES } from "../../lib/currency";
 
 // Presentational body of the region dropdown — shared so the open/positioning
-// logic lives in RegionMenu. Dark panel matching DesktopSortMenu. Language row
-// is a phase-1 shell: English is active, Français is rendered but inert
-// (aria-disabled, no-op). Currency row flips the selection and closes.
-export default function RegionPanel({ currency, language, onSelectCurrency, onClose }) {
+// logic lives in RegionMenu. Dark panel matching DesktopSortMenu.
+export default function RegionPanel({ currency, language, onSelectCurrency, onSelectLanguage, onClose }) {
   const sectionLabel =
     "px-4 pt-3 pb-1.5 font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-600";
   const row =
@@ -18,24 +16,28 @@ export default function RegionPanel({ currency, language, onSelectCurrency, onCl
       aria-label="Region settings"
       className="w-[240px] bg-zinc-900 border border-zinc-800 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
     >
-      {/* Language — shell only; FR is inert in phase 1 */}
+      {/* Language */}
       <div className={sectionLabel}>Language</div>
-      <div
+      <button
+        type="button"
         role="menuitemradio"
-        aria-checked={language === "EN"}
-        className={`${row} text-zinc-50`}
+        aria-checked={language === "en"}
+        onClick={() => { onSelectLanguage("en"); onClose(); }}
+        className={`${row} hover:bg-white/5 ${language === "en" ? "text-zinc-50" : "text-zinc-400 hover:text-zinc-50"}`}
       >
         <span>English</span>
-        {language === "EN" && <span>—</span>}
-      </div>
-      <div
+        {language === "en" && <span>—</span>}
+      </button>
+      <button
+        type="button"
         role="menuitemradio"
-        aria-checked={false}
-        aria-disabled="true"
-        className={`${row} text-zinc-600 cursor-default`}
+        aria-checked={language === "fr"}
+        onClick={() => { onSelectLanguage("fr"); onClose(); }}
+        className={`${row} hover:bg-white/5 ${language === "fr" ? "text-zinc-50" : "text-zinc-400 hover:text-zinc-50"}`}
       >
         <span>Français</span>
-      </div>
+        {language === "fr" && <span>—</span>}
+      </button>
 
       {/* Currency */}
       <div className={`${sectionLabel} mt-1`}>Currency</div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import RegionMenu from "./RegionMenu";
+import { useLanguage } from "../LanguageProvider";
 
 function MenuIcon() {
   return (
@@ -44,6 +45,7 @@ export default function TopBar({
   onSearchClose,
 }) {
   const inputRef = useRef(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (isSearchMode) inputRef.current?.focus();
@@ -69,7 +71,7 @@ export default function TopBar({
               onSearchClose();
             }
           }}
-          placeholder="Search the archive..."
+          placeholder={t("nav.searchPlaceholder")}
           className="flex-1 bg-transparent font-mono text-[13px] uppercase tracking-widest text-zinc-50 placeholder-zinc-600 outline-none"
         />
         <button
@@ -77,7 +79,7 @@ export default function TopBar({
           onClick={onSearchClose}
           className={`${baseLink} flex items-center gap-2`}
         >
-          <CloseIcon /> Close
+          <CloseIcon /> {t("nav.close")}
         </button>
       </div>
     );
@@ -89,19 +91,19 @@ export default function TopBar({
         {isMenuOpen ? (
           <>
             <button type="button" onClick={onCloseClick} className={`${baseLink} flex items-center gap-2`}>
-              <CloseIcon /> Close
+              <CloseIcon /> {t("nav.close")}
             </button>
             <button type="button" onClick={onSearchClick} className={`${baseLink} flex items-center gap-2`}>
-              <SearchIcon /> Search the archive
+              <SearchIcon /> {t("nav.searchTheArchive")}
             </button>
           </>
         ) : (
           <>
             <button type="button" onClick={onMenuClick} className={`${baseLink} flex items-center gap-2`}>
-              <MenuIcon /> Menu
+              <MenuIcon /> {t("nav.menu")}
             </button>
             <button type="button" onClick={onSearchClick} className={`${baseLink} flex items-center gap-2`}>
-              <SearchIcon /> Search
+              <SearchIcon /> {t("nav.search")}
             </button>
           </>
         )}
@@ -116,7 +118,7 @@ export default function TopBar({
           <>
             <RegionMenu />
             <Link href="/saved" className={baseLink}>
-              Saved
+              {t("nav.saved")}
             </Link>
           </>
         )}

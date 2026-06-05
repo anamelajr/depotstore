@@ -18,11 +18,6 @@ export function CurrencyProvider({ initialCurrency = "EUR", rates, children }) {
     ALLOWED.includes(initialCurrency) ? initialCurrency : "EUR",
   );
 
-  // Phase 1: English only. Français is rendered but inert (see RegionPanel),
-  // so language is a fixed shell value here — wired through for the later
-  // i18n project without changing the context shape now.
-  const language = "EN";
-
   const setCurrency = useCallback((next) => {
     if (!ALLOWED.includes(next)) return;
     setCurrencyState(next);
@@ -31,7 +26,7 @@ export function CurrencyProvider({ initialCurrency = "EUR", rates, children }) {
   }, []);
 
   return (
-    <CurrencyContext.Provider value={{ currency, setCurrency, language, rates }}>
+    <CurrencyContext.Provider value={{ currency, setCurrency, rates }}>
       {children}
     </CurrencyContext.Provider>
   );

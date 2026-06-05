@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ALL_STORES_VALUE } from "../../lib/feed-utils";
-import { FILTER_GROUPS as CATEGORY_GROUPS } from "../../lib/categories.js";
+import { getFilterGroups } from "../../lib/categories.js";
+import { useLanguage } from "../LanguageProvider";
 
 export default function DesktopFilterPanel({
   isOpen,
@@ -14,6 +15,8 @@ export default function DesktopFilterPanel({
   onStoreChange,
   onClearAll,
 }) {
+  const { language, t } = useLanguage();
+  const CATEGORY_GROUPS = getFilterGroups(language);
   const closeButtonRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const panelRef = useRef(null);
@@ -124,7 +127,7 @@ export default function DesktopFilterPanel({
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-5 border-b border-zinc-800 shrink-0">
           <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-50">
-            Refine
+            {t("filter.refine")}
           </span>
           <button
             ref={closeButtonRef}
@@ -142,7 +145,7 @@ export default function DesktopFilterPanel({
           {/* CATEGORY section — above store */}
           <section>
             <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
-              Category
+              {t("filter.category")}
             </p>
             {CATEGORY_GROUPS.map((group) => {
               if (!group.children) {
@@ -211,7 +214,7 @@ export default function DesktopFilterPanel({
           {/* STORE section — below category */}
           <section>
             <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
-              Store
+              {t("filter.store")}
             </p>
             {storeOptions.map((opt) => {
               const active = opt.value === selectedStore;
@@ -245,7 +248,7 @@ export default function DesktopFilterPanel({
             onClick={onClearAll}
             className="font-mono text-[11px] uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-50"
           >
-            Reset
+            {t("filter.reset")}
           </button>
         </div>
       </aside>

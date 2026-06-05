@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { SORT_OPTIONS } from "../../lib/sort-options";
+import { getSortOptions } from "../../lib/sort-options";
+import { useLanguage } from "../LanguageProvider";
 
 export default function DesktopSortMenu({
   isOpen,
@@ -9,6 +10,7 @@ export default function DesktopSortMenu({
   selectedSort,
   onSortChange,
 }) {
+  const { language } = useLanguage();
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -42,7 +44,7 @@ export default function DesktopSortMenu({
       aria-label="Sort options"
       className="absolute bottom-full right-0 mb-2 w-[220px] bg-zinc-900 border border-zinc-800 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
     >
-      {SORT_OPTIONS.map((opt) => {
+      {getSortOptions(language).map((opt) => {
         const active = selectedSort === opt.value;
         return (
           <button

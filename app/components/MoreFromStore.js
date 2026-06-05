@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import HoverSwapImage from "./HoverSwapImage.js";
 import Price from "./Price.js";
+import T from "./T";
 import {
   withVisibility,
   PRODUCT_ROW_SELECT,
@@ -35,12 +36,16 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
 
   if (products.length === 0) return null;
 
-  const heading = storeName ? `More from ${storeName}` : "More from this store";
-
   return (
     <section className="mt-16 px-6 pb-14">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900">
-        {heading}
+        {storeName ? (
+          <>
+            <T k="product.moreFrom" /> {storeName}
+          </>
+        ) : (
+          <T k="product.moreFromThis" />
+        )}
       </p>
       <div className="mt-6 grid grid-cols-2 gap-5">
         {products.map((p) => {
@@ -64,7 +69,7 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
                 </p>
               ) : null}
               <p className="mt-1 font-sans text-[13px] leading-[1.3] text-zinc-600 line-clamp-2">
-                {p.title ?? p.name ?? "Untitled"}
+                {p.title ?? p.name ?? <T k="product.untitled" />}
               </p>
               {p.price ? (
                 <Price eur={p.price} className="mt-1.5 block font-mono text-[11px] text-zinc-700" />

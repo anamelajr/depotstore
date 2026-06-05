@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import BRANDS from "../brands";
+import { useLanguage } from "../components/LanguageProvider";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 export default function DesignersPage() {
+  const { t } = useLanguage();
   const brandsByLetter = useMemo(() => {
     const grouped = new Map();
     const sorted = [...BRANDS].sort((a, b) => a.localeCompare(b));
@@ -43,7 +45,7 @@ export default function DesignersPage() {
             textDecoration: "none",
           }}
         >
-          ← Back to feed
+          {t("designers.backToFeed")}
         </Link>
 
         <h1
@@ -55,7 +57,7 @@ export default function DesignersPage() {
             marginBottom: 64,
           }}
         >
-          Designers
+          {t("nav.designers")}
         </h1>
 
         {/* A-Z anchor row */}

@@ -1,9 +1,15 @@
 import Link from "next/link";
+import T from "../components/T";
+import { getLanguage } from "../lib/i18n/language.js";
+import { t } from "../lib/i18n/messages.js";
 
-export const metadata = {
-  title: "About — Dépôt",
-  description: "Dépôt is a curated discovery platform for archive and luxury fashion in Paris.",
-};
+export async function generateMetadata() {
+  const lang = await getLanguage();
+  return {
+    title: t("meta.aboutTitle", lang),
+    description: t("meta.aboutDesc", lang),
+  };
+}
 
 export default function AboutPage() {
   return (
@@ -15,27 +21,27 @@ export default function AboutPage() {
           href="/"
           className="font-mono text-[11px] uppercase tracking-widest text-zinc-600 hover:text-zinc-300 transition-colors"
         >
-          ← Back
+          <T k="about.back" />
         </Link>
 
         {/* Wordmark */}
         <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-600 mt-16 mb-12">
-          About
+          <T k="about.pageLabel" />
         </p>
 
         {/* Lead */}
         <h1 className="text-4xl sm:text-5xl font-light leading-tight tracking-tight text-zinc-100 mb-10">
-          Dépôt is a curated discovery platform for archive and luxury fashion in Paris.
+          <T k="about.lead" />
         </h1>
 
         {/* Body */}
         <p className="text-base leading-8 text-zinc-400 mb-16">
-          Live inventory from the city's best vintage and archive stores, in one feed. Search by designer, filter by category, get lost.
+          <T k="about.body" />
         </p>
 
         {/* Closing line */}
         <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-600">
-          Paris first. More cities soon.
+          <T k="about.closing" />
         </p>
 
         {/* CTA */}
@@ -44,7 +50,7 @@ export default function AboutPage() {
             href="/feed"
             className="font-mono text-[11px] uppercase tracking-widest text-zinc-300 hover:text-zinc-50 transition-colors"
           >
-            Browse the feed →
+            <T k="about.cta" />
           </Link>
         </div>
 

@@ -2,18 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useCurrency } from "../CurrencyProvider";
+import { useLanguage } from "../LanguageProvider";
 import { CURRENCIES } from "../../lib/currency";
 import RegionPanel from "./RegionPanel";
 
-// Desktop header control replacing the Newsletter link. Self-contained
-// open/close state (TopBar is presentational, so threading state through
-// DesktopNav would be more invasive). Mirrors DesktopSortMenu's outside-click
-// + Escape dismissal. Trigger reads "EN · €" and flips live on selection.
+// Desktop header control. Trigger reads "EN · €" and flips live on selection.
+// Reads BOTH useCurrency (for the symbol + setCurrency) and useLanguage (for
+// the language label + setLanguage) — keeping both hooks is critical; dropping
+// useCurrency would break the currency selector.
 const baseLink =
   "font-mono text-[11px] uppercase tracking-widest text-zinc-300 hover:text-zinc-50 transition-colors";
 
 export default function RegionMenu() {
-  const { currency, setCurrency, language } = useCurrency();
+  const { currency, setCurrency } = useCurrency();
+  const { language, setLanguage } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -59,6 +61,7 @@ export default function RegionMenu() {
             currency={currency}
             language={language}
             onSelectCurrency={setCurrency}
+            onSelectLanguage={setLanguage}
             onClose={() => setIsOpen(false)}
           />
         </div>

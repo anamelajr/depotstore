@@ -4,8 +4,10 @@ import { track } from "@vercel/analytics";
 import Link from "next/link";
 import HoverSwapImage from "./HoverSwapImage.js";
 import Price from "./Price.js";
+import { useLanguage } from "./LanguageProvider";
 
 export default function ProductCard({ product }) {
+  const { t } = useLanguage();
   const {
     name,
     title,
@@ -30,7 +32,7 @@ export default function ProductCard({ product }) {
   };
   const badgeName = SHORT_NAMES[storeName] ?? storeName;
   const displayBrand = brand ? (SHORT_BRANDS[brand] ?? brand) : null;
-  const displayTitle = title ?? name ?? "Untitled";
+  const displayTitle = title ?? name ?? t("product.untitled");
   const isSold = !available;
 
   const internalUrl = handle && storeDomain
@@ -53,13 +55,13 @@ export default function ProductCard({ product }) {
           <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={displayTitle} />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-xs text-zinc-600">
-            No image
+            {t("product.noImage")}
           </div>
         )}
         {isSold ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/45">
             <div className="text-[11px] font-mono uppercase tracking-widest text-white">
-              SOLD
+              {t("product.sold")}
             </div>
           </div>
         ) : null}
