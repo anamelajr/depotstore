@@ -42,7 +42,7 @@ export default function DesktopSortMenu({
       ref={menuRef}
       role="menu"
       aria-label={t("sort.menuLabel")}
-      className="absolute bottom-full right-0 mb-2 w-[220px] bg-zinc-900 border border-zinc-800 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
+      className="absolute bottom-full right-0 mb-2 w-[220px] bg-zinc-950/85 backdrop-blur border border-zinc-800/40 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
     >
       {getSortOptions(language).map((opt) => {
         const active = selectedSort === opt.value;
