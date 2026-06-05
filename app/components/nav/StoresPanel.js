@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { buildFreshFeedUrl } from "../../lib/feed-utils";
+import { useLanguage } from "../LanguageProvider";
 
 const itemBase =
   "block py-2 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-300 hover:text-zinc-50";
@@ -10,6 +11,7 @@ const labelStyle =
   "mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600";
 
 export default function StoresPanel({ stores = [], searchParams }) {
+  const { t } = useLanguage();
   const sorted = [...stores].sort((a, b) =>
     (a.storeName || "").localeCompare(b.storeName || "")
   );
@@ -18,13 +20,13 @@ export default function StoresPanel({ stores = [], searchParams }) {
 
   return (
     <div>
-      <div className={labelStyle}>Stores</div>
+      <div className={labelStyle}>{t("nav.stores")}</div>
       <Link
         href="/feed"
         className={`${itemBase} ${allActive ? itemActive : ""}`}
       >
         {allActive && <span className="-ml-4 mr-1">— </span>}
-        All Stores
+        {t("filter.allStores")}
       </Link>
       {sorted.map((s) => {
         const active = selectedStore === s.domain;
@@ -43,7 +45,7 @@ export default function StoresPanel({ stores = [], searchParams }) {
         href="/stores"
         className="mt-6 inline-block font-mono text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-50 transition-colors"
       >
-        View all stores →
+        {t("nav.viewAllStores")} →
       </Link>
     </div>
   );

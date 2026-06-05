@@ -1,6 +1,8 @@
 import Link from "next/link";
 import ProductCard from "./components/ProductCard";
 import ParisMap from "./components/ParisMap";
+import T from "./components/T";
+import HeroSearchInput from "./components/HeroSearchInput";
 import { fetchHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
 import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 
@@ -60,21 +62,12 @@ try {
               DÉPÔT
             </div>
             <div className="mt-6 max-w-2xl text-sm leading-6 text-zinc-800">
-              Paris. Archive. One feed.
+              <T k="home.tagline" />
             </div>
           </div>
           <div className="mt-16 max-w-3xl">
             <form action="/feed" method="GET" className="w-full">
-              <label htmlFor="hero-search" className="sr-only">
-                Search products
-              </label>
-              <input
-                id="hero-search"
-                name="search"
-                type="search"
-                placeholder="Search name, brand, keyword…"
-                className="w-full rounded-none border-b border-zinc-300 bg-transparent py-4 font-mono text-lg text-zinc-950 placeholder:text-zinc-400 outline-none focus:border-zinc-800"
-              />
+              <HeroSearchInput />
             </form>
           </div>
         </div>
@@ -85,7 +78,7 @@ try {
             className="flex w-fit items-center gap-2 font-mono text-sm text-zinc-900/80 transition-colors hover:text-zinc-900"
           >
             <span className="underline decoration-zinc-800 underline-offset-4">
-              Browse all
+              <T k="home.browseAll" />
             </span>
             <span aria-hidden="true" className="text-lg leading-none">→</span>
           </Link>
@@ -98,13 +91,13 @@ try {
           <div className="mb-6 flex items-end justify-between">
             <div>
               <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-                Selection
+                <T k="home.selectionLabel" />
               </p>
               <h2
                 className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
                 style={{ fontFamily: "var(--font-general-sans), sans-serif" }}
               >
-                Today&apos;s Edit
+                <T k="home.todaysEdit" />
               </h2>
             </div>
             <Link
@@ -112,7 +105,7 @@ try {
               replace
               className="font-mono text-sm text-zinc-400 transition-colors hover:text-zinc-50"
             >
-              View All →
+              <T k="home.viewAll" />
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
@@ -131,13 +124,13 @@ try {
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-12">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-              Geography
+              <T k="home.geographyLabel" />
             </p>
             <h2
               className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
               style={{ fontFamily: "var(--font-general-sans), sans-serif" }}
             >
-              Across Paris
+              <T k="home.acrossParis" />
             </h2>
           </div>
           <ParisMap products={recentProducts} stores={stores} />

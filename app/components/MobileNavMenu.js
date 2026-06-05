@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { NAV_TOP_LEVEL, SUBCATEGORIES_BY_SHORTKEY } from "../lib/categories.js";
+import { getNavTopLevel, getSubcategoriesByShortKey } from "../lib/categories.js";
 import { buildFreshFeedUrl } from "../lib/feed-utils";
 import { useCurrency } from "./CurrencyProvider";
+import { useLanguage } from "./LanguageProvider";
 import { CURRENCIES } from "../lib/currency";
 
 const CONTACT_EMAIL = "hello@depot.paris";
@@ -53,28 +54,40 @@ export default function MobileNavMenu({ isOpen, onClose }) {
 }
 
 // Compact Language/Currency control for the mobile menu footer. Mirrors the
-// desktop RegionPanel: English active, Français inert, currency flips selection
-// and closes the menu so the converted prices behind it are visible.
+// desktop RegionPanel: active language/currency are highlighted, selection
+// closes the menu so the updated UI behind it is immediately visible.
 function RegionSection({ onClose }) {
   const { currency, setCurrency } = useCurrency();
+  const { language, setLanguage, t } = useLanguage();
   const sectionLabel = "font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-600";
+  const langBtn = (lang) =>
+    `font-mono text-[10px] uppercase tracking-[0.18em] ${
+      language === lang ? "text-zinc-50" : "text-zinc-500"
+    }`;
 
   return (
     <div className="flex flex-col gap-3 pb-1">
       <div className="flex items-center gap-4">
-        <span className={sectionLabel}>Language</span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-50">
+        <span className={sectionLabel}>{t("region.language")}</span>
+        <button
+          type="button"
+          aria-pressed={language === "en"}
+          onClick={() => { setLanguage("en"); onClose(); }}
+          className={langBtn("en")}
+        >
           English
-        </span>
-        <span
-          aria-disabled="true"
-          className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600"
+        </button>
+        <button
+          type="button"
+          aria-pressed={language === "fr"}
+          onClick={() => { setLanguage("fr"); onClose(); }}
+          className={langBtn("fr")}
         >
           Français
-        </span>
+        </button>
       </div>
       <div className="flex items-center gap-4">
-        <span className={sectionLabel}>Currency</span>
+        <span className={sectionLabel}>{t("region.currency")}</span>
         {Object.entries(CURRENCIES).map(([code, { symbol, label }]) => {
           const active = currency === code;
           return (
@@ -96,13 +109,14 @@ function RegionSection({ onClose }) {
         })}
       </div>
       <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-600">
-        Prices are converted from EUR
+        {t("region.pricesFromEur")}
       </span>
     </div>
   );
 }
 
 function RootView({ onClose, onOpenShop }) {
+  const { t } = useLanguage();
   return (
     <>
       <header className="flex items-center justify-between h-[50px] px-5 shrink-0">
@@ -110,7 +124,7 @@ function RootView({ onClose, onOpenShop }) {
           DÉPÔT
         </Link>
         <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ✕ CLOSE
+          ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
       <div className="flex-1 flex flex-col px-8 pt-12 pb-8">
@@ -118,36 +132,36 @@ function RootView({ onClose, onOpenShop }) {
           onClick={onOpenShop}
           className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
         >
-          <span>SHOP</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.shop").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </button>
         <Link
           href="/stores"
           onClick={onClose}
           className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
         >
-          <span>STORES</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.stores").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </Link>
         <Link
           href="/designers"
           onClick={onClose}
           className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
         >
-          <span>DESIGNERS</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.designers").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </Link>
         <Link
           href="/editorial"
           onClick={onClose}
           className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
         >
-          <span>EDITORIAL</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.editorial").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </Link>
         <div className="mt-auto pt-8 border-t border-zinc-900 flex flex-col gap-4">
           <RegionSection onClose={onClose} />
           <Link href="/about" onClick={onClose} className="font-sans text-[11px] text-zinc-500">
-            About
+            {t("nav.about")}
           </Link>
           <a href={`mailto:${CONTACT_EMAIL}`} onClick={onClose} className="font-sans text-[11px] text-zinc-500">
-            Contact
+            {t("nav.contact")}
           </a>
         </div>
       </div>
@@ -156,22 +170,25 @@ function RootView({ onClose, onOpenShop }) {
 }
 
 function ShopView({ onClose, onBack, onOpenSubcategory }) {
+  const { language, t } = useLanguage();
+  const navTopLevel = getNavTopLevel(language);
+  const subcatByShortKey = getSubcategoriesByShortKey(language);
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
         <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ‹ BACK
+          ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
-          SHOP
+          {t("nav.shop").toUpperCase()}
         </span>
         <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
           ✕
         </button>
       </header>
       <div className="flex-1 px-8 pt-10 pb-8 flex flex-col gap-6 overflow-y-auto">
-        {NAV_TOP_LEVEL.map((cat) => {
-          const subs = SUBCATEGORIES_BY_SHORTKEY[cat.shortKey];
+        {navTopLevel.map((cat) => {
+          const subs = subcatByShortKey[cat.shortKey];
           const hasSubs = !!subs;
           if (hasSubs) {
             return (
@@ -202,16 +219,17 @@ function ShopView({ onClose, onBack, onOpenSubcategory }) {
 }
 
 function SubcategoryView({ onClose, onBack, shortKey, label }) {
-  const subs = SUBCATEGORIES_BY_SHORTKEY[shortKey];
+  const { language, t } = useLanguage();
+  const subs = getSubcategoriesByShortKey(language)[shortKey];
   if (!subs) return null;
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
         <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ‹ BACK
+          ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
-          {label.toUpperCase()}
+          {subs.heading.toUpperCase()}
         </span>
         <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
           ✕

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Price from "./Price.js";
+import T from "./T";
 import { buildFreshFeedUrl } from "../lib/feed-utils.js";
 
 export default function ProductInfoPanel({
@@ -14,12 +15,13 @@ export default function ProductInfoPanel({
   handle,
 }) {
   const ctaHref = `https://${storeDomain}/products/${handle}?utm_source=depot`;
-  const ctaText = available
-    ? `BUY AT ${storeName.toUpperCase()}`
-    : `VIEW ON ${storeName.toUpperCase()}`;
+  // CTA text is a <T> leaf so it swaps live on language toggle.
+  // The interpolated store name is a proper noun (stays as-is); the prefix is
+  // prefix-structured in both languages ("Buy at X" / "Acheter chez X"), and the
+  // anchor's `uppercase` class handles casing — no manual toUpperCase needed.
 
   const hasSizes = sizes && sizes.length > 0;
-  const sizeLabel = hasSizes && sizes.length > 1 ? "SIZES" : "SIZE";
+  const multiSize = hasSizes && sizes.length > 1;
   const sizeValue = hasSizes ? sizes.join(" · ") : null;
 
   // Brand-first header: brand owns the divided tag above the title. Falls back
@@ -49,7 +51,7 @@ export default function ProductInfoPanel({
       {hasSizes && (
         <div className="mt-4 border-b border-zinc-200 pb-4">
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-            {sizeLabel}
+            <T k={multiSize ? "product.sizes" : "product.size"} />
           </p>
           <p className="mt-1.5 font-mono text-[12px] uppercase tracking-[0.18em] text-zinc-700">
             {sizeValue}
@@ -65,7 +67,7 @@ export default function ProductInfoPanel({
           rel="noopener noreferrer"
           className="block w-full bg-black hover:bg-zinc-800 text-white text-center py-4 font-mono text-[11px] uppercase tracking-[0.22em] transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
         >
-          {ctaText}
+          <T k={available ? "product.buyAt" : "product.viewOn"} /> {storeName}
         </a>
       </div>
 
@@ -81,7 +83,7 @@ export default function ProductInfoPanel({
           href={buildFreshFeedUrl({ store: storeDomain })}
           className="mt-3 inline-block font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-500"
         >
-          Browse store →
+          <T k="product.browseStore" /> →
         </Link>
       </div>
     </div>

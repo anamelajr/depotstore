@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import Nav from "./Nav";
 import { CurrencyProvider } from "./CurrencyProvider";
+import { useLanguage } from "./LanguageProvider";
 
 export default function LayoutClient({
   children,
@@ -10,6 +11,7 @@ export default function LayoutClient({
   initialCurrency = "EUR",
   rates,
 }) {
+  const { t } = useLanguage();
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   return (
@@ -29,27 +31,27 @@ export default function LayoutClient({
           >
             <div className="flex items-start justify-between gap-4 mb-8">
               <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-500">
-                About
+                {t("about.label")}
               </span>
               <button
                 type="button"
                 onClick={() => setIsAboutOpen(false)}
                 className="font-mono text-[11px] uppercase tracking-widest text-zinc-600 hover:text-zinc-300 transition-colors"
               >
-                Close
+                {t("about.close")}
               </button>
             </div>
 
             <p className="text-2xl sm:text-3xl font-light leading-snug tracking-tight text-zinc-100 mb-8">
-              Dépôt is a curated discovery platform for archive and luxury fashion in Paris.
+              {t("about.lead")}
             </p>
 
             <p className="text-sm leading-7 text-zinc-400 mb-8">
-              Live inventory from the city's best vintage and archive stores, in one feed. Search by designer, filter by category, get lost.
+              {t("about.body")}
             </p>
 
             <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-600">
-              Paris first. More cities soon.
+              {t("about.closing")}
             </p>
           </div>
         </div>

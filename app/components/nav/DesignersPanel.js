@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import BRANDS from "../../brands";
 import { buildFeedUrl } from "../../lib/feed-utils";
+import { useLanguage } from "../LanguageProvider";
 
 const TOP_DESIGNERS = [
   "Margiela",
@@ -28,6 +29,7 @@ const letterBase =
   "font-mono text-[11px] uppercase tracking-widest";
 
 export default function DesignersPanel({ searchParams }) {
+  const { t } = useLanguage();
   const lettersWithBrands = useMemo(() => {
     const set = new Set();
     for (const brand of BRANDS) {
@@ -40,7 +42,7 @@ export default function DesignersPanel({ searchParams }) {
   return (
     <div className="grid grid-cols-[200px_1fr] gap-12">
       <div>
-        <div className={labelStyle}>Top Designers</div>
+        <div className={labelStyle}>{t("nav.topDesigners")}</div>
         {TOP_DESIGNERS.map((brand) => (
           <Link
             key={brand}
@@ -53,7 +55,7 @@ export default function DesignersPanel({ searchParams }) {
       </div>
 
       <div>
-        <div className={labelStyle}>Brands A–Z</div>
+        <div className={labelStyle}>{t("nav.brandsAZ")}</div>
         <div
           className="grid gap-x-3 gap-y-1"
           style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
@@ -82,7 +84,7 @@ export default function DesignersPanel({ searchParams }) {
           href="/designers"
           className="mt-6 inline-block font-mono text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-50 transition-colors"
         >
-          View all designers →
+          {t("nav.viewAllDesigners")} →
         </Link>
       </div>
     </div>

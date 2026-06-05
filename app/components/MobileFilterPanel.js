@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ALL_STORES_VALUE } from "../lib/feed-utils";
-import { NAV_TOP_LEVEL, SUBCATEGORIES_BY_SHORTKEY } from "../lib/categories.js";
+import { getNavTopLevel, getSubcategoriesByShortKey } from "../lib/categories.js";
+import { useLanguage } from "./LanguageProvider";
 
 export default function MobileFilterPanel({
   isOpen,
@@ -14,6 +15,7 @@ export default function MobileFilterPanel({
   storeOptions,
   onApply,        // (next: { categories, store, brand }) => void  — all three commit atomically
 }) {
+  const { t } = useLanguage();
   const [view, setView] = useState("root"); // 'root' | 'category' | 'store'
   const [draftCategories, setDraftCategories] = useState(selectedCategories);
   const [draftStore, setDraftStore] = useState(selectedStore);
@@ -86,13 +88,13 @@ export default function MobileFilterPanel({
           onClick={handleReset}
           className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-300 border-r border-zinc-800/60"
         >
-          RESET
+          {t("filter.reset").toUpperCase()}
         </button>
         <button
           onClick={handleApply}
           className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
         >
-          APPLY{totalActive > 0 ? ` (${totalActive})` : ""}
+          {t("filter.apply").toUpperCase()}{totalActive > 0 ? ` (${totalActive})` : ""}
         </button>
       </footer>
     </div>,
@@ -101,6 +103,9 @@ export default function MobileFilterPanel({
 }
 
 function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) {
+  const { language, t } = useLanguage();
+  const navTopLevel = getNavTopLevel(language);
+  const subcatByShortKey = getSubcategoriesByShortKey(language);
   const [expanded, setExpanded] = useState(null); // shortKey or null
 
   const toggle = (slug) => {
@@ -113,19 +118,19 @@ function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) 
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
         <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ‹ BACK
+          ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
-          FILTERS
+          {t("filter.filters").toUpperCase()}
         </span>
         <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ✕ CLOSE
+          ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
       <div className="flex-1 px-8 pt-2 pb-20 overflow-y-auto">
-        {NAV_TOP_LEVEL.map((cat) => {
+        {navTopLevel.map((cat) => {
           const isExpanded = expanded === cat.shortKey;
-          const subs = SUBCATEGORIES_BY_SHORTKEY[cat.shortKey];
+          const subs = subcatByShortKey[cat.shortKey];
           return (
             <div key={cat.slug}>
               <button
@@ -140,7 +145,7 @@ function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) 
               {isExpanded && (
                 <div className="py-3 flex flex-col gap-3 border-b border-zinc-900">
                   <OptionRow
-                    label={`View All ${cat.label}`}
+                    label={subs ? subs.items[0][1] : `${t("filter.viewAll")} ${cat.label}`}
                     checked={draftCategories.includes(cat.slug)}
                     onChange={() => toggle(cat.slug)}
                   />
@@ -177,22 +182,23 @@ function OptionRow({ label, checked, onChange }) {
 }
 
 function StoreView({ onBack, onClose, draftStore, setDraftStore, storeOptions }) {
+  const { t } = useLanguage();
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
         <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ‹ BACK
+          ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
-          FILTERS
+          {t("filter.filters").toUpperCase()}
         </span>
         <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ✕ CLOSE
+          ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
       <div className="flex-1 px-8 pt-6 pb-20 overflow-y-auto flex flex-col gap-3">
         <OptionRow
-          label="All stores"
+          label={t("filter.allStores")}
           checked={draftStore === ALL_STORES_VALUE}
           onChange={() => setDraftStore(ALL_STORES_VALUE)}
         />
@@ -220,28 +226,29 @@ function FilterRoot({
   categoryCount,
   storeCount,
 }) {
+  const { t } = useLanguage();
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
         <span />
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
-          FILTERS
+          {t("filter.filters").toUpperCase()}
         </span>
         <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
-          ✕ CLOSE
+          ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
       <div className="flex-1 px-8 pt-6 pb-20 overflow-y-auto">
         {draftBrand && (
           <>
             <p className="font-mono text-[8.5px] tracking-[0.32em] uppercase text-zinc-500 mb-2 mt-1">
-              Active
+              {t("filter.active")}
             </p>
             <div className="flex items-center justify-between py-3 border-b border-zinc-900">
               <span className="font-mono text-[10px] tracking-[0.28em] uppercase text-zinc-50">
-                <span className="text-zinc-500 mr-2">Brand</span>{draftBrand}
+                <span className="text-zinc-500 mr-2">{t("filter.brand")}</span>{draftBrand}
               </span>
-              <button onClick={onClearDraftBrand} aria-label="Clear brand" className="text-zinc-300 text-[14px] leading-none">×</button>
+              <button onClick={onClearDraftBrand} aria-label={t("filter.clearBrand")} className="text-zinc-300 text-[14px] leading-none">×</button>
             </div>
             <div className="h-4" />
           </>
@@ -251,7 +258,7 @@ function FilterRoot({
           className="flex items-center justify-between w-full py-4 border-b border-zinc-900 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
         >
           <span>
-            CATEGORY
+            {t("filter.category").toUpperCase()}
             {categoryCount > 0 && (
               <span className="ml-2 text-zinc-500 tracking-[0.18em]">· {categoryCount}</span>
             )}
@@ -263,7 +270,7 @@ function FilterRoot({
           className="flex items-center justify-between w-full py-4 border-b border-zinc-900 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
         >
           <span>
-            STORE
+            {t("filter.store").toUpperCase()}
             {storeCount > 0 && (
               <span className="ml-2 text-zinc-500 tracking-[0.18em]">· {storeCount}</span>
             )}

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ALL_STORES_VALUE } from "../../lib/feed-utils";
-import { FILTER_GROUPS as CATEGORY_GROUPS } from "../../lib/categories.js";
+import { getFilterGroups } from "../../lib/categories.js";
+import { useLanguage } from "../LanguageProvider";
 
 export default function DesktopFilterPanel({
   isOpen,
@@ -14,6 +15,8 @@ export default function DesktopFilterPanel({
   onStoreChange,
   onClearAll,
 }) {
+  const { language, t } = useLanguage();
+  const CATEGORY_GROUPS = getFilterGroups(language);
   const closeButtonRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const panelRef = useRef(null);
@@ -114,7 +117,7 @@ export default function DesktopFilterPanel({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Refine filters"
+        aria-label={t("filter.refineLabel")}
         aria-hidden={!isOpen}
         inert={!isOpen}
         className={`hidden md:flex flex-col fixed left-0 top-0 h-screen w-[360px] bg-[#0a0a0a] border-r border-zinc-800 z-50 transition-transform duration-300 ease-out ${
@@ -124,13 +127,13 @@ export default function DesktopFilterPanel({
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-5 border-b border-zinc-800 shrink-0">
           <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-50">
-            Refine
+            {t("filter.refine")}
           </span>
           <button
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            aria-label="Close filters"
+            aria-label={t("filter.closeLabel")}
             className="font-mono text-[18px] leading-none text-zinc-400 transition-colors hover:text-zinc-50"
           >
             ×
@@ -142,7 +145,7 @@ export default function DesktopFilterPanel({
           {/* CATEGORY section — above store */}
           <section>
             <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
-              Category
+              {t("filter.category")}
             </p>
             {CATEGORY_GROUPS.map((group) => {
               if (!group.children) {
@@ -211,7 +214,7 @@ export default function DesktopFilterPanel({
           {/* STORE section — below category */}
           <section>
             <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
-              Store
+              {t("filter.store")}
             </p>
             {storeOptions.map((opt) => {
               const active = opt.value === selectedStore;
@@ -231,7 +234,7 @@ export default function DesktopFilterPanel({
                   }`}
                 >
                   {active && <span className="-ml-4 mr-1">— </span>}
-                  {opt.label}
+                  {opt.value === ALL_STORES_VALUE ? t("filter.allStores") : opt.label}
                 </button>
               );
             })}
@@ -245,7 +248,7 @@ export default function DesktopFilterPanel({
             onClick={onClearAll}
             className="font-mono text-[11px] uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-50"
           >
-            Reset
+            {t("filter.reset")}
           </button>
         </div>
       </aside>

@@ -7,6 +7,8 @@ import EditorialBody from "../_components/EditorialBody.js";
 import PiecesFeatured from "../_components/PiecesFeatured.js";
 import MoreFromDesigner from "../_components/MoreFromDesigner.js";
 import { fetchEditorialProducts } from "../_lib/fetchEditorialProducts.js";
+import { getLanguage } from "../../lib/i18n/language.js";
+import { t } from "../../lib/i18n/messages.js";
 
 // Refresh the live "Pieces featured" + "More from" grids on the same cadence
 // as the Shopify→Supabase sync. Without this, generateStaticParams would
@@ -19,10 +21,12 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
+  const lang = await getLanguage();
   const entry = getEntryBySlug(slug);
-  if (!entry) return { title: "Not found · Dépôt" };
+  if (!entry) return { title: t("meta.notFoundTitle", lang) };
+  // Only the chrome suffix translates; entry.hero.title is article content (EN).
   return {
-    title: `${entry.hero.title} · Editorial · Dépôt`,
+    title: `${entry.hero.title} · ${t("meta.editorialSuffix", lang)}`,
     description: entry.hero.subtitle?.replace(/\n/g, " ").slice(0, 200),
   };
 }
