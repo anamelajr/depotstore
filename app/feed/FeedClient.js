@@ -24,7 +24,8 @@ export default function FeedClient({ stores = [] }) {
   ];
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const numberLocale = language === "fr" ? "fr-FR" : "en-US";
 
   // URL-derived filter state (no page in URL anymore)
   const searchQuery = searchParams.get("search") || "";
@@ -400,7 +401,7 @@ export default function FeedClient({ stores = [] }) {
               </div>
               <div className="flex flex-col items-center gap-4 pt-10">
                 <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
-                  {products.length.toLocaleString()} of {total.toLocaleString()} products
+                  {products.length.toLocaleString(numberLocale)} {t("feed.countOf")} {total.toLocaleString(numberLocale)} {t("feed.countItems")}
                 </p>
                 {hasMore && (
                   <button

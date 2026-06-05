@@ -52,6 +52,8 @@ export const MESSAGES = {
     "feed.filter": "Filters",
     "feed.sort": "Sort",
     "feed.loadMore": "Load More",
+    "feed.countOf": "of",
+    "feed.countItems": "products",
     // Sort option labels
     "sort.default": "Default",
     "sort.newest": "Newest",
@@ -175,6 +177,8 @@ export const MESSAGES = {
     "feed.filter": "Filtrer",
     "feed.sort": "Trier",
     "feed.loadMore": "Voir plus d'articles",
+    "feed.countOf": "sur",
+    "feed.countItems": "articles",
     // Sort option labels
     "sort.default": "Par défaut",
     "sort.newest": "Plus récent",
