@@ -117,13 +117,6 @@ export default async function ProductPage({ params, searchParams }) {
                 </div>
               </Accordion>
             </div>
-
-            {/* More from this store */}
-            <MoreFromStore
-              storeDomain={storeDomain}
-              currentHandle={handle}
-              storeName={storeName}
-            />
           </div>
 
           {/* Desktop info panel — right column */}
@@ -135,6 +128,7 @@ export default async function ProductPage({ params, searchParams }) {
             sizes={sizes}
             available={available}
             storeDomain={storeDomain}
+            storeLocation={storeLocation}
             handle={handle}
           />
 
@@ -142,6 +136,13 @@ export default async function ProductPage({ params, searchParams }) {
 
         {/* Desktop about section — full-width below the grid */}
         <DesktopAboutSection description={description} />
+
+        {/* More from this store — one instance serves both breakpoints */}
+        <MoreFromStore
+          storeDomain={storeDomain}
+          currentHandle={handle}
+          storeName={storeName}
+        />
 
       </div>
     </div>

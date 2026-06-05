@@ -58,6 +58,7 @@ export const MESSAGES = {
     "product.sizes": "Sizes",
     "product.moreFrom": "More from",
     "product.moreFromThis": "More from this store",
+    "product.browseStore": "Browse store",
     // About modal (inside LayoutClient)
     "about.label": "About",
     "about.close": "Close",
@@ -167,6 +168,7 @@ export const MESSAGES = {
     "product.sizes": "Tailles",
     "product.moreFrom": "Plus de",
     "product.moreFromThis": "Plus de cette boutique",
+    "product.browseStore": "Parcourir la boutique",
     // About modal
     "about.label": "À propos",
     "about.close": "Fermer",

@@ -187,7 +187,7 @@ export default function ProductGallery({ images, alt }) {
       <>
         <div className="hidden lg:block" />
         <div className="order-1 lg:order-none">
-          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:aspect-auto">
+          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:h-[70vh] lg:aspect-auto">
             No image
           </div>
         </div>
@@ -211,7 +211,7 @@ export default function ProductGallery({ images, alt }) {
     <>
       {/* Desktop thumbnail column */}
       <div
-        className="hidden lg:flex lg:flex-col lg:gap-2 lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:overflow-y-auto [&::-webkit-scrollbar]:hidden"
+        className="hidden lg:flex lg:flex-col lg:gap-2 lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:h-[70vh] lg:overflow-y-auto [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none" }}
       >
         {images.map((src, i) => {
@@ -239,7 +239,7 @@ export default function ProductGallery({ images, alt }) {
       {/* Hero (desktop) + swipe gallery (mobile) */}
       <div className="order-1 lg:order-none">
         {/* Desktop hero */}
-        <div className="hidden lg:flex lg:relative lg:w-full lg:h-[calc(100vh-var(--nav-height)-4rem)] lg:items-start lg:justify-center">
+        <div className="hidden lg:flex lg:relative lg:w-full lg:h-[70vh] lg:items-start lg:justify-center">
           <img
             ref={heroRef}
             src={shopifyImageUrl(activeSrc, 1400)}
