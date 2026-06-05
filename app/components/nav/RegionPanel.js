@@ -14,7 +14,7 @@ export default function RegionPanel({ currency, language, t, onSelectCurrency, o
     <div
       role="menu"
       aria-label="Region settings"
-      className="w-[240px] bg-zinc-900 border border-zinc-800 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
+      className="w-[240px] bg-zinc-950/85 backdrop-blur border border-zinc-800/40 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
     >
       {/* Language */}
       <div className={sectionLabel}>{t("region.language")}</div>
@@ -66,7 +66,7 @@ export default function RegionPanel({ currency, language, t, onSelectCurrency, o
       })}
 
       {/* Footer note */}
-      <div className="mt-1 border-t border-zinc-800 px-4 pt-2.5 pb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-600">
+      <div className="mt-1 border-t border-zinc-800/40 px-4 pt-2.5 pb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-600">
         {t("region.pricesFromEur")}
       </div>
     </div>
