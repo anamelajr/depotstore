@@ -58,7 +58,7 @@ export default function MobileNavMenu({ isOpen, onClose }) {
 // closes the menu so the updated UI behind it is immediately visible.
 function RegionSection({ onClose }) {
   const { currency, setCurrency } = useCurrency();
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const sectionLabel = "font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-600";
   const langBtn = (lang) =>
     `font-mono text-[10px] uppercase tracking-[0.18em] ${
@@ -68,7 +68,7 @@ function RegionSection({ onClose }) {
   return (
     <div className="flex flex-col gap-3 pb-1">
       <div className="flex items-center gap-4">
-        <span className={sectionLabel}>Language</span>
+        <span className={sectionLabel}>{t("region.language")}</span>
         <button
           type="button"
           aria-pressed={language === "en"}
@@ -87,7 +87,7 @@ function RegionSection({ onClose }) {
         </button>
       </div>
       <div className="flex items-center gap-4">
-        <span className={sectionLabel}>Currency</span>
+        <span className={sectionLabel}>{t("region.currency")}</span>
         {Object.entries(CURRENCIES).map(([code, { symbol, label }]) => {
           const active = currency === code;
           return (
@@ -109,7 +109,7 @@ function RegionSection({ onClose }) {
         })}
       </div>
       <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-600">
-        Prices are converted from EUR
+        {t("region.pricesFromEur")}
       </span>
     </div>
   );

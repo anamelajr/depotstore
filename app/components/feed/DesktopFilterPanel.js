@@ -234,7 +234,7 @@ export default function DesktopFilterPanel({
                   }`}
                 >
                   {active && <span className="-ml-4 mr-1">— </span>}
-                  {opt.label}
+                  {opt.value === ALL_STORES_VALUE ? t("filter.allStores") : opt.label}
                 </button>
               );
             })}

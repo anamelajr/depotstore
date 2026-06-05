@@ -15,7 +15,7 @@ const baseLink =
 
 export default function RegionMenu() {
   const { currency, setCurrency } = useCurrency();
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -60,6 +60,7 @@ export default function RegionMenu() {
           <RegionPanel
             currency={currency}
             language={language}
+            t={t}
             onSelectCurrency={setCurrency}
             onSelectLanguage={setLanguage}
             onClose={() => setIsOpen(false)}
