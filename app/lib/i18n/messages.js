@@ -22,6 +22,10 @@ export const MESSAGES = {
     "nav.about": "About",
     "nav.contact": "Contact",
     "nav.back": "Back",
+    "nav.topDesigners": "Top Designers",
+    "nav.brandsAZ": "Brands A–Z",
+    "nav.viewAllDesigners": "View all designers",
+    "nav.viewAllStores": "View all stores",
     // Region
     "region.language": "Language",
     "region.english": "English",
@@ -40,6 +44,9 @@ export const MESSAGES = {
     "filter.refine": "Refine",
     "filter.viewAll": "View All",
     "filter.allStores": "All stores",
+    // Feed action bar (button labels — verbs)
+    "feed.filter": "Filters",
+    "feed.sort": "Sort",
     // Sort option labels
     "sort.default": "Default",
     "sort.newest": "Newest",
@@ -122,16 +129,20 @@ export const MESSAGES = {
     "nav.search": "Rechercher",
     "nav.searchTheArchive": "Rechercher dans les archives",
     "nav.searchPlaceholder": "Rechercher dans les archives…",
-    "nav.saved": "Sauvegardés",
+    "nav.saved": "Mes favoris",
     "nav.categories": "Catégories",
     "nav.browse": "Explorer",
-    "nav.designers": "Créateurs",
+    "nav.designers": "Marques",
     "nav.stores": "Boutiques",
     "nav.editorial": "Éditorial",
     "nav.shop": "Boutique",
     "nav.about": "À propos",
     "nav.contact": "Contact",
     "nav.back": "Retour",
+    "nav.topDesigners": "Marques populaires",
+    "nav.brandsAZ": "Marques A–Z",
+    "nav.viewAllDesigners": "Voir toutes les marques",
+    "nav.viewAllStores": "Voir toutes les boutiques",
     // Region
     "region.language": "Langue",
     "region.english": "English",
@@ -150,6 +161,9 @@ export const MESSAGES = {
     "filter.refine": "Affiner",
     "filter.viewAll": "Tout afficher",
     "filter.allStores": "Toutes les boutiques",
+    // Feed action bar (button labels — verbs)
+    "feed.filter": "Filtrer",
+    "feed.sort": "Trier",
     // Sort option labels
     "sort.default": "Par défaut",
     "sort.newest": "Plus récent",
@@ -183,7 +197,7 @@ export const MESSAGES = {
     "home.tagline": "Paris. Archives. Un fil.",
     "home.searchPlaceholder": "Nom, marque, mot-clé…",
     "home.searchAria": "Rechercher des produits",
-    "home.browseAll": "Tout parcourir",
+    "home.browseAll": "Découvrir",
     "home.selectionLabel": "Sélection",
     "home.todaysEdit": "La Sélection du Jour",
     "home.viewAll": "Voir tout →",
@@ -194,9 +208,9 @@ export const MESSAGES = {
     "editorial.tagline": "Des textes courts et affirmés sur les créateurs et maisons qui façonnent la mode archive.",
     "editorial.noEntries": "Aucun article pour l'instant.",
     // Saved
-    "saved.label": "Sauvegardés",
+    "saved.label": "Mes favoris",
     "saved.comingSoon": "Bientôt disponible",
-    "saved.body": "Sauvegardez les pièces qui vous plaisent et retrouvez-les plus tard. Nous construisons cette fonctionnalité — laissez votre email ci-dessous pour être informé.",
+    "saved.body": "Mettez en favori les pièces qui vous plaisent et retrouvez-les plus tard. Nous construisons cette fonctionnalité — laissez votre email ci-dessous pour être informé.",
     // Designers page
     "designers.backToFeed": "← Retour au fil",
     // Footer
@@ -205,7 +219,7 @@ export const MESSAGES = {
     "footer.explore": "Explorer",
     "footer.feed": "Fil",
     "footer.stores": "Boutiques",
-    "footer.saved": "Sauvegardés",
+    "footer.saved": "Mes favoris",
     "footer.connect": "Contact",
     "footer.contact": "Nous écrire",
     // Newsletter form
@@ -219,7 +233,7 @@ export const MESSAGES = {
     "meta.homeDesc": "Mode archive et luxe sélectionnée dans les meilleures boutiques vintage parisiennes. Un fil, inventaire en direct.",
     "meta.aboutTitle": "À propos — Dépôt",
     "meta.aboutDesc": "Dépôt est une plateforme de découverte de mode archive et de luxe à Paris.",
-    "meta.savedTitle": "Sauvegardés — Dépôt",
+    "meta.savedTitle": "Mes favoris — Dépôt",
     "meta.editorialTitle": "Éditorial · Dépôt",
     "meta.editorialDesc": "Perspectives éditoriales sur la mode archive.",
     "meta.editorialSuffix": "Éditorial · Dépôt",
