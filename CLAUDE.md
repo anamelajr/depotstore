@@ -86,15 +86,24 @@ interleaved RPCs + `resolveCategoryFilter` in `app/lib/categories.js`.
   reintroduces the RESET→APPLY race.
 - **Single sources of truth:** category taxonomy + `resolveCategoryFilter`
   + `CATEGORY_SLUG_TO_DB` → `app/lib/categories.js`; sort options →
-  `app/lib/sort-options.js`; product reads → `app/lib/productQueries.js`.
+  `app/lib/sort-options.js`; product reads → `app/lib/productQueries.js`;
+  UI strings (en/fr, key-parity enforced by
+  `app/lib/i18n/__tests__/messages.test.js`) → `app/lib/i18n/messages.js`.
+- **Language-aware taxonomy/sort accessors default to `"en"` silently.**
+  `getFilterGroups`, `getNavTopLevel`, `getSubcategoriesByShortKey`
+  (`categories.js`) and `getSortOptions` (`sort-options.js`) take `lang`
+  defaulting to `"en"`. A consumer that forgets to thread the active
+  language renders English on toggle — no error, and the parity test only
+  checks message keys, not accessor calls.
 - **Editorial entries are registered manually in
   `content/editorial/index.js`'s hardcoded `ENTRIES` array.** No
   filesystem auto-discovery — new entries are imported + pushed.
 - **Never `import` `content/homepage-edit.json` statically.**
   `app/lib/loadHomepagePicks.js` reads it via `fs.readFile` + `JSON.parse`
-  inside try/catch (returns `[]` on any failure), with a date-seeded
-  rotation as runtime fallback. A static import would let a syntax error
-  crash production homepage rendering before the fallback could trigger.
+  inside try/catch (returns `[]` on any failure); `app/page.js` falls back
+  to a date-seeded rotation when picks is empty. A static import would let
+  a syntax error crash production homepage rendering before the fallback
+  could trigger.
 - **`save-homepage-edit` writes atomically via tmp + rename.** Prevents a
   truncated file from a mid-write interruption crashing the homepage on
   the next read.
@@ -143,8 +152,10 @@ applying any change.
 
 - **dot COMME** uses `/collections/paris/products.json`, not
   `/products.json`.
-- **Brand filter is `unaccent` + `ILIKE` substring**, not strict equality
-  — covers casing drift, brand fragmentation, and diacritics.
+- **Brand filter is `ILIKE` substring, not strict equality.** Only the
+  interleaved RPC `unaccent`s (diacritic-tolerant); `/api/products`'s
+  direct-query branches (explicit sort, or mixed parent+leaf) don't —
+  accent-folding holds on the default feed, not once a sort is applied.
 - **`MoreFromStore` queries Supabase directly** to dodge
   `NEXT_PUBLIC_BASE_URL` ambiguity on preview. Don't consolidate it back
   to HTTP.
@@ -178,9 +189,13 @@ applying any change.
 
 ## Workflow
 
-- **Do not push directly to `main`.** Branch + Vercel preview every
-  change. Merge only after explicit user instruction. Verify on Vercel,
-  not localhost.
+- **Do not push directly to `main`.** Branch every change; merge only
+  after explicit user instruction.
+- **Verify on localhost, Claude preview, or Vercel.** All three hit the
+  single production Supabase (no dev DB), so read-path UI checks are safe
+  but **never trigger `/api/cron` or `/api/enrich` locally** — they write
+  prod rows and spend OpenAI. Vercel-only: `NEXT_PUBLIC_BASE_URL`-dependent
+  links and cron self-fetch; `/admin/*` is localhost-only (404 in prod).
 - Schema/RPC changes apply to Supabase **before** dependent code merges.
 - Manual SQL (`enrich_attempts` resets, self-brand sweeps, RPC
   migrations) routes through the Supabase SQL Editor — MCP is read-only.
