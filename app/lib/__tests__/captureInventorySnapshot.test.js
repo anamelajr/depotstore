@@ -212,3 +212,45 @@ describe("captureInventorySnapshot — capture happy path", () => {
     expect(summary.snapshot).toEqual({ captured: true, rows: 5 });
   });
 });
+
+describe("captureInventorySnapshot — failure isolation", () => {
+  const failCases = [
+    [
+      "gate read error",
+      { gateError: new Error("gate boom") },
+      "daily-gate read failed: gate boom",
+    ],
+    [
+      "product read error",
+      { gate: { data: [], error: null }, productError: new Error("read boom") },
+      "product re-read failed at offset 0: read boom",
+    ],
+    [
+      "insert error",
+      {
+        gate: { data: [], error: null },
+        pages: [makeProducts(2, 0)],
+        upsertError: new Error("insert boom"),
+      },
+      "snapshot insert failed at batch 0: insert boom",
+    ],
+  ];
+
+  it.each(failCases)(
+    "catches a %s, never rethrows, logs inventory_snapshot_fail",
+    async (_label, config, expectedError) => {
+      const { client } = makeFakeSupabase(config);
+      const summary = { errors: [] };
+
+      // Must not throw.
+      await expect(
+        captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client),
+      ).resolves.toBeUndefined();
+
+      expect(summary.snapshot).toEqual({ captured: false, error: expectedError });
+      expect(errSpy).toHaveBeenCalledWith(
+        JSON.stringify({ event: "inventory_snapshot_fail", error: expectedError }),
+      );
+    },
+  );
+});
