@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { captureInventorySnapshot } from "../captureInventorySnapshot.js";
+import { captureInventorySnapshot, PAGE_SIZE, INSERT_BATCH, SNAPSHOT_COLUMNS } from "../captureInventorySnapshot.js";
 
 // --- Fake supabase client -------------------------------------------------
 // Models the three query shapes the function issues:
@@ -140,5 +140,75 @@ describe("captureInventorySnapshot — daily gate", () => {
       captured: false,
       skipped: "already-captured-today",
     });
+  });
+});
+
+describe("captureInventorySnapshot — capture happy path", () => {
+  it("pages by id, stamps observed_at, batches an idempotent insert, logs ok", async () => {
+    // One full page forces a second .range() call; a short final page ends it.
+    const page1 = makeProducts(PAGE_SIZE, 0);
+    const page2 = makeProducts(3, PAGE_SIZE);
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [], error: null }, // cold start — proceed
+      pages: [page1, page2],
+    });
+    const syncStart = "2026-06-06T12:00:00.000Z";
+    const summary = { errors: [] };
+
+    await captureInventorySnapshot(syncStart, summary, client);
+
+    // Paged by id with inclusive ranges, stopping on the short page.
+    expect(recorded.rangeCalls).toEqual([
+      [0, PAGE_SIZE - 1],
+      [PAGE_SIZE, 2 * PAGE_SIZE - 1],
+    ]);
+
+    // PAGE_SIZE + 3 rows => ceil((PAGE_SIZE+3)/INSERT_BATCH) batches.
+    const totalRows = PAGE_SIZE + 3;
+    const expectedBatches = Math.ceil(totalRows / INSERT_BATCH);
+    expect(recorded.upserts).toHaveLength(expectedBatches);
+
+    // Invariant #2: the product projection is EXACTLY SNAPSHOT_COLUMNS, which
+    // omits `id` (so the `{...row}` spread can't clobber the snapshot table's
+    // bigserial) and omits `observed_date` (a GENERATED column).
+    const productSelect = recorded.selects.find((s) => s.table === "products");
+    expect(productSelect.cols).toBe(SNAPSHOT_COLUMNS);
+    expect(SNAPSHOT_COLUMNS).not.toMatch(/\bid\b/);
+    expect(SNAPSHOT_COLUMNS).not.toMatch(/\bobserved_date\b/);
+
+    // Invariant #1: the re-read applies NO visibility filter — it must capture
+    // available=false AND hidden=true rows. Proven by zero .eq() calls.
+    expect(recorded.eqCalls).toEqual([]);
+
+    // Every upsert uses ON CONFLICT DO NOTHING against the generated column and
+    // every row carries the run's observed_at stamp.
+    for (const { rows, opts } of recorded.upserts) {
+      expect(opts).toEqual({
+        onConflict: "handle,store_domain,observed_date",
+        ignoreDuplicates: true,
+      });
+      for (const r of rows) expect(r.observed_at).toBe(syncStart);
+    }
+
+    // Row count round-trips and success is logged + summarized.
+    const insertedRows = recorded.upserts.reduce((n, u) => n + u.rows.length, 0);
+    expect(insertedRows).toBe(totalRows);
+    expect(summary.snapshot).toEqual({ captured: true, rows: totalRows });
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify({ event: "inventory_snapshot_ok", rows: totalRows }),
+    );
+  });
+
+  it("captures with a single short page (no second range call)", async () => {
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [], error: null },
+      pages: [makeProducts(5, 0)],
+    });
+    const summary = { errors: [] };
+
+    await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
+
+    expect(recorded.rangeCalls).toEqual([[0, PAGE_SIZE - 1]]);
+    expect(summary.snapshot).toEqual({ captured: true, rows: 5 });
   });
 });
