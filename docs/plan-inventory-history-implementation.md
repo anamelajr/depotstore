@@ -942,7 +942,10 @@ checks run against a Vercel deployment. Run these SQL checks via the Supabase SQ
 Editor or the read-only MCP.
 
 - [ ] **1. Migration applied.** After Task 1, the guard query returns
-  `table_exists = inventory_snapshots`, `row_count = 0`.
+  `snapshots_table = inventory_snapshots`, `days_table =
+  inventory_snapshot_days`, and both row counts `= 0`. (The migration also
+  creates the `inventory_snapshot_days` completeness ledger — see the
+  post-review hardening note below.)
 - [ ] **2. Cold-start capture.** Deploy Tasks 2–6; trigger one cron run. Confirm
   ~20,972 rows land with today's `observed_at`, and that there are no pagination
   skips/dups for the day:
@@ -956,13 +959,19 @@ Editor or the read-only MCP.
   Confirm the cron JSON response carries `summary.snapshot = { captured: true,
   rows: ~20972 }` and its `errors` array is unchanged from a normal run.
 - [ ] **3. Daily gate.** Trigger a second same-day run → no new rows; the response
-  shows `summary.snapshot.skipped = "already-captured-today"`.
+  shows `summary.snapshot.skipped = "already-captured-today"`. The gate keys off
+  a row in `inventory_snapshot_days` for today, written only after a *complete*
+  capture — confirm one row exists: `SELECT observed_date, row_count FROM
+  inventory_snapshot_days WHERE observed_date = (now() AT TIME ZONE 'UTC')::date;`
 - [ ] **4. Idempotency.** The `ON CONFLICT DO NOTHING` + UNIQUE constraint means a
   forced double-capture for one day cannot create duplicate per-product rows
   (re-confirm via the step-2 `rows == distinct_products` query).
 - [ ] **5. Clean-run gate.** On a run where a store errored (`summary.errors`
   non-empty), confirm capture is skipped (`summary.snapshot.skipped =
-  "run-had-errors"`) and a later clean run captures the day.
+  "run-had-errors"`) and a later clean run captures the day. Likewise, on a run
+  where a store returned **zero products** (`summary.stores[domain] = 0`, which
+  the sync path treats as a failed fetch), capture is skipped with
+  `summary.snapshot.skipped = "run-had-empty-store"`.
 - [ ] **6. Failure isolation.** As a **deliberate, temporary** change (revert
   before merging — do not ship it), point the helper at a bad table name once →
   cron still returns 200 with a normal summary and an `inventory_snapshot_fail`
@@ -973,6 +982,33 @@ Editor or the read-only MCP.
 - [ ] **7. Sanity.** `SELECT brand, COUNT(*) FROM inventory_snapshots WHERE
   observed_date = (now() AT TIME ZONE 'UTC')::date GROUP BY brand ORDER BY 2 DESC
   LIMIT 10;` returns sensible counts.
+
+---
+
+## Post-review hardening (Codex review, two P2 data-integrity findings)
+
+Both fixes live in the capture function's gate logic; the migration gains one
+small table. Covered by the same unit-test suite (now 12 tests).
+
+1. **Partial-day snapshots could never be backfilled.** Each batch `.upsert()`
+   is its own transaction, so a capture that failed mid-insert left some rows
+   for today behind. The original daily gate keyed off the *existence* of any
+   row for the UTC day, so the next run skipped (`already-captured-today`) and
+   the missing batches were never filled — even though `ON CONFLICT DO NOTHING`
+   could have. **Fix:** a new `inventory_snapshot_days` completeness ledger
+   (one row per fully-captured UTC day, written *only* after the final batch
+   lands). The gate now reads the ledger, not raw row existence; a partial day
+   has no ledger row, so the next hourly run re-captures and the idempotent
+   insert backfills only the gap. A count-vs-`products` comparison was rejected:
+   `products` drifts up a few rows most hours, which would force a full
+   re-capture on nearly every run and defeat the daily gate.
+
+2. **A zero-count store contaminated the snapshot.** A store returning an empty
+   product list resolves *fulfilled* with `count: 0`, which the sync path treats
+   as a failed fetch (excluded from stale cleanup) but never pushes to
+   `summary.errors`. The clean-run gate therefore passed and froze that store's
+   stale rows as today's state. **Fix:** the clean-run gate also skips
+   (`run-had-empty-store`) when any `summary.stores` value is `0`.
 
 ---
 

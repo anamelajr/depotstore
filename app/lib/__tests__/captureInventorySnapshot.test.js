@@ -14,7 +14,9 @@ import { captureInventorySnapshot, PAGE_SIZE, INSERT_BATCH, SNAPSHOT_COLUMNS } f
 //   pages:       array of product-row arrays, one per .range() call
 //   gateError:   Error to return from the gate read
 //   productError:Error to return from a product read
-//   upsertError: Error to return from an upsert
+//   upsertError: Error to return from a data upsert (inventory_snapshots)
+//   markError:   Error to return from the completeness-ledger upsert
+//                (inventory_snapshot_days)
 function makeFakeSupabase(config = {}) {
   // selects/eqCalls record builder args so tests can assert the EXACT product
   // projection (invariant #2: no `id`) and that NO visibility filter is applied
@@ -38,10 +40,10 @@ function makeFakeSupabase(config = {}) {
         return b;
       },
       upsert(rows, opts) {
-        recorded.upserts.push({ rows, opts });
-        return Promise.resolve(
-          config.upsertError ? { error: config.upsertError } : { error: null },
-        );
+        recorded.upserts.push({ table, rows, opts });
+        const err =
+          table === "inventory_snapshot_days" ? config.markError : config.upsertError;
+        return Promise.resolve(err ? { error: err } : { error: null });
       },
       then(resolve, reject) {
         let result;
@@ -105,19 +107,48 @@ describe("captureInventorySnapshot — clean-run gate", () => {
     expect(recorded.fromTables).toEqual([]); // never touched the DB
     expect(summary.snapshot).toEqual({ captured: false, skipped: "run-had-errors" });
   });
-});
 
-describe("captureInventorySnapshot — daily gate", () => {
-  it("skips when a snapshot already exists for this UTC day", async () => {
-    const { client, recorded } = makeFakeSupabase({
-      gate: { data: [{ observed_at: "2026-06-06T03:00:00.000Z" }], error: null },
-    });
-    const summary = { errors: [] };
+  it("skips (no DB calls) when any store returned zero products", async () => {
+    // A count===0 store is a likely-failed fetch — the sync path treats it as
+    // failed and excludes it from stale cleanup, but it never reaches
+    // summary.errors. Snapshotting would freeze that store's stale rows.
+    const { client, recorded } = makeFakeSupabase();
+    const summary = { errors: [], stores: { "good.example": 12, "empty.example": 0 } };
 
     await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
 
-    // Only the gate table was read; products were never re-read.
-    expect(recorded.fromTables).toEqual(["inventory_snapshots"]);
+    expect(recorded.fromTables).toEqual([]); // never touched the DB
+    expect(summary.snapshot).toEqual({
+      captured: false,
+      skipped: "run-had-empty-store",
+    });
+  });
+
+  it("proceeds when every store returned a positive count", async () => {
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [], error: null }, // no ledger row for today => capture
+      pages: [makeProducts(2, 0)],
+    });
+    const summary = { errors: [], stores: { "good.example": 12, "also.example": 3 } };
+
+    await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
+
+    expect(recorded.fromTables[0]).toBe("inventory_snapshot_days"); // passed the gate
+    expect(summary.snapshot).toEqual({ captured: true, rows: 2 });
+  });
+});
+
+describe("captureInventorySnapshot — daily completeness gate", () => {
+  it("skips when the ledger marks this UTC day complete", async () => {
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [{ observed_date: "2026-06-06" }], error: null },
+    });
+    const summary = { errors: [], stores: { a: 1 } };
+
+    await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
+
+    // Only the ledger table was read; products were never re-read.
+    expect(recorded.fromTables).toEqual(["inventory_snapshot_days"]);
     expect(recorded.rangeCalls).toEqual([]);
     expect(recorded.upserts).toEqual([]);
     expect(summary.snapshot).toEqual({
@@ -126,20 +157,41 @@ describe("captureInventorySnapshot — daily gate", () => {
     });
   });
 
-  it("compares dates in UTC, not local time (late-UTC instant still same day)", async () => {
+  it("queries the ledger by UTC date (late-UTC instant still same day)", async () => {
     // 23:30Z on the 6th is still 2026-06-06 in UTC even where local time has
-    // rolled to the 7th — the gate must use the UTC date.
-    const { client } = makeFakeSupabase({
-      gate: { data: [{ observed_at: "2026-06-06T00:30:00.000Z" }], error: null },
+    // rolled to the 7th — the gate must look up the ledger by the UTC date.
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [{ observed_date: "2026-06-06" }], error: null },
     });
-    const summary = { errors: [] };
+    const summary = { errors: [], stores: { a: 1 } };
 
     await captureInventorySnapshot("2026-06-06T23:30:00.000Z", summary, client);
 
+    expect(recorded.eqCalls).toContainEqual({
+      table: "inventory_snapshot_days",
+      col: "observed_date",
+      val: "2026-06-06",
+    });
     expect(summary.snapshot).toEqual({
       captured: false,
       skipped: "already-captured-today",
     });
+  });
+
+  it("captures when a prior run left a PARTIAL day (no ledger row)", async () => {
+    // The previous run committed some batches but failed before writing the
+    // ledger, so no marker exists. This run must re-capture; the data insert's
+    // ON CONFLICT DO NOTHING backfills only the rows the partial run missed.
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [], error: null }, // partial day => no ledger row
+      pages: [makeProducts(4, 0)],
+    });
+    const summary = { errors: [], stores: { a: 1 } };
+
+    await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
+
+    expect(recorded.rangeCalls).toEqual([[0, PAGE_SIZE - 1]]);
+    expect(summary.snapshot).toEqual({ captured: true, rows: 4 });
   });
 });
 
@@ -153,7 +205,7 @@ describe("captureInventorySnapshot — capture happy path", () => {
       pages: [page1, page2],
     });
     const syncStart = "2026-06-06T12:00:00.000Z";
-    const summary = { errors: [] };
+    const summary = { errors: [], stores: { a: 1 } };
 
     await captureInventorySnapshot(syncStart, summary, client);
 
@@ -163,10 +215,15 @@ describe("captureInventorySnapshot — capture happy path", () => {
       [PAGE_SIZE, 2 * PAGE_SIZE - 1],
     ]);
 
+    // Data upserts target inventory_snapshots; the ledger upsert is separate.
+    const dataUpserts = recorded.upserts.filter(
+      (u) => u.table === "inventory_snapshots",
+    );
+
     // PAGE_SIZE + 3 rows => ceil((PAGE_SIZE+3)/INSERT_BATCH) batches.
     const totalRows = PAGE_SIZE + 3;
     const expectedBatches = Math.ceil(totalRows / INSERT_BATCH);
-    expect(recorded.upserts).toHaveLength(expectedBatches);
+    expect(dataUpserts).toHaveLength(expectedBatches);
 
     // Invariant #2: the product projection is EXACTLY SNAPSHOT_COLUMNS, which
     // omits `id` (so the `{...row}` spread can't clobber the snapshot table's
@@ -176,13 +233,15 @@ describe("captureInventorySnapshot — capture happy path", () => {
     expect(SNAPSHOT_COLUMNS).not.toMatch(/\bid\b/);
     expect(SNAPSHOT_COLUMNS).not.toMatch(/\bobserved_date\b/);
 
-    // Invariant #1: the re-read applies NO visibility filter — it must capture
-    // available=false AND hidden=true rows. Proven by zero .eq() calls.
-    expect(recorded.eqCalls).toEqual([]);
+    // Invariant #1: the PRODUCT re-read applies NO visibility filter — it must
+    // capture available=false AND hidden=true rows. Proven by zero .eq() calls
+    // against the products table. (The ledger gate legitimately .eq()s on
+    // inventory_snapshot_days; that's not a visibility filter on products.)
+    expect(recorded.eqCalls.filter((e) => e.table === "products")).toEqual([]);
 
-    // Every upsert uses ON CONFLICT DO NOTHING against the generated column and
-    // every row carries the run's observed_at stamp.
-    for (const { rows, opts } of recorded.upserts) {
+    // Every data upsert uses ON CONFLICT DO NOTHING against the generated column
+    // and every row carries the run's observed_at stamp.
+    for (const { rows, opts } of dataUpserts) {
       expect(opts).toEqual({
         onConflict: "handle,store_domain,observed_date",
         ignoreDuplicates: true,
@@ -190,8 +249,24 @@ describe("captureInventorySnapshot — capture happy path", () => {
       for (const r of rows) expect(r.observed_at).toBe(syncStart);
     }
 
+    // The completeness ledger is written exactly once, AFTER the data, keyed by
+    // the UTC date and carrying the row count.
+    const markerUpserts = recorded.upserts.filter(
+      (u) => u.table === "inventory_snapshot_days",
+    );
+    expect(markerUpserts).toHaveLength(1);
+    expect(markerUpserts[0].rows).toEqual({
+      observed_date: "2026-06-06",
+      observed_at: syncStart,
+      row_count: totalRows,
+    });
+    expect(markerUpserts[0].opts).toEqual({
+      onConflict: "observed_date",
+      ignoreDuplicates: true,
+    });
+
     // Row count round-trips and success is logged + summarized.
-    const insertedRows = recorded.upserts.reduce((n, u) => n + u.rows.length, 0);
+    const insertedRows = dataUpserts.reduce((n, u) => n + u.rows.length, 0);
     expect(insertedRows).toBe(totalRows);
     expect(summary.snapshot).toEqual({ captured: true, rows: totalRows });
     expect(logSpy).toHaveBeenCalledWith(
@@ -204,7 +279,7 @@ describe("captureInventorySnapshot — capture happy path", () => {
       gate: { data: [], error: null },
       pages: [makeProducts(5, 0)],
     });
-    const summary = { errors: [] };
+    const summary = { errors: [], stores: { a: 1 } };
 
     await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
 
@@ -233,6 +308,15 @@ describe("captureInventorySnapshot — failure isolation", () => {
         upsertError: new Error("insert boom"),
       },
       "snapshot insert failed at batch 0: insert boom",
+    ],
+    [
+      "ledger mark error",
+      {
+        gate: { data: [], error: null },
+        pages: [makeProducts(2, 0)],
+        markError: new Error("mark boom"),
+      },
+      "snapshot completeness mark failed: mark boom",
     ],
   ];
 

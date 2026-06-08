@@ -1,4 +1,5 @@
--- Add inventory_snapshots: forward-going daily history of every product row.
+-- Add inventory_snapshots (+ inventory_snapshot_days ledger): forward-going
+-- daily history of every product row, with per-day completeness tracking.
 --
 -- Phase 1 of the inventory-history feature (design:
 -- docs/plan-inventory-history.md). The hourly Shopify->Supabase cron overwrites
@@ -46,12 +47,29 @@ CREATE INDEX IF NOT EXISTS idx_inv_snap_observed
 CREATE INDEX IF NOT EXISTS idx_inv_snap_handle_store
   ON public.inventory_snapshots (handle, store_domain, observed_at);
 
+-- Completeness ledger: one row per UTC day that was FULLY captured. The daily
+-- gate checks THIS table, not the existence of rows in inventory_snapshots. A
+-- capture that fails mid-insert commits some batches (each .upsert() is its own
+-- transaction) but writes NO ledger row, so the next hourly run sees the day as
+-- incomplete and retries — the data table's ON CONFLICT DO NOTHING fills only
+-- the rows the partial run missed. Without this, gating on "any row exists for
+-- today" would freeze a partial day forever (the bug Codex P2 #1 flagged).
+CREATE TABLE IF NOT EXISTS public.inventory_snapshot_days (
+  observed_date date PRIMARY KEY,
+  observed_at   timestamptz NOT NULL,   -- = cron syncStart of the capturing run
+  row_count     integer NOT NULL,       -- rows written for the day
+  completed_at  timestamptz NOT NULL DEFAULT now()
+);
+
 -- RLS on, no policies: only the service-role server can read/write (matches the
 -- fx_rates convention). Phase 2's admin reads also use the service-role client.
 ALTER TABLE public.inventory_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inventory_snapshot_days ENABLE ROW LEVEL SECURITY;
 
 COMMIT;
 
--- Guard (run after apply): table exists and is empty at creation time.
-SELECT to_regclass('public.inventory_snapshots') AS table_exists,
-       (SELECT COUNT(*) FROM public.inventory_snapshots) AS row_count;
+-- Guard (run after apply): both tables exist and are empty at creation time.
+SELECT to_regclass('public.inventory_snapshots')      AS snapshots_table,
+       to_regclass('public.inventory_snapshot_days')  AS days_table,
+       (SELECT COUNT(*) FROM public.inventory_snapshots)     AS snapshots_rows,
+       (SELECT COUNT(*) FROM public.inventory_snapshot_days) AS days_rows;
