@@ -106,3 +106,39 @@ describe("captureInventorySnapshot — clean-run gate", () => {
     expect(summary.snapshot).toEqual({ captured: false, skipped: "run-had-errors" });
   });
 });
+
+describe("captureInventorySnapshot — daily gate", () => {
+  it("skips when a snapshot already exists for this UTC day", async () => {
+    const { client, recorded } = makeFakeSupabase({
+      gate: { data: [{ observed_at: "2026-06-06T03:00:00.000Z" }], error: null },
+    });
+    const summary = { errors: [] };
+
+    await captureInventorySnapshot("2026-06-06T12:00:00.000Z", summary, client);
+
+    // Only the gate table was read; products were never re-read.
+    expect(recorded.fromTables).toEqual(["inventory_snapshots"]);
+    expect(recorded.rangeCalls).toEqual([]);
+    expect(recorded.upserts).toEqual([]);
+    expect(summary.snapshot).toEqual({
+      captured: false,
+      skipped: "already-captured-today",
+    });
+  });
+
+  it("compares dates in UTC, not local time (late-UTC instant still same day)", async () => {
+    // 23:30Z on the 6th is still 2026-06-06 in UTC even where local time has
+    // rolled to the 7th — the gate must use the UTC date.
+    const { client } = makeFakeSupabase({
+      gate: { data: [{ observed_at: "2026-06-06T00:30:00.000Z" }], error: null },
+    });
+    const summary = { errors: [] };
+
+    await captureInventorySnapshot("2026-06-06T23:30:00.000Z", summary, client);
+
+    expect(summary.snapshot).toEqual({
+      captured: false,
+      skipped: "already-captured-today",
+    });
+  });
+});
