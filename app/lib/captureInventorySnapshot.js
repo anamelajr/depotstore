@@ -27,24 +27,40 @@ const utcDate = (iso) => new Date(iso).toISOString().slice(0, 10);
  */
 export async function captureInventorySnapshot(syncStart, summary, db = supabaseAdmin) {
   try {
-    // 1. Clean-run gate — see Task 2 rationale.
+    // 1. Clean-run gate — skip if the run had errors OR any store returned zero
+    //    products. A partial run leaves errored/empty stores' rows stale and
+    //    un-reconciled in `products`; snapshotting would freeze contaminated
+    //    data for the day. A count===0 store is a likely-failed fetch: the sync
+    //    path itself treats it as failed and excludes it from stale cleanup
+    //    (app/api/cron/route.js), but it never lands in summary.errors — so the
+    //    error check alone misses it and we must inspect summary.stores too.
     if (summary.errors.length > 0) {
       summary.snapshot = { captured: false, skipped: "run-had-errors" };
       return;
     }
+    if (Object.values(summary.stores ?? {}).some((count) => count === 0)) {
+      summary.snapshot = { captured: false, skipped: "run-had-empty-store" };
+      return;
+    }
 
-    // 2. Daily gate — one snapshot per UTC day; empty table => proceed.
-    const { data: latest, error: gateError } = await db
-      .from("inventory_snapshots")
-      .select("observed_at")
-      .order("observed_at", { ascending: false })
+    // 2. Daily completeness gate — skip only when today was ALREADY FULLY
+    //    captured. Completeness is tracked in the inventory_snapshot_days ledger
+    //    (written only after the final batch lands), NOT by the mere existence
+    //    of rows in inventory_snapshots: each .upsert() below is its own
+    //    transaction, so a capture that fails mid-insert commits some batches
+    //    but writes no ledger row. Gating on "any row exists for today" would
+    //    then freeze that partial day forever. With the ledger, a missing marker
+    //    => (re)capture, and the data insert's ON CONFLICT DO NOTHING backfills
+    //    only the rows the partial run missed. Self-heals: a transient failure
+    //    is retried each hour until one run lands every batch and marks the day.
+    const today = utcDate(syncStart);
+    const { data: completeDay, error: gateError } = await db
+      .from("inventory_snapshot_days")
+      .select("observed_date")
+      .eq("observed_date", today)
       .limit(1);
     if (gateError) throw new Error(`daily-gate read failed: ${gateError.message}`);
-    if (
-      latest &&
-      latest.length > 0 &&
-      utcDate(latest[0].observed_at) === utcDate(syncStart)
-    ) {
+    if (completeDay && completeDay.length > 0) {
       summary.snapshot = { captured: false, skipped: "already-captured-today" };
       return;
     }
@@ -90,7 +106,21 @@ export async function captureInventorySnapshot(syncStart, summary, db = supabase
       }
     }
 
-    // 5. Success — structured log + summary stash.
+    // 5. Mark the day complete — written ONLY after every batch landed, so a
+    //    mid-insert failure leaves no ledger row and the next run retries (gate
+    //    above). ON CONFLICT DO NOTHING keeps it idempotent across same-day
+    //    retries that race to claim the day.
+    const { error: markError } = await db
+      .from("inventory_snapshot_days")
+      .upsert(
+        { observed_date: today, observed_at: syncStart, row_count: rows.length },
+        { onConflict: "observed_date", ignoreDuplicates: true },
+      );
+    if (markError) {
+      throw new Error(`snapshot completeness mark failed: ${markError.message}`);
+    }
+
+    // 6. Success — structured log + summary stash.
     summary.snapshot = { captured: true, rows: rows.length };
     console.log(JSON.stringify({ event: "inventory_snapshot_ok", rows: rows.length }));
   } catch (e) {
