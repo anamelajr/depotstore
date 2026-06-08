@@ -94,8 +94,13 @@ export async function captureInventorySnapshot(syncStart, summary, db = supabase
     summary.snapshot = { captured: true, rows: rows.length };
     console.log(JSON.stringify({ event: "inventory_snapshot_ok", rows: rows.length }));
   } catch (e) {
-    // Failure isolation — never rethrow. Structured failure logging added in Task 5.
-    summary.snapshot = { captured: false, error: e?.message ?? String(e) };
-    console.error("inventory snapshot failed:", e?.message ?? e);
+    // Failure isolation (non-negotiable) — never rethrow. A broken/missing
+    // table or a failed insert degrades to a logged no-op, never a blocked or
+    // corrupted sync. Structured log so a persistent failure is alertable
+    // (mirrors the FX-refresh precedent: history is data, not throwaway
+    // telemetry).
+    const error = e?.message ?? String(e);
+    summary.snapshot = { captured: false, error };
+    console.error(JSON.stringify({ event: "inventory_snapshot_fail", error }));
   }
 }
