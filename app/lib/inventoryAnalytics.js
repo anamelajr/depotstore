@@ -56,3 +56,88 @@ export function filterLifecycle(rows, { since = null } = {}) {
     return exit != null && exit >= since;
   });
 }
+
+// Fixed days-to-sell histogram edges; mirror the SQL width_bucket(ARRAY[3,6,11,16,22,31,46]).
+const BUCKET_EDGES = [3, 6, 11, 16, 22, 31, 46];
+export const BUCKET_LABELS = [
+  "0–2", "3–5", "6–10", "11–15", "16–21", "22–30", "31–45", "46+",
+];
+
+// 'gap_exit' (backfill-only, gone before cold start) is deliberately NOT exited:
+// its exit date is unknowable, so it can't be attributed to any period or panel.
+// getInventoryInsights drops those rows up front and reports meta.gapExits.
+const isExited = (r) => r.current_status === "sold" || r.current_status === "departed";
+const isSellable = (r) =>
+  r.days_to_sell != null && r.first_seen_censored === false && isExited(r);
+
+function bucketIndex(days) {
+  let i = 0;
+  while (i < BUCKET_EDGES.length && days >= BUCKET_EDGES[i]) i += 1;
+  return i; // 0..7
+}
+
+/** Days-to-sell histogram over uncensored exited items. */
+export function buildVelocityBuckets(rows) {
+  const counts = BUCKET_LABELS.map(() => 0);
+  for (const r of rows) if (isSellable(r)) counts[bucketIndex(r.days_to_sell)] += 1;
+  return BUCKET_LABELS.map((label, i) => ({ label, count: counts[i] }));
+}
+
+function avg(nums) {
+  const v = nums.filter((n) => n != null);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+/** Rank a dimension (brand|category) by exited count; demand proxy. */
+export function rankTurnover(rows, key) {
+  const groups = new Map();
+  for (const r of rows) {
+    const name = r[key];
+    if (name == null) continue;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(r);
+  }
+  const out = [];
+  for (const [name, rs] of groups) {
+    const exited = rs.filter(isExited).length;
+    const a = avg(rs.filter(isSellable).map((r) => r.days_to_sell));
+    out.push({
+      name,
+      total: rs.length,
+      active: rs.filter((r) => r.current_status === "active").length,
+      exited,
+      avgDaysToSell: a == null ? null : Math.round(a * 10) / 10,
+      turnoverRate: rs.length ? Math.round((exited / rs.length) * 1000) / 1000 : 0,
+    });
+  }
+  return out.sort((x, y) => y.exited - x.exited);
+}
+
+/** Per-store rollup with a human label for the store's dominant sold signal. */
+export function storeSummary(rows) {
+  const byStore = new Map();
+  for (const r of rows) {
+    if (!byStore.has(r.store_domain)) byStore.set(r.store_domain, []);
+    byStore.get(r.store_domain).push(r);
+  }
+  const out = [];
+  for (const [store, rs] of byStore) {
+    const flips = rs.filter((r) => r.sold_signal_type === "flip").length;
+    const delists = rs.filter((r) => r.sold_signal_type === "delist").length;
+    const a = avg(rs.filter(isSellable).map((r) => r.days_to_sell));
+    let signal = "mixed";
+    if (flips + delists > 0) {
+      const flipShare = flips / (flips + delists);
+      signal = flipShare >= 0.7 ? "flip-and-linger" : flipShare <= 0.3 ? "delist-on-sale" : "mixed";
+    }
+    out.push({
+      store,
+      total: rs.length,
+      active: rs.filter((r) => r.current_status === "active").length,
+      exited: rs.filter(isExited).length,
+      avgDaysToSell: a == null ? null : Math.round(a * 10) / 10,
+      signal,
+    });
+  }
+  return out.sort((x, y) => y.active - x.active);
+}
