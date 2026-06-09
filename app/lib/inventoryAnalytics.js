@@ -141,3 +141,109 @@ export function storeSummary(rows) {
   }
   return out.sort((x, y) => y.active - x.active);
 }
+
+function median(nums) {
+  const v = nums.filter((n) => n != null).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : Math.round((v[mid - 1] + v[mid]) / 2);
+}
+
+/**
+ * The four KPI-card numbers. Empty-safe. All four derive from the SAME
+ * (store-filtered) lifecycle rows — arrivals deliberately do NOT come from the
+ * global v_daily_flow, or a store-filtered view would mix per-store cards with
+ * an all-store arrivals count. Censored rows are excluded from arrivals (their
+ * first_seen is a lower bound — the lifecycle-side analogue of the flow view's
+ * is_seed_day exclusion).
+ */
+export function computeKpis(rows, { since = null } = {}) {
+  const activeNow = rows.filter((r) => r.current_status === "active").length;
+  const exitedPeriod = rows.filter((r) => {
+    if (r.current_status === "active") return false;
+    const exit = exitDate(r); // flip-first — same precedence as filterLifecycle
+    return exit != null && (since == null || exit >= since);
+  }).length;
+  const arrivalsPeriod = rows.filter(
+    // strict === false (matching isSellable): a NULL censored flag must read as
+    // "unknown, exclude", never as "uncensored" — !null would count it.
+    (r) => r.first_seen_censored === false && (since == null || r.first_seen >= since),
+  ).length;
+  const medianDaysToSell = median(
+    rows.filter(isSellable).map((r) => r.days_to_sell),
+  );
+  return { activeNow, exitedPeriod, arrivalsPeriod, medianDaysToSell };
+}
+
+/** Shape v_daily_flow rows for the line chart (adds net). */
+export function flowSeries(flowRows) {
+  return flowRows.map((d) => ({
+    date: d.observed_date,
+    arrivals: d.arrivals ?? 0,
+    departures: d.departures ?? 0,
+    active: d.active ?? 0,
+    net: (d.arrivals ?? 0) - (d.departures ?? 0),
+    isSeedDay: d.is_seed_day === true,
+  }));
+}
+
+const TOP_N = 12;
+
+/**
+ * One call the dashboard uses. Reads lifecycle (store-filtered in SQL) + daily flow,
+ * applies the date window, and returns every panel's shaped data.
+ * @param {object} opts {store?, sinceDays?, db?}
+ */
+export async function getInventoryInsights({ store = null, sinceDays = null, db = supabaseAdmin } = {}) {
+  const since = sinceDays ? isoDaysAgo(sinceDays) : null;
+  const allRows = await readLifecycle({ store, db });
+  // gap_exit rows (backfill-only, gone before cold start) have no observable
+  // dates at all — they'd corrupt every panel. Dropped once here, surfaced as
+  // meta.gapExits (never silently).
+  const observed = allRows.filter((r) => r.current_status !== "gap_exit");
+  const rows = filterLifecycle(observed, { since });
+
+  // Flow read: the date window is pushed into SQL (.gte) and rows come back
+  // NEWEST-first. PostgREST caps unranged reads (hosted default max-rows =
+  // 1000); ascending order would silently keep the OLDEST ~1000 days, so a
+  // "Last 90 days" chart could render empty after ~2.7 years of ledger.
+  // Newest-first degrades benignly instead (oldest days drop first — long
+  // after the flagged rollup revisit); re-sorted ascending in JS for the chart.
+  // NOTE: the flow series is GLOBAL (all stores) — v_daily_flow has no store
+  // grain in v1. KPIs no longer read it; the page labels the flow panel
+  // "(all stores)" whenever a store filter is active.
+  let flowQuery = db
+    .from("v_daily_flow")
+    .select("observed_date, arrivals, departures, active, is_seed_day")
+    .order("observed_date", { ascending: false });
+  if (since) flowQuery = flowQuery.gte("observed_date", since);
+  const { data: flowRaw, error: flowError } = await flowQuery;
+  if (flowError) throw new Error(`daily-flow read failed: ${flowError.message}`);
+  const flow = flowSeries(
+    (flowRaw ?? [])
+      .slice()
+      .sort((a, b) => (a.observed_date < b.observed_date ? -1 : 1)),
+  );
+
+  return {
+    kpis: computeKpis(rows, { since }),
+    velocity: buildVelocityBuckets(rows),
+    brandTurnover: rankTurnover(rows, "brand").slice(0, TOP_N),
+    categoryTurnover: rankTurnover(rows, "category").slice(0, TOP_N),
+    storeBreakdown: storeSummary(observed), // breakdown is always all-time, all-store
+    flow,
+    meta: {
+      store, sinceDays,
+      totalTracked: observed.length,
+      gapExits: allRows.length - observed.length,
+    },
+  };
+}
+
+// 'YYYY-MM-DD' for N days before today (UTC). Kept tiny so tests stay deterministic
+// by passing `since` directly into the pure functions.
+function isoDaysAgo(n) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}

@@ -8,6 +8,9 @@ import {
   rankTurnover,
   storeSummary,
   BUCKET_LABELS,
+  computeKpis,
+  flowSeries,
+  getInventoryInsights,
 } from "../inventoryAnalytics.js";
 
 // Fake supabase: models .from(view).select(cols).eq(col,val).range(from,to) for the
@@ -159,5 +162,85 @@ describe("storeSummary", () => {
     const out = storeSummary(rows);
     expect(out[0]).toMatchObject({ store: "a", active: 1, exited: 2 });
     expect(["flip-and-linger", "delist-on-sale", "mixed"]).toContain(out[0].signal);
+  });
+});
+
+// The Task 3 fake already serves the v_daily_flow read via `config.flow` (its
+// then() branches on table === "v_daily_flow"). Pass `flow: [...]` to populate it.
+
+describe("computeKpis (empty-safe)", () => {
+  it("returns zeros/nulls for an empty dataset", () => {
+    expect(computeKpis([], { since: null })).toEqual({
+      activeNow: 0, exitedPeriod: 0, arrivalsPeriod: 0, medianDaysToSell: null,
+    });
+  });
+  it("counts active now, period exits/arrivals, and median days-to-sell (uncensored)", () => {
+    const rows = [
+      lc({ current_status: "active", days_to_sell: null, first_seen: "2026-06-07", first_seen_censored: false }),
+      // censored backlog: active, but NOT a period arrival (first_seen is a lower bound)
+      lc({ current_status: "active", days_to_sell: null, first_seen: "2026-05-01", first_seen_censored: true }),
+      // defensive: a NULL censored flag (pre-ledger view edge) is "unknown" — never an arrival
+      lc({ current_status: "active", days_to_sell: null, first_seen: "2026-06-08", first_seen_censored: null }),
+      lc({ current_status: "departed", departed_at: "2026-06-07", days_to_sell: 4, first_seen: "2026-06-03", first_seen_censored: false }),
+      lc({ current_status: "sold", sold_at_flip: "2026-06-08", departed_at: null, days_to_sell: 10, first_seen: "2026-05-29", first_seen_censored: false }),
+      // flipped (sold) 05-01 — long before the window — then delisted inside it:
+      // flip-first precedence keeps this OLD sale out of the period exits
+      lc({ current_status: "departed", sold_at_flip: "2026-05-01", departed_at: "2026-06-07", days_to_sell: 7, first_seen: "2026-04-24", first_seen_censored: false }),
+    ];
+    const k = computeKpis(rows, { since: "2026-06-06" });
+    expect(k.activeNow).toBe(3);
+    expect(k.exitedPeriod).toBe(2);          // the 06-07/06-08 exits; the May flip is NOT pulled in by its June delist
+    expect(k.arrivalsPeriod).toBe(1);        // only the strictly-uncensored 06-07 first_seen; null flag excluded
+    expect(k.medianDaysToSell).toBe(7);      // median of [4,7,10] = 7
+  });
+});
+
+describe("flowSeries", () => {
+  it("adds net and keeps the seed-day flag", () => {
+    const out = flowSeries([
+      { observed_date: "2026-06-06", arrivals: 100, departures: 0, active: 100, is_seed_day: true },
+      { observed_date: "2026-06-07", arrivals: 8, departures: 3, active: 105, is_seed_day: false },
+    ]);
+    expect(out[1]).toMatchObject({ date: "2026-06-07", arrivals: 8, departures: 3, net: 5, isSeedDay: false });
+    expect(out[0].isSeedDay).toBe(true);
+  });
+});
+
+describe("getInventoryInsights (integration, empty-safe)", () => {
+  it("returns a fully-shaped empty payload when there is no data", async () => {
+    const { client } = makeFakeSupabase({ pages: [[]], flow: [] });
+    const out = await getInventoryInsights({ db: client });
+    expect(out.kpis).toEqual({ activeNow: 0, exitedPeriod: 0, arrivalsPeriod: 0, medianDaysToSell: null });
+    expect(out.velocity).toHaveLength(BUCKET_LABELS.length);
+    expect(out.brandTurnover).toEqual([]);
+    expect(out.flow).toEqual([]);
+  });
+  it("drops gap_exit rows from every panel and reports them in meta", async () => {
+    const gap = lc({
+      handle: "gap", current_status: "gap_exit", departed_at: null, days_to_sell: null,
+      first_seen: "2026-05-21", last_seen: "2026-05-21", first_seen_censored: true, sold_signal_type: null,
+    });
+    const kept = lc({ handle: "kept" });
+    const { client } = makeFakeSupabase({ pages: [[gap, kept]], flow: [] });
+    const out = await getInventoryInsights({ db: client });
+    expect(out.meta.totalTracked).toBe(1);
+    expect(out.meta.gapExits).toBe(1);
+    expect(out.storeBreakdown[0]).toMatchObject({ store: "s1", total: 1 });
+    expect(out.kpis.exitedPeriod).toBe(1); // only the observed departure, never the gap exit
+  });
+  it("pushes the date window into the flow query and re-sorts the DESC read ascending", async () => {
+    const flow = [
+      // newest-first, as the DESC read returns them
+      { observed_date: "2026-06-08", arrivals: 2, departures: 1, active: 10, is_seed_day: false },
+      { observed_date: "2026-06-07", arrivals: 5, departures: 1, active: 9, is_seed_day: false },
+    ];
+    const { client, recorded } = makeFakeSupabase({ pages: [[]], flow });
+    const out = await getInventoryInsights({ sinceDays: 30, db: client });
+    // window pushed into SQL — an unranged ascending read would silently keep
+    // only the OLDEST days once the ledger outgrows PostgREST's max-rows cap
+    expect(recorded.gteCalls).toContainEqual(
+      expect.objectContaining({ table: "v_daily_flow", col: "observed_date" }),
+    );
+    expect(out.flow.map((d) => d.date)).toEqual(["2026-06-07", "2026-06-08"]); // ascending for the chart
   });
 });
