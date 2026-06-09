@@ -184,6 +184,11 @@ export function flowSeries(flowRows) {
     active: d.active ?? 0,
     net: (d.arrivals ?? 0) - (d.departures ?? 0),
     isSeedDay: d.is_seed_day === true,
+    // The seed day's "arrivals" are the entire censored backlog (~the catalog),
+    // not real arrivals — plotted as-is it dwarfs every true daily count and
+    // rescales the whole chart. The arrivals line plots plotArrivals (null =>
+    // Recharts skips the point); raw arrivals stays for tooltips/inspection.
+    plotArrivals: d.is_seed_day === true ? null : (d.arrivals ?? 0),
   }));
 }
 

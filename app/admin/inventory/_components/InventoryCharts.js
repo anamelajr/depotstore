@@ -38,7 +38,9 @@ export default function InventoryCharts({ velocity, brandTurnover, categoryTurno
             <YAxis tick={axis} stroke="#2a2a2c" allowDecimals={false} />
             <Tooltip contentStyle={tooltipStyle} />
             <Legend wrapperStyle={{ fontSize: 11, color: "#8a8a80" }} />
-            <Line type="monotone" dataKey="arrivals" stroke={ARRIVE} dot={false} strokeWidth={2} />
+            {/* plotArrivals is null on the seed day — the censored backlog is not
+                real arrivals; plotting it rescales the chart into a fake spike. */}
+            <Line type="monotone" dataKey="plotArrivals" name="arrivals" stroke={ARRIVE} dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="departures" stroke={DEPART} dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>

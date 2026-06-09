@@ -244,3 +244,16 @@ describe("getInventoryInsights (integration, empty-safe)", () => {
     expect(out.flow.map((d) => d.date)).toEqual(["2026-06-07", "2026-06-08"]); // ascending for the chart
   });
 });
+
+describe("flowSeries seed-day handling", () => {
+  it("nulls plotArrivals on the seed day so the chart skips the backlog spike, keeping raw arrivals", () => {
+    const out = flowSeries([
+      { observed_date: "2026-06-06", arrivals: 21000, departures: 0, active: 21000, is_seed_day: true },
+      { observed_date: "2026-06-07", arrivals: 8, departures: 3, active: 105, is_seed_day: false },
+    ]);
+    // seed day: raw count preserved (truthful data), plotted value suppressed
+    expect(out[0]).toMatchObject({ arrivals: 21000, plotArrivals: null, isSeedDay: true });
+    // normal day: plotted value mirrors arrivals
+    expect(out[1]).toMatchObject({ arrivals: 8, plotArrivals: 8, isSeedDay: false });
+  });
+});
