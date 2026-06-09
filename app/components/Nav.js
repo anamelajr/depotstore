@@ -102,7 +102,7 @@ export default function Nav({ onAboutOpen, stores = [] }) {
       <DesktopNav stores={stores} />
 
       {/* Mobile overlay */}
-      <MobileNavMenu isOpen={isMobileOpen} onClose={() => setIsMobileOpen(false)} />
+      <MobileNavMenu isOpen={isMobileOpen} onClose={() => setIsMobileOpen(false)} stores={stores} />
     </>
   );
 }
