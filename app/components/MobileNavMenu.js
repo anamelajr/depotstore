@@ -11,8 +11,8 @@ import { CURRENCIES } from "../lib/currency";
 
 const CONTACT_EMAIL = "hello@depot.paris";
 
-export default function MobileNavMenu({ isOpen, onClose }) {
-  // 'root' | 'shop' | { type: 'subcategory', shortKey: string, label: string }
+export default function MobileNavMenu({ isOpen, onClose, stores = [] }) {
+  // 'root' | 'shop' | 'stores' | { type: 'subcategory', shortKey: string, label: string }
   const [view, setView] = useState("root");
 
   useEffect(() => {
@@ -31,7 +31,14 @@ export default function MobileNavMenu({ isOpen, onClose }) {
   return createPortal(
     <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] text-zinc-50 flex flex-col motion-safe:[animation:navMenuEnter_150ms_ease-out]">
       {view === "root" && (
-        <RootView onClose={onClose} onOpenShop={() => setView("shop")} />
+        <RootView
+          onClose={onClose}
+          onOpenShop={() => setView("shop")}
+          onOpenStores={() => setView("stores")}
+        />
+      )}
+      {view === "stores" && (
+        <StoresView onClose={onClose} onBack={() => setView("root")} stores={stores} />
       )}
       {view === "shop" && (
         <ShopView
@@ -115,7 +122,7 @@ function RegionSection({ onClose }) {
   );
 }
 
-function RootView({ onClose, onOpenShop }) {
+function RootView({ onClose, onOpenShop, onOpenStores }) {
   const { t } = useLanguage();
   return (
     <>
@@ -134,13 +141,12 @@ function RootView({ onClose, onOpenShop }) {
         >
           <span>{t("nav.shop").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
         </button>
-        <Link
-          href="/stores"
-          onClick={onClose}
+        <button
+          onClick={onOpenStores}
           className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
         >
           <span>{t("nav.stores").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
-        </Link>
+        </button>
         <Link
           href="/designers"
           onClick={onClose}
@@ -213,6 +219,37 @@ function ShopView({ onClose, onBack, onOpenSubcategory }) {
             </Link>
           );
         })}
+      </div>
+    </>
+  );
+}
+
+function StoresView({ onClose, onBack, stores }) {
+  const { t } = useLanguage();
+  return (
+    <>
+      <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ‹ {t("nav.back").toUpperCase()}
+        </button>
+        <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
+          {t("nav.stores").toUpperCase()}
+        </span>
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+          ✕
+        </button>
+      </header>
+      <div className="flex-1 px-8 pt-10 pb-8 flex flex-col gap-6 overflow-y-auto">
+        {stores.map((store) => (
+          <Link
+            key={store.domain}
+            href={buildFreshFeedUrl({ store: store.domain })}
+            onClick={onClose}
+            className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+          >
+            {(store.displayName || store.storeName).toUpperCase()}
+          </Link>
+        ))}
       </div>
     </>
   );
