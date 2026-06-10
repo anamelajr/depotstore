@@ -10,24 +10,26 @@ export default async function StoresPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
-      <div className="mx-auto max-w-5xl px-6 py-16 sm:py-24">
-        <h1 className="mb-12 font-mono text-[11px] font-medium uppercase tracking-[0.24em] text-zinc-500 sm:mb-16">
+      <div className="mx-auto max-w-4xl px-8 py-16 sm:py-20">
+        <h1 className="mb-6 font-mono text-[10px] font-normal uppercase tracking-[0.22em] text-zinc-600">
           <T k="stores.label" />
         </h1>
 
-        <div className="stores-spotlight flex flex-col">
+        <div>
           {stores.map((store) => (
             <Link
               key={store.storeName}
               href={`/feed?store=${encodeURIComponent(store.domain)}`}
-              className="py-1 text-[clamp(36px,7vw,72px)] font-medium leading-[1.15] tracking-tight text-zinc-50 transition-colors duration-200"
-              style={{ fontFamily: "var(--font-general-sans), sans-serif" }}
+              className="group block py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-300 transition-colors hover:text-zinc-50"
             >
+              <span className="-ml-4 mr-1 opacity-0 transition-opacity group-hover:opacity-100">
+                —{" "}
+              </span>
               {store.displayName}
               {store.location ? (
-                <sup className="ml-2 inline-block whitespace-nowrap align-super font-mono text-[10px] font-normal uppercase tracking-[0.2em] text-zinc-500 sm:ml-3">
+                <span className="ml-3 whitespace-nowrap text-[9px] tracking-[0.22em] text-zinc-600">
                   {store.location}
-                </sup>
+                </span>
               ) : null}
             </Link>
           ))}
