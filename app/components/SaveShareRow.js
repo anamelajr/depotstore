@@ -34,7 +34,7 @@ function ShareIcon() {
   );
 }
 
-export default function SaveShareRow({ productUrl, title }) {
+export default function SaveShareRow({ productUrl, title, className = "mt-5 px-6 flex gap-6" }) {
   // v1: visual-only toggle. No persistence — see spec for rationale.
   const [saved, setSaved] = useState(false);
   const [shareLabel, setShareLabel] = useState("Share");
@@ -60,7 +60,7 @@ export default function SaveShareRow({ productUrl, title }) {
   }
 
   return (
-    <div className="mt-5 px-6 flex gap-6">
+    <div className={className}>
       <button
         type="button"
         onClick={() => setSaved((v) => !v)}

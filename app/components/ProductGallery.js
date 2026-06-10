@@ -13,6 +13,7 @@ function isEditableTarget(el) {
 
 export default function ProductGallery({ images, alt }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const heroRef = useRef(null);
   const scrollRef = useRef(null);
@@ -88,6 +89,21 @@ export default function ProductGallery({ images, alt }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [multiple, count]);
+
+  // Desktop: lightbox — lock body scroll and close on Escape while open.
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => {
+      if (e.key === "Escape") setLightboxOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightboxOpen]);
 
   // Desktop: scroll active thumbnail into view.
   useEffect(() => {
@@ -187,7 +203,7 @@ export default function ProductGallery({ images, alt }) {
       <>
         <div className="hidden lg:block" />
         <div className="order-1 lg:order-none">
-          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:h-[70vh] lg:aspect-auto">
+          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] lg:aspect-auto">
             No image
           </div>
         </div>
@@ -211,7 +227,7 @@ export default function ProductGallery({ images, alt }) {
     <>
       {/* Desktop thumbnail column */}
       <div
-        className="hidden lg:flex lg:flex-col lg:gap-2 lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:h-[70vh] lg:overflow-y-auto [&::-webkit-scrollbar]:hidden"
+        className="hidden lg:flex lg:flex-col lg:gap-2 lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] lg:overflow-y-auto [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none" }}
       >
         {images.map((src, i) => {
@@ -239,12 +255,13 @@ export default function ProductGallery({ images, alt }) {
       {/* Hero (desktop) + swipe gallery (mobile) */}
       <div className="order-1 lg:order-none">
         {/* Desktop hero */}
-        <div className="hidden lg:flex lg:relative lg:w-full lg:h-[70vh] lg:items-start lg:justify-center">
+        <div className="hidden lg:block relative w-full lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] overflow-hidden">
           <img
             ref={heroRef}
             src={shopifyImageUrl(activeSrc, 1400)}
             alt={alt}
-            className="h-full w-auto max-w-full object-contain"
+            onClick={() => setLightboxOpen(true)}
+            className="h-full w-full object-cover object-center cursor-zoom-in"
           />
           {multiple && (
             <>
@@ -256,7 +273,7 @@ export default function ProductGallery({ images, alt }) {
                   setSelectedIndex(next);
                 }}
                 aria-label="Previous image"
-                className="absolute left-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full text-zinc-700/60 hover:text-zinc-900 hover:bg-zinc-100/70 transition-colors"
+                className="absolute left-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center bg-white/90 text-zinc-900 hover:bg-white transition-colors"
               >
                 <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="M12.5 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -270,13 +287,39 @@ export default function ProductGallery({ images, alt }) {
                   setSelectedIndex(next);
                 }}
                 aria-label="Next image"
-                className="absolute right-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full text-zinc-700/60 hover:text-zinc-900 hover:bg-zinc-100/70 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center bg-white/90 text-zinc-900 hover:bg-white transition-colors"
               >
                 <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             </>
+          )}
+
+          {/* Expand affordance — opens the full uncropped photo in a lightbox */}
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            aria-label="Enlarge image"
+            className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center bg-white/90 text-zinc-900 hover:bg-white transition-colors"
+          >
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path d="M8 3H3v5M12 3h5v5M17 12v5h-5M3 12v5h5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {/* Lightbox — full uncropped photo */}
+          {lightboxOpen && (
+            <div
+              onClick={() => setLightboxOpen(false)}
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 cursor-zoom-out"
+            >
+              <img
+                src={shopifyImageUrl(activeSrc, 1400)}
+                alt={alt}
+                className="max-h-[92vh] max-w-[90vw] object-contain"
+              />
+            </div>
           )}
         </div>
 

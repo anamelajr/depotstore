@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Price from "./Price.js";
 import T from "./T";
+import SaveShareRow from "./SaveShareRow";
 import { buildFreshFeedUrl } from "../lib/feed-utils.js";
 
 export default function ProductInfoPanel({
@@ -13,6 +14,7 @@ export default function ProductInfoPanel({
   storeDomain,
   storeLocation,
   handle,
+  productUrl,
 }) {
   const ctaHref = `https://${storeDomain}/products/${handle}?utm_source=depot`;
   // CTA text is a <T> leaf so it swaps live on language toggle.
@@ -24,43 +26,44 @@ export default function ProductInfoPanel({
   const multiSize = hasSizes && sizes.length > 1;
   const sizeValue = hasSizes ? sizes.join(" · ") : null;
 
-  // Brand-first header: brand owns the divided tag above the title. Falls back
-  // to the store name when brand is null so the slot never blanks out.
-  const tag = brand ?? storeName;
+  // Heading combines brand + title; when brand is null the store label above
+  // already carries the store, so the heading is just the title.
+  const heading = brand ? `${brand} — ${title}` : title;
 
   return (
     <div className="hidden lg:block lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:pt-6">
-      {/* Brand-as-tag + title */}
-      <div className="border-b border-zinc-200 pb-4">
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-900">
-          {tag}
-        </p>
-        <h1 className="mt-3 font-sans text-[14px] font-medium uppercase tracking-[0.06em] leading-[1.45] text-zinc-900">
-          {title}
-        </h1>
-      </div>
+      {/* Store label */}
+      <Link
+        href={buildFreshFeedUrl({ store: storeDomain })}
+        className="font-mono text-[11px] uppercase tracking-[0.22em] underline underline-offset-[6px] decoration-[0.5px] text-zinc-600 hover:text-zinc-900 transition-colors"
+      >
+        {storeName}
+      </Link>
+
+      {/* Brand + title heading */}
+      <h1 className="mt-5 font-sans text-[20px] font-semibold uppercase tracking-[0.04em] leading-[1.35] text-zinc-900">
+        {heading}
+      </h1>
 
       {/* Price */}
       {price && (
-        <div className="mt-4 border-b border-zinc-200 pb-4">
-          <Price eur={price} className="font-mono text-[13px] text-zinc-700" />
+        <div className="mt-4">
+          <Price eur={price} className="font-mono text-[15px] text-zinc-800" />
         </div>
       )}
 
-      {/* Sizes */}
+      {/* Single divider — the only hairline above the store block */}
+      <div className="border-b border-zinc-200 mt-6 mb-5" />
+
+      {/* Size — one quiet line */}
       {hasSizes && (
-        <div className="mt-4 border-b border-zinc-200 pb-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-            <T k={multiSize ? "product.sizes" : "product.size"} />
-          </p>
-          <p className="mt-1.5 font-mono text-[12px] uppercase tracking-[0.18em] text-zinc-700">
-            {sizeValue}
-          </p>
-        </div>
+        <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-zinc-600">
+          <T k={multiSize ? "product.sizes" : "product.size"} /> {sizeValue}
+        </p>
       )}
 
       {/* CTA */}
-      <div className="mt-6">
+      <div className="mt-7">
         <a
           href={ctaHref}
           target="_blank"
@@ -71,8 +74,11 @@ export default function ProductInfoPanel({
         </a>
       </div>
 
+      {/* Save / Share */}
+      <SaveShareRow productUrl={productUrl} title={title} className="mt-3 flex gap-6" />
+
       {/* Store info — name · location with a link to the store feed. */}
-      <div className="mt-6 pt-6 border-t border-zinc-200">
+      <div className="mt-8">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900">
           {storeName}
           {storeLocation && (

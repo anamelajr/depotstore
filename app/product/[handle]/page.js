@@ -27,15 +27,15 @@ export default async function ProductPage({ params, searchParams }) {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
-      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 lg:pt-8 lg:pb-10">
+      <div className="mx-auto max-w-[1400px] px-0 lg:px-10 lg:pt-5 lg:pb-10">
 
         {/* Desktop top utility row — back link left, breadcrumb right */}
-        <div className="hidden lg:flex items-center justify-between mb-6">
+        <div className="hidden lg:flex items-center justify-between mb-4">
           <BackToFeedLink className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-900 transition-colors" />
           <ProductBreadcrumb brand={brand} title={title} />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[88px_1fr_340px] lg:gap-16">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[110px_minmax(0,1fr)_400px] lg:gap-8">
 
           <ProductGallery images={images} alt={title} />
 
@@ -130,6 +130,7 @@ export default async function ProductPage({ params, searchParams }) {
             storeDomain={storeDomain}
             storeLocation={storeLocation}
             handle={handle}
+            productUrl={productUrl}
           />
 
         </div>
