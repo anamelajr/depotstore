@@ -104,6 +104,8 @@ export const MESSAGES = {
     "saved.body": "Save items you like and come back to them later. We're building this — drop your email below to hear when it lands.",
     // Designers page
     "designers.backToFeed": "← Back to feed",
+    // Stores page
+    "stores.label": "Stores — Paris",
     // Footer
     "footer.tagline": "Paris. Archive. One feed.",
     "footer.newsletter": "Newsletter",
@@ -229,6 +231,8 @@ export const MESSAGES = {
     "saved.body": "Mettez en favori les pièces qui vous plaisent et retrouvez-les plus tard. Nous construisons cette fonctionnalité — laissez votre email ci-dessous pour être informé.",
     // Designers page
     "designers.backToFeed": "← Retour au fil",
+    // Stores page
+    "stores.label": "Boutiques — Paris",
     // Footer
     "footer.tagline": "Paris. Archives. Un fil.",
     "footer.newsletter": "Newsletter",
