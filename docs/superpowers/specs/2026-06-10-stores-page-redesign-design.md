@@ -95,3 +95,15 @@ implementation branch.
    - Resize to mobile width (~380px) → names scale down via clamp, superscripts
      don't overflow; no hover artifacts.
 3. Screenshot the page and share as proof.
+
+## Iteration (2026-06-10, post-review)
+
+The monumental-names treatment shipped, then was rejected by the user as
+tacky / out of place next to the nav menus. Final direction is the **menu
+index**: the page reuses the nav menu's exact tokens
+(`font-mono text-[11px] uppercase tracking-widest text-zinc-300`,
+`hover:text-zinc-50` with the menu's `—` marker fading in on hover;
+neighborhood inline at 9px `text-zinc-600`; `stores.label` micro-label as
+the h1). `font-mono` maps to General Sans via `@theme inline`, so the page
+matches the site font by construction. The `.stores-spotlight` CSS was
+removed with the oversized type.
