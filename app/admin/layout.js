@@ -25,6 +25,9 @@ export default function AdminLayout({ children }) {
         <a href="/admin/homepage-edit" style={{ color: "#b6b6ad", textDecoration: "none" }}>
           Today's Edit
         </a>
+        <a href="/admin/inventory" style={{ color: "#b6b6ad", textDecoration: "none" }}>
+          Inventory
+        </a>
         <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b6b62" }}>
           local-only · NODE_ENV={process.env.NODE_ENV}
         </span>

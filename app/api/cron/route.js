@@ -4,6 +4,7 @@ import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
 import { chunkArray } from "../../lib/chunk.js";
 import { checkCdgAliasDrift } from "../../lib/searchAliases.js";
 import { refreshFxRates } from "../../lib/fx.js";
+import { captureInventorySnapshot } from "../../lib/captureInventorySnapshot.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -264,6 +265,15 @@ export async function GET(request) {
       summary.errors.push(`Stale cleanup failed: ${deleteError.message}`);
     }
   }
+
+  // Capture a daily inventory snapshot for forward-going history/analytics.
+  // Additive + failure-isolated: runs AFTER the stale-delete (so the clean-run
+  // gate sees summary.errors) and BEFORE the enrich trigger (so it records
+  // deterministic pre-enrich state). Its own try/catch never rethrows, so a
+  // snapshot failure can never affect the sync response. Awaited adds latency
+  // only on the ~once/day run that actually captures; the other ~23 runs hit the
+  // cheap daily gate and return immediately, well within maxDuration = 300.
+  await captureInventorySnapshot(syncStart, summary);
 
   const enrichUrl = `${new URL(request.url).origin}/api/enrich?depth=0`;
   const enrichHeaders = {

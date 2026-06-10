@@ -43,6 +43,25 @@ export default function AdminLanding() {
             </div>
           </a>
         </li>
+        <li>
+          <a
+            href="/admin/inventory"
+            style={{
+              display: "block",
+              padding: 16,
+              background: "#18181a",
+              border: "1px solid #2a2a2c",
+              borderRadius: 6,
+              color: "#e7e7e2",
+              textDecoration: "none",
+            }}
+          >
+            <strong>Inventory insights</strong>
+            <div style={{ fontSize: 12, color: "#8a8a80", marginTop: 4 }}>
+              Sell-through velocity, brand/category turnover, inventory flow.
+            </div>
+          </a>
+        </li>
       </ul>
     </div>
   );
