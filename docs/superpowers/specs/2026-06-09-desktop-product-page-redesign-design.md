@@ -25,6 +25,16 @@ and explicitly approved.
 - Back link + breadcrumb row stays as today (user rejected moving it).
 - **Mobile is untouched.** Desktop (`lg:`) only.
 
+**Revision (2026-06-10):** the full-column-width hero frame computed to
+~1.07:1 (near-square) at 1512×860 while store photos are mostly 2:3/3:4
+portrait, so `object-cover` cropped ~38% of the photo vertically and forced
+retina upscaling past typical store masters (~1280–1400px) — visibly soft.
+The hero frame now keeps its fixed height but derives width from a 4:5
+aspect (`lg:aspect-[4/5]`, centered, `max-w-full` guard), the squarest ratio
+that both caps the crop (~17% on 2:3 photos, 0% on dot COMME's native 4:5)
+and keeps retina demand under the masters. Lightbox/arrows/info column
+unchanged.
+
 ## Files to change
 
 ### 1. `app/product/[handle]/page.js` (desktop wrapper only)

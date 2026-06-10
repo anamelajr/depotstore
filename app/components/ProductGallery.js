@@ -203,7 +203,7 @@ export default function ProductGallery({ images, alt }) {
       <>
         <div className="hidden lg:block" />
         <div className="order-1 lg:order-none">
-          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] lg:aspect-auto">
+          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:mx-auto lg:aspect-[4/5] lg:w-auto lg:max-w-full lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px]">
             No image
           </div>
         </div>
@@ -255,7 +255,11 @@ export default function ProductGallery({ images, alt }) {
       {/* Hero (desktop) + swipe gallery (mobile) */}
       <div className="order-1 lg:order-none">
         {/* Desktop hero */}
-        <div className="hidden lg:block relative w-full lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] overflow-hidden">
+        {/* 4:5 frame (not full column width): keeps store photos' portrait
+            aspect close enough that object-cover crops ~17% instead of ~38%,
+            and the narrower CSS width stays under typical store masters'
+            retina budget (avoids upscaling blur). */}
+        <div className="hidden lg:block relative lg:mx-auto lg:aspect-[4/5] lg:max-w-full lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] overflow-hidden">
           <img
             ref={heroRef}
             src={shopifyImageUrl(activeSrc, 1400)}
