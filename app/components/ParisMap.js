@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-export default function ParisMap({ products = [], stores = [] }) {
+export default function ParisMap({ stores = [] }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
@@ -36,14 +36,7 @@ export default function ParisMap({ products = [], stores = [] }) {
         }
       ).addTo(map);
 
-      // Compute piece counts from products prop
-      const counts = {};
-      for (const p of products) {
-        if (p?.storeName) counts[p.storeName] = (counts[p.storeName] ?? 0) + 1;
-      }
-
       mapStores.forEach((store) => {
-        const count = counts[store.name] ?? 0;
         const circle = L.circleMarker([store.lat, store.lng], {
           radius: 6,
           fillColor: "#ffffff",
@@ -56,8 +49,7 @@ export default function ParisMap({ products = [], stores = [] }) {
         circle.bindTooltip(
           `<div style="font-family:var(--font-general-sans),sans-serif;font-size:11px;line-height:1.6;background:#0a0a0a;color:#e4e4e7;border:1px solid #3f3f46;padding:8px 12px;border-radius:0;">
             <strong style="font-size:12px;">${store.name}</strong><br/>
-            ${store.location}<br/>
-            <span style="color:#71717a">${count} pcs</span>
+            ${store.location}
           </div>`,
           {
             permanent: false,

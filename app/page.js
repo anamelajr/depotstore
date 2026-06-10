@@ -133,7 +133,7 @@ try {
               <T k="home.acrossParis" />
             </h2>
           </div>
-          <ParisMap products={recentProducts} stores={stores} />
+          <ParisMap stores={stores} />
         </div>
       </section>
 
