@@ -105,6 +105,20 @@ round-trips stay but are now cheap.
   killed by the same 8 s PostgREST timeout. pg_cron runs inside Postgres and
   isn't subject to it.
 
+## Execution deviation (2026-07-03)
+
+The plan called for `REFRESH MATERIALIZED VIEW CONCURRENTLY`. Postgres forbids
+`CONCURRENTLY` inside a plpgsql function (it can't run in a transaction block,
+and functions always are in one) — and pg_cron multi-statement command strings
+are an implicit transaction, so it can't be gated there either. Shipped as
+**non-concurrent** refresh inside the staleness-gated function: it's faster,
+and the cost is a ~30–60 s exclusive lock on the MVs once per day; an admin
+read landing in that window blocks into the 8 s timeout once — reload. The
+unique `(handle, store_domain)` index is kept as the row-grain identity and
+read-path index. pg_cron sessions run as postgres under the cluster default
+`statement_timeout` of 2 min (verified) — revisit alongside the year-one
+rollup checkpoint if refresh time approaches that.
+
 ## Rollout order (per CLAUDE.md workflow)
 
 1. Apply the SQL script in the Supabase SQL Editor (schema changes land before

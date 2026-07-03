@@ -133,6 +133,15 @@ any change.
 - **`enrich_runs` table** — token-spend telemetry; insert failures are swallowed
   by routes, so dropping it won't break sync. DDL:
   [`docs/enrich-runs-logging-spec.md`](docs/enrich-runs-logging-spec.md).
+- **`mv_product_lifecycle` / `mv_daily_flow` MVs + `refresh_inventory_insights()`
+  + pg_cron job `refresh-inventory-insights`** — the insights `v_*` views are
+  thin wrappers over these MVs; pg_cron refreshes them hourly, gated on a new
+  ledger day (so the real refresh runs once, right after capture). Don't
+  re-inline the heavy lifecycle SQL into the views: every PostgREST read —
+  service_role included — runs under the authenticator role's
+  `statement_timeout=8s`, and the raw query takes 25s+ (the 2026-07-03
+  timeout incident). DDL:
+  [`scripts/sql/2026-07-03-inventory-insights-mv.sql`](scripts/sql/2026-07-03-inventory-insights-mv.sql).
 
 ## Sharp edges
 
