@@ -39,9 +39,6 @@ need a parallel pass over the interleaved RPCs + `resolveCategoryFilter`
   filters.** Both share `withVisibility`; the drift risk is the hand-replicated
   `enrich_attempts < MAX` + `brand|title|category IS NULL`. A mismatch pins
   `remaining > 0` forever, burning all 30 self-chain hops on no-ops.
-- **In-loop `row.X` reads require X in the batch SELECT projection** — filtering
-  a column doesn't select it; an unselected `row.X` is `undefined` → silent
-  `NaN`.
 - **Self-branded store hide gates are asymmetric.** For `SELF_BRANDED_STORES`,
   `/api/enrich` hides immediately on the success branch but on the null branch
   only at retry exhaustion — hiding on first null would kill legitimate-brand
@@ -84,22 +81,17 @@ need a parallel pass over the interleaved RPCs + `resolveCategoryFilter`
   (`categories.js`), `getSortOptions` (`sort-options.js`) take `lang` defaulting
   to `"en"`. A consumer that forgets to thread the active language renders
   English on toggle — no error, and the parity test checks only message keys.
-- **Editorial entries are registered manually** in
-  `content/editorial/index.js`'s hardcoded `ENTRIES` array — no fs
-  auto-discovery; new entries are imported + pushed.
 - **Never `import` `content/homepage-edit.json` statically.**
   `app/lib/loadHomepagePicks.js` reads it via `fs.readFile` + `JSON.parse` in
   try/catch (returns `[]` on failure); `app/page.js` falls back to a date-seeded
   rotation when empty. A static import lets a syntax error crash the homepage
   before the fallback triggers.
-- **`save-homepage-edit` writes atomically via tmp + rename** — prevents a
-  truncated file from a mid-write interruption crashing the homepage on next
-  read.
-- **Editorial save/delete rollback is asymmetric.** Save: if `<slug>.js` writes
-  but the `index.js` patch fails AND the slug file is new, it's unlinked;
-  existing entries get no rollback (content already overwritten). Delete
-  unpatches `index.js` first, then removes the slug file; a failed removal rolls
-  the unpatch back.
+- **Daily inventory snapshot gates on the `inventory_snapshot_days` ledger,
+  never on "rows exist for today"** — a failed partial capture writes no ledger
+  row, so the next hourly run retries and backfills idempotently; gating on rows
+  would freeze a partial day forever. Capture runs in `/api/cron` **after** the
+  stale-delete — reordering silently corrupts departure history, which is
+  append-only and cannot be recomputed.
 
 ## DB objects not in git
 
@@ -135,16 +127,16 @@ any change.
   [`docs/enrich-runs-logging-spec.md`](docs/enrich-runs-logging-spec.md).
 - **`mv_product_lifecycle` / `mv_daily_flow` MVs + `refresh_inventory_insights()`
   + pg_cron job `refresh-inventory-insights`** — the insights `v_*` views are
-  thin wrappers over these MVs; pg_cron refreshes them hourly, gated on a new
-  ledger day (so the real refresh runs once, right after capture). Don't
-  re-inline the heavy lifecycle SQL into the views: every PostgREST read —
-  service_role included — runs under the authenticator role's
-  `statement_timeout=8s`, and the raw query takes 25s+ (the 2026-07-03
-  timeout incident). DDL:
+  thin wrappers over these MVs, refreshed hourly by pg_cron gated on a new
+  ledger day. Never re-inline the lifecycle SQL into the views: the raw query
+  takes 25s+ against the 8s REST cap (2026-07-03 incident). DDL:
   [`scripts/sql/2026-07-03-inventory-insights-mv.sql`](scripts/sql/2026-07-03-inventory-insights-mv.sql).
 
 ## Sharp edges
 
+- **Every PostgREST read runs under `authenticator`'s `statement_timeout=8s`
+  (anon key: 3s) — service_role does not bypass it.** Any query that can grow
+  past 8s must be precomputed or moved out of the REST path.
 - **dot COMME** uses `/collections/paris/products.json`, not `/products.json`.
 - **Brand filter is `ILIKE` substring, not strict equality.** Only the
   interleaved RPC `unaccent`s (diacritic-tolerant); `/api/products`'s
