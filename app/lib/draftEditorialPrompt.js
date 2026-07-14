@@ -155,7 +155,7 @@ export async function callOpenAI(prompt, { apiKey = process.env.OPENAI_API_KEY }
       "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       messages: [{ role: "user", content: prompt }],
     }),
   });
