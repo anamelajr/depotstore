@@ -27,7 +27,7 @@ export default async function ProductPage({ params, searchParams }) {
     <div className="min-h-screen bg-white text-zinc-900">
 
       {/* Desktop — full-width stacked gallery + full-height sticky panel */}
-      <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(460px,40%)]">
         <DesktopProductGallery images={images} alt={title} />
         <ProductInfoPanel
           brand={brand}

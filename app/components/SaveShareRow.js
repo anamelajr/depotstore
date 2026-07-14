@@ -34,7 +34,12 @@ function ShareIcon() {
   );
 }
 
-export default function SaveShareRow({ productUrl, title, className = "mt-5 px-6 flex gap-6" }) {
+export default function SaveShareRow({
+  productUrl,
+  title,
+  className = "mt-5 px-6 flex gap-6",
+  variant = "split", // "split": buttons share the row (mobile); "inline": quiet left-aligned pair (desktop panel)
+}) {
   // v1: visual-only toggle. No persistence — see spec for rationale.
   const [saved, setSaved] = useState(false);
   const [shareLabel, setShareLabel] = useState("Share");
@@ -59,13 +64,18 @@ export default function SaveShareRow({ productUrl, title, className = "mt-5 px-6
     }
   }
 
+  const buttonClass =
+    variant === "inline"
+      ? "inline-flex items-center gap-2 py-1 font-mono text-[11px] text-zinc-900 hover:text-zinc-600 transition-colors"
+      : "flex-1 inline-flex items-center justify-center gap-2.5 py-2.5 font-mono text-[11px] text-zinc-900 hover:text-zinc-600 transition-colors";
+
   return (
     <div className={className}>
       <button
         type="button"
         onClick={() => setSaved((v) => !v)}
         aria-pressed={saved}
-        className="flex-1 inline-flex items-center justify-center gap-2.5 py-2.5 font-mono text-[11px] text-zinc-900 hover:text-zinc-600 transition-colors"
+        className={buttonClass}
       >
         <BookmarkIcon filled={saved} />
         <span>{saved ? "Saved" : "Save"}</span>
@@ -73,7 +83,7 @@ export default function SaveShareRow({ productUrl, title, className = "mt-5 px-6
       <button
         type="button"
         onClick={handleShare}
-        className="flex-1 inline-flex items-center justify-center gap-2.5 py-2.5 font-mono text-[11px] text-zinc-900 hover:text-zinc-600 transition-colors"
+        className={buttonClass}
       >
         <ShareIcon />
         <span>{shareLabel}</span>
