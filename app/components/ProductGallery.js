@@ -3,30 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { shopifyImageUrl } from "../lib/shopifyImage.js";
 
-const WHEEL_COOLDOWN_MS = 750;
-
-function isEditableTarget(el) {
-  if (!el) return false;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
-}
-
+// Mobile swipe gallery. Desktop uses DesktopProductGallery — this component
+// only ever renders inside the page's `lg:hidden` wrapper.
 export default function ProductGallery({ images, alt }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const heroRef = useRef(null);
   const scrollRef = useRef(null);
-  const thumbRefs = useRef([]);
   const slideRefs = useRef([]);
-  const cooldownRef = useRef(0);
-  const indexRef = useRef(0);
   const containerWidthRef = useRef(0);
   const rafRef = useRef(0);
-
-  useEffect(() => {
-    indexRef.current = selectedIndex;
-  }, [selectedIndex]);
 
   // Reset scroll on mount — Next.js navigation from scrolled feed pages
   // sometimes lands mid-page.
@@ -45,75 +30,7 @@ export default function ProductGallery({ images, alt }) {
     }
   }, [count, selectedIndex]);
 
-  // Desktop: wheel-to-navigate on hero.
-  useEffect(() => {
-    if (!multiple) return;
-    const el = heroRef.current;
-    if (!el) return;
-
-    const onWheel = (e) => {
-      e.preventDefault();
-      if (Math.abs(e.deltaY) < 2) return;
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-
-      const now = performance.now();
-      if (now - cooldownRef.current < WHEEL_COOLDOWN_MS) return;
-
-      const dir = e.deltaY > 0 ? 1 : -1;
-      const next = indexRef.current + dir;
-      if (next < 0 || next >= count) return;
-
-      cooldownRef.current = now;
-      indexRef.current = next;
-      setSelectedIndex(next);
-    };
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [multiple, count]);
-
-  // Desktop: arrow-key navigation.
-  useEffect(() => {
-    if (!multiple) return;
-
-    const onKey = (e) => {
-      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      if (isEditableTarget(document.activeElement)) return;
-
-      const next = indexRef.current + (e.key === "ArrowRight" ? 1 : -1);
-      if (next < 0 || next >= count) return;
-      indexRef.current = next;
-      setSelectedIndex(next);
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [multiple, count]);
-
-  // Desktop: lightbox — lock body scroll and close on Escape while open.
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e) => {
-      if (e.key === "Escape") setLightboxOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [lightboxOpen]);
-
-  // Desktop: scroll active thumbnail into view.
-  useEffect(() => {
-    thumbRefs.current[selectedIndex]?.scrollIntoView({
-      block: "nearest",
-      behavior: "smooth",
-    });
-  }, [selectedIndex]);
-
-  // Mobile: track slide width via ResizeObserver.
+  // Track slide width via ResizeObserver.
   useEffect(() => {
     if (!multiple) return;
     const el = scrollRef.current;
@@ -127,7 +44,7 @@ export default function ProductGallery({ images, alt }) {
     return () => ro.disconnect();
   }, [multiple]);
 
-  // Mobile: scroll-position → selectedIndex (primary writer).
+  // Scroll-position → selectedIndex (primary writer).
   useEffect(() => {
     if (!multiple) return;
     const el = scrollRef.current;
@@ -154,7 +71,7 @@ export default function ProductGallery({ images, alt }) {
     };
   }, [multiple, count]);
 
-  // Mobile: IntersectionObserver as secondary corrector during transient layouts.
+  // IntersectionObserver as secondary corrector during transient layouts.
   useEffect(() => {
     if (!multiple) return;
     const root = scrollRef.current;
@@ -178,7 +95,7 @@ export default function ProductGallery({ images, alt }) {
     return () => io.disconnect();
   }, [multiple, count]);
 
-  // Mobile: restore scroll position on resize / orientationchange.
+  // Restore scroll position on resize / orientationchange.
   useEffect(() => {
     if (!multiple) return;
     const el = scrollRef.current;
@@ -200,18 +117,11 @@ export default function ProductGallery({ images, alt }) {
 
   if (!hasImages) {
     return (
-      <>
-        <div className="hidden lg:block" />
-        <div className="order-1 lg:order-none">
-          <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm lg:mx-auto lg:aspect-[4/5] lg:w-auto lg:max-w-full lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px]">
-            No image
-          </div>
-        </div>
-      </>
+      <div className="aspect-[3/4] w-full bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm">
+        No image
+      </div>
     );
   }
-
-  const activeSrc = images[selectedIndex] ?? images[0];
 
   const goToIndex = (i) => {
     const el = scrollRef.current;
@@ -224,186 +134,80 @@ export default function ProductGallery({ images, alt }) {
   };
 
   return (
-    <>
-      {/* Desktop thumbnail column */}
+    <div className="relative lg:hidden">
       <div
-        className="hidden lg:flex lg:flex-col lg:gap-2 lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] lg:overflow-y-auto [&::-webkit-scrollbar]:hidden"
+        ref={scrollRef}
+        className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none" }}
       >
-        {images.map((src, i) => {
-          const isActive = i === selectedIndex;
-          return (
-            <button
-              key={i}
-              ref={(el) => {
-                thumbRefs.current[i] = el;
-              }}
-              type="button"
-              onClick={() => setSelectedIndex(i)}
-              aria-label={`View image ${i + 1}`}
-              aria-current={isActive ? "true" : undefined}
-              className={`relative block aspect-[3/4] w-full flex-none overflow-hidden bg-zinc-100 border ${
-                isActive ? "border-zinc-900" : "border-transparent"
-              }`}
-            >
-              <img src={shopifyImageUrl(src, 256)} alt="" className="h-full w-full object-cover" />
-            </button>
-          );
-        })}
+        {images.map((src, i) => (
+          <div
+            key={i}
+            ref={(el) => {
+              slideRefs.current[i] = el;
+            }}
+            data-index={i}
+            className="relative flex-none w-full aspect-[3/4] snap-start snap-always"
+          >
+            <img
+              src={shopifyImageUrl(src, 1400)}
+              alt={i === 0 ? alt : ""}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ))}
       </div>
 
-      {/* Hero (desktop) + swipe gallery (mobile) */}
-      <div className="order-1 lg:order-none">
-        {/* Desktop hero */}
-        {/* 4:5 frame (not full column width): keeps store photos' portrait
-            aspect close enough that object-cover crops ~17% instead of ~38%,
-            and the narrower CSS width stays under typical store masters'
-            retina budget (avoids upscaling blur). */}
-        <div className="hidden lg:block relative lg:mx-auto lg:aspect-[4/5] lg:max-w-full lg:h-[calc(100vh-var(--nav-height)-110px)] lg:min-h-[560px] overflow-hidden">
-          <img
-            ref={heroRef}
-            src={shopifyImageUrl(activeSrc, 1400)}
-            alt={alt}
-            onClick={() => setLightboxOpen(true)}
-            className="h-full w-full object-cover object-center cursor-zoom-in"
-          />
-          {multiple && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  const next = Math.max(0, indexRef.current - 1);
-                  indexRef.current = next;
-                  setSelectedIndex(next);
-                }}
-                aria-label="Previous image"
-                className="absolute left-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center bg-white/90 text-zinc-900 hover:bg-white transition-colors"
-              >
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                  <path d="M12.5 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const next = Math.min(count - 1, indexRef.current + 1);
-                  indexRef.current = next;
-                  setSelectedIndex(next);
-                }}
-                aria-label="Next image"
-                className="absolute right-4 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center bg-white/90 text-zinc-900 hover:bg-white transition-colors"
-              >
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                  <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </>
-          )}
-
-          {/* Expand affordance — opens the full uncropped photo in a lightbox */}
+      {multiple && (
+        <>
+          {/* Prev arrow */}
           <button
             type="button"
-            onClick={() => setLightboxOpen(true)}
-            aria-label="Enlarge image"
-            className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center bg-white/90 text-zinc-900 hover:bg-white transition-colors"
+            onClick={() => goToIndex(Math.max(0, selectedIndex - 1))}
+            aria-label="Previous image"
+            className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center text-zinc-900"
           >
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-              <path d="M8 3H3v5M12 3h5v5M17 12v5h-5M3 12v5h5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12.5 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
 
-          {/* Lightbox — full uncropped photo */}
-          {lightboxOpen && (
-            <div
-              onClick={() => setLightboxOpen(false)}
-              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 cursor-zoom-out"
-            >
-              <img
-                src={shopifyImageUrl(activeSrc, 1400)}
-                alt={alt}
-                className="max-h-[92vh] max-w-[90vw] object-contain"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Mobile swipe gallery */}
-        <div className="relative lg:hidden">
-          <div
-            ref={scrollRef}
-            className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [&::-webkit-scrollbar]:hidden"
-            style={{ scrollbarWidth: "none" }}
+          {/* Next arrow */}
+          <button
+            type="button"
+            onClick={() => goToIndex(Math.min(count - 1, selectedIndex + 1))}
+            aria-label="Next image"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center text-zinc-900"
           >
-            {images.map((src, i) => (
-              <div
-                key={i}
-                ref={(el) => {
-                  slideRefs.current[i] = el;
-                }}
-                data-index={i}
-                className="relative flex-none w-full aspect-[3/4] snap-start snap-always"
-              >
-                <img
-                  src={shopifyImageUrl(src, 1400)}
-                  alt={i === 0 ? alt : ""}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ))}
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {/* Indicators — overlaid on bottom edge */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {images.map((_, i) => {
+              const isActive = i === selectedIndex;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => goToIndex(i)}
+                  aria-label={`Go to image ${i + 1}`}
+                  aria-current={isActive ? "true" : undefined}
+                  className="p-1 -m-1"
+                >
+                  <span
+                    className={`block h-1 w-1 transition-colors ${
+                      isActive ? "bg-zinc-900" : "bg-zinc-400"
+                    }`}
+                  />
+                </button>
+              );
+            })}
           </div>
-
-          {multiple && (
-            <>
-              {/* Prev arrow */}
-              <button
-                type="button"
-                onClick={() => goToIndex(Math.max(0, selectedIndex - 1))}
-                aria-label="Previous image"
-                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center text-zinc-900"
-              >
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                  <path d="M12.5 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-
-              {/* Next arrow */}
-              <button
-                type="button"
-                onClick={() => goToIndex(Math.min(count - 1, selectedIndex + 1))}
-                aria-label="Next image"
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center text-zinc-900"
-              >
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                  <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-
-              {/* Indicators — overlaid on bottom edge */}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                {images.map((_, i) => {
-                  const isActive = i === selectedIndex;
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => goToIndex(i)}
-                      aria-label={`Go to image ${i + 1}`}
-                      aria-current={isActive ? "true" : undefined}
-                      className="p-1 -m-1"
-                    >
-                      <span
-                        className={`block h-1 w-1 transition-colors ${
-                          isActive ? "bg-zinc-900" : "bg-zinc-400"
-                        }`}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </>
+        </>
+      )}
+    </div>
   );
 }

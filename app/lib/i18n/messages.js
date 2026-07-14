@@ -74,6 +74,8 @@ export const MESSAGES = {
     "product.moreFrom": "More from",
     "product.moreFromThis": "More from this store",
     "product.browseStore": "Browse store",
+    "product.readMore": "More",
+    "product.readLess": "Less",
     // About modal (inside LayoutClient)
     "about.label": "About",
     "about.close": "Close",
@@ -201,6 +203,8 @@ export const MESSAGES = {
     "product.moreFrom": "Plus de",
     "product.moreFromThis": "Plus de cette boutique",
     "product.browseStore": "Parcourir la boutique",
+    "product.readMore": "Plus",
+    "product.readLess": "Moins",
     // About modal
     "about.label": "À propos",
     "about.close": "Fermer",

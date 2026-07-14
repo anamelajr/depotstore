@@ -37,3 +37,41 @@ body {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Desktop PDP — stacked gallery */
+@keyframes pdpReveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pdpOdometerIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pdpOdometerOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-8px); }
+}
+@keyframes pdpZoomEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pdpZoomExit {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes pdpZoomImageEnter {
+  from { opacity: 0; transform: scale(0.985); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes pdpThumbEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdp-motion {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
