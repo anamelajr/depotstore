@@ -29,7 +29,7 @@ export default function MobileNavMenu({ isOpen, onClose, stores = [] }) {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] text-zinc-50 flex flex-col motion-safe:[animation:navMenuEnter_150ms_ease-out]">
+    <div className="fixed inset-0 z-[9999] bg-white text-zinc-950 flex flex-col motion-safe:[animation:navMenuEnter_150ms_ease-out]">
       {view === "root" && (
         <RootView
           onClose={onClose}
@@ -66,10 +66,10 @@ export default function MobileNavMenu({ isOpen, onClose, stores = [] }) {
 function RegionSection({ onClose }) {
   const { currency, setCurrency } = useCurrency();
   const { language, setLanguage, t } = useLanguage();
-  const sectionLabel = "font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-600";
+  const sectionLabel = "font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-400";
   const langBtn = (lang) =>
     `font-mono text-[10px] uppercase tracking-[0.18em] ${
-      language === lang ? "text-zinc-50" : "text-zinc-500"
+      language === lang ? "text-zinc-950" : "text-zinc-400"
     }`;
 
   return (
@@ -107,7 +107,7 @@ function RegionSection({ onClose }) {
                 onClose();
               }}
               className={`font-mono text-[10px] uppercase tracking-[0.18em] ${
-                active ? "text-zinc-50" : "text-zinc-500"
+                active ? "text-zinc-950" : "text-zinc-400"
               }`}
             >
               {symbol} {label}
@@ -115,7 +115,7 @@ function RegionSection({ onClose }) {
           );
         })}
       </div>
-      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-600">
+      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-400">
         {t("region.pricesFromEur")}
       </span>
     </div>
@@ -130,43 +130,43 @@ function RootView({ onClose, onOpenShop, onOpenStores }) {
         <Link href="/" onClick={onClose} className="font-mono text-[11px] tracking-[0.32em] uppercase">
           DÉPÔT
         </Link>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
       <div className="flex-1 flex flex-col px-8 pt-12 pb-8">
         <button
           onClick={onOpenShop}
-          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
+          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-950"
         >
-          <span>{t("nav.shop").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.shop").toUpperCase()}</span><span className="text-zinc-400 text-[14px] font-light">›</span>
         </button>
         <button
           onClick={onOpenStores}
-          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
+          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-950"
         >
-          <span>{t("nav.stores").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.stores").toUpperCase()}</span><span className="text-zinc-400 text-[14px] font-light">›</span>
         </button>
         <Link
           href="/designers"
           onClick={onClose}
-          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
+          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-950"
         >
-          <span>{t("nav.designers").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.designers").toUpperCase()}</span><span className="text-zinc-400 text-[14px] font-light">›</span>
         </Link>
         <Link
           href="/editorial"
           onClick={onClose}
-          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-50"
+          className="flex items-center justify-between py-6 font-mono text-[10px] tracking-[0.34em] uppercase text-zinc-950"
         >
-          <span>{t("nav.editorial").toUpperCase()}</span><span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span>{t("nav.editorial").toUpperCase()}</span><span className="text-zinc-400 text-[14px] font-light">›</span>
         </Link>
-        <div className="mt-auto pt-8 border-t border-zinc-900 flex flex-col gap-4">
+        <div className="mt-auto pt-8 border-t border-zinc-200 flex flex-col gap-4">
           <RegionSection onClose={onClose} />
-          <Link href="/about" onClick={onClose} className="font-sans text-[11px] text-zinc-500">
+          <Link href="/about" onClick={onClose} className="font-sans text-[11px] text-zinc-500 hover:text-zinc-950 transition-colors">
             {t("nav.about")}
           </Link>
-          <a href={`mailto:${CONTACT_EMAIL}`} onClick={onClose} className="font-sans text-[11px] text-zinc-500">
+          <a href={`mailto:${CONTACT_EMAIL}`} onClick={onClose} className="font-sans text-[11px] text-zinc-500 hover:text-zinc-950 transition-colors">
             {t("nav.contact")}
           </a>
         </div>
@@ -182,13 +182,13 @@ function ShopView({ onClose, onBack, onOpenSubcategory }) {
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
-        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
           {t("nav.shop").toUpperCase()}
         </span>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕
         </button>
       </header>
@@ -201,10 +201,10 @@ function ShopView({ onClose, onBack, onOpenSubcategory }) {
               <button
                 key={cat.slug}
                 onClick={() => onOpenSubcategory({ shortKey: cat.shortKey, label: cat.label })}
-                className="flex items-center justify-between font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+                className="flex items-center justify-between font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
               >
                 <span>{cat.label.toUpperCase()}</span>
-                <span className="text-zinc-600 text-[14px] font-light">›</span>
+                <span className="text-zinc-400 text-[14px] font-light">›</span>
               </button>
             );
           }
@@ -213,7 +213,7 @@ function ShopView({ onClose, onBack, onOpenSubcategory }) {
               key={cat.slug}
               href={buildFreshFeedUrl({ category: [cat.slug] })}
               onClick={onClose}
-              className="flex items-center justify-between font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+              className="flex items-center justify-between font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
             >
               <span>{cat.label.toUpperCase()}</span>
             </Link>
@@ -229,13 +229,13 @@ function StoresView({ onClose, onBack, stores }) {
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
-        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
           {t("nav.stores").toUpperCase()}
         </span>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕
         </button>
       </header>
@@ -245,7 +245,7 @@ function StoresView({ onClose, onBack, stores }) {
             key={store.domain}
             href={buildFreshFeedUrl({ store: store.domain })}
             onClick={onClose}
-            className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+            className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
           >
             {(store.displayName || store.storeName).toUpperCase()}
           </Link>
@@ -262,13 +262,13 @@ function SubcategoryView({ onClose, onBack, shortKey, label }) {
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
-        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
           {subs.heading.toUpperCase()}
         </span>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕
         </button>
       </header>
@@ -278,7 +278,7 @@ function SubcategoryView({ onClose, onBack, shortKey, label }) {
             key={slug}
             href={buildFreshFeedUrl({ category: [slug] })}
             onClick={onClose}
-            className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+            className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
           >
             {sublabel}
           </Link>

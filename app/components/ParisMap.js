@@ -30,7 +30,7 @@ export default function ParisMap({ stores = [] }) {
       });
 
       L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
         {
           attribution: "© CartoDB",
         }
@@ -39,15 +39,15 @@ export default function ParisMap({ stores = [] }) {
       mapStores.forEach((store) => {
         const circle = L.circleMarker([store.lat, store.lng], {
           radius: 6,
-          fillColor: "#ffffff",
-          color: "#ffffff",
+          fillColor: "#0a0a0a",
+          color: "#0a0a0a",
           weight: 1,
           opacity: 0.9,
           fillOpacity: 0.9,
         }).addTo(map);
 
         circle.bindTooltip(
-          `<div style="font-family:var(--font-general-sans),sans-serif;font-size:11px;line-height:1.6;background:#0a0a0a;color:#e4e4e7;border:1px solid #3f3f46;padding:8px 12px;border-radius:0;">
+          `<div style="font-family:var(--font-general-sans),sans-serif;font-size:11px;line-height:1.6;background:#ffffff;color:#3f3f46;border:1px solid #d4d4d8;padding:8px 12px;border-radius:0;">
             <strong style="font-size:12px;">${store.name}</strong><br/>
             ${store.location}
           </div>`,
@@ -67,8 +67,8 @@ export default function ParisMap({ stores = [] }) {
           container.style.cssText = "display:flex;flex-direction:column;gap:1px;";
 
           const btnStyle = `
-      width:32px;height:32px;background:#0a0a0a;color:#a1a1aa;
-      border:1px solid #3f3f46;display:flex;align-items:center;
+      width:32px;height:32px;background:#ffffff;color:#71717a;
+      border:1px solid #d4d4d8;display:flex;align-items:center;
       justify-content:center;cursor:pointer;font-family:var(--font-general-sans),sans-serif;
       font-size:16px;line-height:1;transition:color 0.2s,border-color 0.2s;
     `;
@@ -77,12 +77,12 @@ export default function ParisMap({ stores = [] }) {
           zoomIn.innerHTML = "+";
           zoomIn.style.cssText = btnStyle;
           zoomIn.onmouseover = () => {
-            zoomIn.style.color = "#fff";
+            zoomIn.style.color = "#0a0a0a";
             zoomIn.style.borderColor = "#71717a";
           };
           zoomIn.onmouseout = () => {
-            zoomIn.style.color = "#a1a1aa";
-            zoomIn.style.borderColor = "#3f3f46";
+            zoomIn.style.color = "#71717a";
+            zoomIn.style.borderColor = "#d4d4d8";
           };
           L.DomEvent.on(zoomIn, "click", (e) => {
             L.DomEvent.stopPropagation(e);
@@ -93,12 +93,12 @@ export default function ParisMap({ stores = [] }) {
           zoomOut.innerHTML = "−";
           zoomOut.style.cssText = btnStyle;
           zoomOut.onmouseover = () => {
-            zoomOut.style.color = "#fff";
+            zoomOut.style.color = "#0a0a0a";
             zoomOut.style.borderColor = "#71717a";
           };
           zoomOut.onmouseout = () => {
-            zoomOut.style.color = "#a1a1aa";
-            zoomOut.style.borderColor = "#3f3f46";
+            zoomOut.style.color = "#71717a";
+            zoomOut.style.borderColor = "#d4d4d8";
           };
           L.DomEvent.on(zoomOut, "click", (e) => {
             L.DomEvent.stopPropagation(e);
@@ -125,7 +125,7 @@ export default function ParisMap({ stores = [] }) {
   return (
     <div
       ref={mapRef}
-      style={{ height: "480px", width: "100%", background: "#0a0a0a" }}
+      style={{ height: "480px", width: "100%", background: "#f4f4f5" }}
     />
   );
 }

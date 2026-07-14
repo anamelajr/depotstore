@@ -86,7 +86,7 @@ try {
       </section>
 
       {/* Today's Edit */}
-      <section className="bg-[#0a0a0a] py-24 text-zinc-50">
+      <section className="bg-white py-24 text-zinc-950">
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-6 flex items-end justify-between">
             <div>
@@ -103,7 +103,7 @@ try {
             <Link
               href="/feed"
               replace
-              className="font-mono text-sm text-zinc-400 transition-colors hover:text-zinc-50"
+              className="font-mono text-sm text-zinc-500 transition-colors hover:text-zinc-950"
             >
               <T k="home.viewAll" />
             </Link>
@@ -120,7 +120,7 @@ try {
       </section>
 
       {/* Across Paris */}
-      <section className="border-t border-zinc-800 bg-[#0a0a0a] py-24 text-zinc-50">
+      <section className="border-t border-zinc-200 bg-white py-24 text-zinc-950">
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-12">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">

@@ -6,7 +6,7 @@ const CONTACT_EMAIL = "hello@depot.paris";
 
 export default function Footer() {
   return (
-    <footer className="bg-[#0a0a0a] text-zinc-50 px-6 py-16 sm:px-10 sm:py-20">
+    <footer className="border-t border-zinc-200 bg-white text-zinc-950 px-6 py-16 sm:px-10 sm:py-20">
       <div className="mx-auto max-w-4xl">
         <p className="text-[clamp(28px,5vw,40px)] font-bold uppercase leading-none tracking-tight">
           DÉPÔT
@@ -29,21 +29,21 @@ export default function Footer() {
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
               <T k="footer.explore" />
             </p>
-            <ul className="mt-3 space-y-2 font-mono text-[12px] text-zinc-100">
-              <li><Link href="/feed" className="hover:text-white transition-colors"><T k="footer.feed" /></Link></li>
-              <li><Link href="/stores" className="hover:text-white transition-colors"><T k="footer.stores" /></Link></li>
-              <li><Link href="/saved" className="hover:text-white transition-colors"><T k="footer.saved" /></Link></li>
+            <ul className="mt-3 space-y-2 font-mono text-[12px] text-zinc-800">
+              <li><Link href="/feed" className="hover:text-zinc-500 transition-colors"><T k="footer.feed" /></Link></li>
+              <li><Link href="/stores" className="hover:text-zinc-500 transition-colors"><T k="footer.stores" /></Link></li>
+              <li><Link href="/saved" className="hover:text-zinc-500 transition-colors"><T k="footer.saved" /></Link></li>
             </ul>
           </div>
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
               <T k="footer.connect" />
             </p>
-            <ul className="mt-3 space-y-2 font-mono text-[12px] text-zinc-100">
+            <ul className="mt-3 space-y-2 font-mono text-[12px] text-zinc-800">
               <li>
                 <a
                   href={`mailto:${CONTACT_EMAIL}`}
-                  className="hover:text-white transition-colors"
+                  className="hover:text-zinc-500 transition-colors"
                 >
                   <T k="footer.contact" />
                 </a>
@@ -52,7 +52,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-14 border-t border-zinc-800 pt-6 flex justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+        <div className="mt-14 border-t border-zinc-200 pt-6 flex justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
           <span>© 2026 Dépôt</span>
           <span>Paris</span>
         </div>

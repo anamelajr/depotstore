@@ -11,7 +11,7 @@ import RegionPanel from "./RegionPanel";
 // the language label + setLanguage) — keeping both hooks is critical; dropping
 // useCurrency would break the currency selector.
 const baseLink =
-  "font-mono text-[11px] uppercase tracking-widest text-zinc-300 hover:text-zinc-50 transition-colors";
+  "font-mono text-[11px] uppercase tracking-widest text-zinc-600 hover:text-zinc-950 transition-colors";
 
 export default function RegionMenu() {
   const { currency, setCurrency } = useCurrency();

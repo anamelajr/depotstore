@@ -28,8 +28,8 @@ export default function DesignersPage() {
       className="font-mono"
       style={{
         minHeight: "100vh",
-        backgroundColor: "#0a0a0a",
-        color: "rgb(250 250 250)",
+        backgroundColor: "#ffffff",
+        color: "rgb(9 9 11)",
         padding: "48px 24px 80px",
       }}
     >
@@ -41,7 +41,7 @@ export default function DesignersPage() {
             marginBottom: 48,
             fontSize: 13,
             letterSpacing: "0.025em",
-            color: "rgb(161 161 170)",
+            color: "rgb(113 113 122)",
             textDecoration: "none",
           }}
         >
@@ -68,7 +68,7 @@ export default function DesignersPage() {
             gap: "8px 16px",
             marginBottom: 48,
             paddingBottom: 32,
-            borderBottom: "1px solid rgb(39 39 42)",
+            borderBottom: "1px solid rgb(228 228 231)",
           }}
         >
           {ALPHABET.map((letter) => {
@@ -82,7 +82,7 @@ export default function DesignersPage() {
                   fontWeight: 500,
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
-                  color: "rgb(250 250 250)",
+                  color: "rgb(9 9 11)",
                   textDecoration: "none",
                 }}
               >
@@ -96,7 +96,7 @@ export default function DesignersPage() {
                   fontWeight: 500,
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
-                  color: "rgb(82 82 91)",
+                  color: "rgb(212 212 216)",
                 }}
               >
                 {letter}
@@ -119,7 +119,7 @@ export default function DesignersPage() {
                 letterSpacing: "0.05em",
                 textTransform: "uppercase",
                 marginBottom: 16,
-                color: "rgb(250 250 250)",
+                color: "rgb(9 9 11)",
               }}
             >
               {letter}
@@ -138,7 +138,7 @@ export default function DesignersPage() {
                   style={{
                     fontSize: 15,
                     letterSpacing: "0.025em",
-                    color: "rgb(212 212 216)",
+                    color: "rgb(82 82 91)",
                     textDecoration: "none",
                   }}
                 >

@@ -9,7 +9,7 @@ export default function Column2({ expandedKey, searchParams, stores = [] }) {
 
   if (expandedKey === "tops" || expandedKey === "jackets" || expandedKey === "bags") {
     return (
-      <div className="border-l border-zinc-900 px-8 py-8">
+      <div className="border-l border-zinc-200 px-8 py-8">
         <SubcategoryList expandKey={expandedKey} searchParams={searchParams} />
       </div>
     );
@@ -17,7 +17,7 @@ export default function Column2({ expandedKey, searchParams, stores = [] }) {
 
   if (expandedKey === "designers") {
     return (
-      <div className="border-l border-zinc-900 px-8 py-8">
+      <div className="border-l border-zinc-200 px-8 py-8">
         <DesignersPanel searchParams={searchParams} />
       </div>
     );
@@ -25,11 +25,11 @@ export default function Column2({ expandedKey, searchParams, stores = [] }) {
 
   if (expandedKey === "stores") {
     return (
-      <div className="border-l border-zinc-900 px-8 py-8">
+      <div className="border-l border-zinc-200 px-8 py-8">
         <StoresPanel stores={stores} searchParams={searchParams} />
       </div>
     );
   }
 
-  return <div className="border-l border-zinc-900 px-8 py-8" />;
+  return <div className="border-l border-zinc-200 px-8 py-8" />;
 }

@@ -48,13 +48,13 @@ export default function ProductCard({ product }) {
   };
 
   const card = (
-    <div className="group flex h-full flex-col focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-700">
+    <div className="group flex h-full flex-col focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300">
       {/* Image */}
-      <div className="relative aspect-[4/5] shrink-0 overflow-hidden bg-zinc-950">
+      <div className="relative aspect-[4/5] shrink-0 overflow-hidden bg-zinc-100">
         {imageUrl ? (
           <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={displayTitle} />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-xs text-zinc-600">
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-100 text-xs text-zinc-400">
             {t("product.noImage")}
           </div>
         )}
@@ -73,16 +73,16 @@ export default function ProductCard({ product }) {
         <div className="flex flex-1 flex-col md:hidden">
           <div>
             {brand ? (
-              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
+              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-950">
                 {displayBrand}
               </div>
             ) : null}
-            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2 min-h-[2lh]${brand ? " mt-0.5" : ""}`}>
+            <div className={`font-sans text-[13px] leading-snug text-zinc-600 line-clamp-2 min-h-[2lh]${brand ? " mt-0.5" : ""}`}>
               {displayTitle}
             </div>
           </div>
           <div className="mt-auto flex items-baseline justify-between gap-2 pt-2">
-            <Price eur={rawPrice} className="font-mono text-[12px] text-zinc-200" />
+            <Price eur={rawPrice} className="font-mono text-[12px] text-zinc-800" />
             {storeName ? (
               <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
                 {badgeName}
@@ -95,16 +95,16 @@ export default function ProductCard({ product }) {
         <div className="hidden md:flex md:justify-between md:gap-4">
           <div className="flex flex-col min-w-0">
             {brand ? (
-              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-100">
+              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-950">
                 {displayBrand}
               </div>
             ) : null}
-            <div className={`font-sans text-[13px] leading-snug text-zinc-400 line-clamp-2${brand ? " mt-0.5" : ""}`}>
+            <div className={`font-sans text-[13px] leading-snug text-zinc-600 line-clamp-2${brand ? " mt-0.5" : ""}`}>
               {displayTitle}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-between">
-            <Price eur={rawPrice} className="font-mono text-[12px] text-zinc-200 whitespace-nowrap" />
+            <Price eur={rawPrice} className="font-mono text-[12px] text-zinc-800 whitespace-nowrap" />
             {storeName ? (
               <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500 whitespace-nowrap">
                 {badgeName}

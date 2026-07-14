@@ -22,11 +22,11 @@ export default function LayoutClient({
       <div className="min-h-screen">{children}</div>
       {isAboutOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
+          className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
           onClick={() => setIsAboutOpen(false)}
         >
           <div
-            className="w-full sm:max-w-lg border-t sm:border border-zinc-800 bg-[#0a0a0a] p-8 sm:p-10"
+            className="w-full sm:max-w-lg border-t sm:border border-zinc-200 bg-white p-8 sm:p-10"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 mb-8">
@@ -36,21 +36,21 @@ export default function LayoutClient({
               <button
                 type="button"
                 onClick={() => setIsAboutOpen(false)}
-                className="font-mono text-[11px] uppercase tracking-widest text-zinc-600 hover:text-zinc-300 transition-colors"
+                className="font-mono text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-950 transition-colors"
               >
                 {t("about.close")}
               </button>
             </div>
 
-            <p className="text-2xl sm:text-3xl font-light leading-snug tracking-tight text-zinc-100 mb-8">
+            <p className="text-2xl sm:text-3xl font-light leading-snug tracking-tight text-zinc-900 mb-8">
               {t("about.lead")}
             </p>
 
-            <p className="text-sm leading-7 text-zinc-400 mb-8">
+            <p className="text-sm leading-7 text-zinc-600 mb-8">
               {t("about.body")}
             </p>
 
-            <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-600">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
               {t("about.closing")}
             </p>
           </div>

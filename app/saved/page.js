@@ -14,10 +14,10 @@ export async function generateMetadata() {
 export default function SavedPage() {
   return (
     <main className="flex min-h-[calc(100vh-var(--nav-height))] flex-col items-center justify-center px-6">
-      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600 mb-4">
+      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400 mb-4">
         <T k="saved.label" />
       </p>
-      <p className="font-mono text-[13px] uppercase tracking-widest text-zinc-300">
+      <p className="font-mono text-[13px] uppercase tracking-widest text-zinc-900">
         <T k="saved.comingSoon" />
       </p>
       <p className="mt-6 max-w-sm text-center text-sm leading-7 text-zinc-500">

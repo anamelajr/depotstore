@@ -53,7 +53,7 @@ export default function MobileFilterPanel({
     (draftBrand ? 1 : 0);
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] text-zinc-50 flex flex-col motion-safe:[animation:navMenuEnter_150ms_ease-out]">
+    <div className="fixed inset-0 z-[9999] bg-white text-zinc-950 flex flex-col motion-safe:[animation:navMenuEnter_150ms_ease-out]">
       {view === "root" && (
         <FilterRoot
           onClose={onClose}
@@ -83,16 +83,16 @@ export default function MobileFilterPanel({
         />
       )}
 
-      <footer className="absolute bottom-0 left-0 right-0 h-14 grid grid-cols-2 bg-zinc-950/95 backdrop-blur border-t border-zinc-800/60">
+      <footer className="absolute bottom-0 left-0 right-0 h-14 grid grid-cols-2 bg-white/95 backdrop-blur border-t border-zinc-200">
         <button
           onClick={handleReset}
-          className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-300 border-r border-zinc-800/60"
+          className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-500 border-r border-zinc-200"
         >
           {t("filter.reset").toUpperCase()}
         </button>
         <button
           onClick={handleApply}
-          className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+          className="font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
         >
           {t("filter.apply").toUpperCase()}{totalActive > 0 ? ` (${totalActive})` : ""}
         </button>
@@ -117,13 +117,13 @@ function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) 
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
-        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
           {t("filter.filters").toUpperCase()}
         </span>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
@@ -135,15 +135,15 @@ function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) 
             <div key={cat.slug}>
               <button
                 onClick={() => setExpanded(isExpanded ? null : cat.shortKey)}
-                className="flex items-center justify-between w-full py-4 border-b border-zinc-900 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+                className="flex items-center justify-between w-full py-4 border-b border-zinc-200 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
               >
                 <span>{cat.label.toUpperCase()}</span>
-                <span className="text-zinc-50 text-[15px] font-extralight leading-none">
+                <span className="text-zinc-950 text-[15px] font-extralight leading-none">
                   {isExpanded ? "−" : "+"}
                 </span>
               </button>
               {isExpanded && (
-                <div className="py-3 flex flex-col gap-3 border-b border-zinc-900">
+                <div className="py-3 flex flex-col gap-3 border-b border-zinc-200">
                   <OptionRow
                     label={subs ? subs.items[0][1] : `${t("filter.viewAll")} ${cat.label}`}
                     checked={draftCategories.includes(cat.slug)}
@@ -171,10 +171,10 @@ function OptionRow({ label, checked, onChange }) {
   return (
     <button
       onClick={onChange}
-      className="flex items-center font-mono text-[9px] tracking-[0.28em] uppercase text-zinc-50"
+      className="flex items-center font-mono text-[9px] tracking-[0.28em] uppercase text-zinc-950"
     >
       <span
-        className={`inline-block w-[11px] h-[11px] mr-3.5 border border-zinc-50 ${checked ? "bg-zinc-50" : ""}`}
+        className={`inline-block w-[11px] h-[11px] mr-3.5 border border-zinc-950 ${checked ? "bg-zinc-950" : ""}`}
       />
       {label}
     </button>
@@ -186,13 +186,13 @@ function StoreView({ onBack, onClose, draftStore, setDraftStore, storeOptions })
   return (
     <>
       <header className="relative flex items-center justify-between h-[50px] px-5 shrink-0">
-        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onBack} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ‹ {t("nav.back").toUpperCase()}
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
           {t("filter.filters").toUpperCase()}
         </span>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
@@ -234,48 +234,48 @@ function FilterRoot({
         <span className="absolute left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.32em] uppercase">
           {t("filter.filters").toUpperCase()}
         </span>
-        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-400">
+        <button onClick={onClose} className="font-mono text-[9px] tracking-[0.32em] uppercase text-zinc-500">
           ✕ {t("nav.close").toUpperCase()}
         </button>
       </header>
       <div className="flex-1 px-8 pt-6 pb-20 overflow-y-auto">
         {draftBrand && (
           <>
-            <p className="font-mono text-[8.5px] tracking-[0.32em] uppercase text-zinc-500 mb-2 mt-1">
+            <p className="font-mono text-[8.5px] tracking-[0.32em] uppercase text-zinc-400 mb-2 mt-1">
               {t("filter.active")}
             </p>
-            <div className="flex items-center justify-between py-3 border-b border-zinc-900">
-              <span className="font-mono text-[10px] tracking-[0.28em] uppercase text-zinc-50">
-                <span className="text-zinc-500 mr-2">{t("filter.brand")}</span>{draftBrand}
+            <div className="flex items-center justify-between py-3 border-b border-zinc-200">
+              <span className="font-mono text-[10px] tracking-[0.28em] uppercase text-zinc-950">
+                <span className="text-zinc-400 mr-2">{t("filter.brand")}</span>{draftBrand}
               </span>
-              <button onClick={onClearDraftBrand} aria-label={t("filter.clearBrand")} className="text-zinc-300 text-[14px] leading-none">×</button>
+              <button onClick={onClearDraftBrand} aria-label={t("filter.clearBrand")} className="text-zinc-500 text-[14px] leading-none">×</button>
             </div>
             <div className="h-4" />
           </>
         )}
         <button
           onClick={onOpenCategory}
-          className="flex items-center justify-between w-full py-4 border-b border-zinc-900 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+          className="flex items-center justify-between w-full py-4 border-b border-zinc-200 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
         >
           <span>
             {t("filter.category").toUpperCase()}
             {categoryCount > 0 && (
-              <span className="ml-2 text-zinc-500 tracking-[0.18em]">· {categoryCount}</span>
+              <span className="ml-2 text-zinc-400 tracking-[0.18em]">· {categoryCount}</span>
             )}
           </span>
-          <span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span className="text-zinc-400 text-[14px] font-light">›</span>
         </button>
         <button
           onClick={onOpenStore}
-          className="flex items-center justify-between w-full py-4 border-b border-zinc-900 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-50"
+          className="flex items-center justify-between w-full py-4 border-b border-zinc-200 font-mono text-[10px] tracking-[0.32em] uppercase text-zinc-950"
         >
           <span>
             {t("filter.store").toUpperCase()}
             {storeCount > 0 && (
-              <span className="ml-2 text-zinc-500 tracking-[0.18em]">· {storeCount}</span>
+              <span className="ml-2 text-zinc-400 tracking-[0.18em]">· {storeCount}</span>
             )}
           </span>
-          <span className="text-zinc-600 text-[14px] font-light">›</span>
+          <span className="text-zinc-400 text-[14px] font-light">›</span>
         </button>
       </div>
     </>

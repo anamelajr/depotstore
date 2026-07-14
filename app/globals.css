@@ -14,12 +14,8 @@
   --font-serif: var(--font-general-sans), sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Dépôt is a light-chrome site: no dark-mode override — the palette is
+   white surfaces, black text, black reserved for accents (CTAs, overlays). */
 
 body {
   background: var(--background);
