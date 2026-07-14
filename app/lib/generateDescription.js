@@ -16,7 +16,7 @@ export async function generateDescription(product) {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-sol",
         max_completion_tokens: 150,
         messages: [
           {

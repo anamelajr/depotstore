@@ -23,7 +23,7 @@ export async function cleanTitle(product) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-terra",
         max_completion_tokens: 60,
         messages: [
           {
