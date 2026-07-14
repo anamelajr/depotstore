@@ -19,7 +19,7 @@ Page: white, full-width 2-col grid `lg:grid-cols-[minmax(0,1fr)_420px]`, no gap;
 - No thumbnails, no arrows, no borders on the main page.
 
 **Info panel (right):**
-- Sticky `top-[var(--nav-height)]`, `height: calc(100vh - var(--nav-height))`, flex column **justify-center**, padding-x ~48px (content column ~320px).
+- Sticky `top-[var(--nav-height)]`, `height: calc(100vh - var(--nav-height))`, `overflow-y-auto`, padding-x ~48px (content column ~320px). **Scroll-safe centering:** the outer sticky element is the scroll container (flex column); an inner content wrapper carries `margin-block: auto` (`my-auto`). Auto margins center the content when it fits and collapse to zero when it overflows, degrading to top-aligned scrolling — never `justify-content: center` on the scroll container itself, which distributes overflow above the top edge where it becomes unreachable.
 - Content order (subtle-typography tokens — small tracked uppercase, per the nav-menu style; no display type): store label link (10px, tracking 0.22em, underline offset) → brand + title heading (13px semibold uppercase tracking 0.06em, title on its own line in zinc-500 if brand present) → price (13px) → hairline → `SIZE — FR 38` line (10px tracked) → **description** (13px, leading-1.7, zinc-600; `line-clamp` ~10 with a quiet "More" toggle if overflowing) → CTA (full-width black bar, 10-11px tracked uppercase, `hover:bg-zinc-800`) → SaveShareRow → store name · location + "Browse store →". Sold state: muted `SOLD` token above CTA; CTA becomes "View at retailer".
 - Desktop utility row (back link + breadcrumb) is removed; a single quiet floating `← Back` (BackToFeedLink) sits top-left over the first section, fading out after the first scroll. `ProductBreadcrumb` no longer rendered on desktop.
 
@@ -30,6 +30,7 @@ Page: white, full-width 2-col grid `lg:grid-cols-[minmax(0,1fr)_420px]`, no gap;
 - Left thumbnail rail (~64px wide images, vertical, gap 10, vertically centered; active thumb marked with a 1.5px black bar on its left edge). Click a thumb → container smooth-scrolls to that image.
 - Main area: internal scroll container, one image per `100vh` section, `object-contain` at ~88vh, `shopifyImageUrl(src, 2048)`; native wheel scrolling, active index synced back to the rail via scroll position.
 - Thin black cross top-right (1px strokes, 44px hit target) closes; **Escape** closes; ArrowUp/Down move one image. On close, the main page scrolls (instant) to the section of the last-viewed image, and focus returns to it.
+- **Keyboard containment (hard requirement):** on open, focus moves to the close button; Tab/Shift+Tab are trapped within the overlay's focusable controls (close button + thumbnail buttons); the page content behind the overlay is made `inert` (attribute on the page wrapper) for the dialog's lifetime. Every close path — cross, Escape, rapid open/close — removes `inert` and returns focus to the last-viewed image's section button. Listeners and the trap live in a single effect keyed on the open state so stale handlers can't survive quick toggles.
 - Enter: overlay fades in 300ms with image scale 0.985→1; thumbs stagger-fade. Exit: 200ms fade. Both skipped under `prefers-reduced-motion`.
 - Opens at the clicked image's index.
 
@@ -49,7 +50,7 @@ Sharp edges to respect: don't introduce `overflow-x-hidden` on wrappers (breaks 
 
 - 1 image → no counter, zoom still works; 0 images → single 100vh placeholder section, no zoom.
 - 11+ images (e.g. dolcevitahub Armani biker jacket) → rail scrolls internally in zoom.
-- Panel content taller than viewport (long description) → clamp keeps it inside; `justify-center` degrades to top-aligned scroll (`overflow-y-auto`).
+- Panel content taller than viewport (long description) → clamp keeps it inside; the `my-auto` inner wrapper collapses its auto margins so the panel becomes a normal top-aligned scroll with all content reachable.
 - Image load failure → white section remains, alt text; no layout shift (reserve via max-h box).
 - Rapid open/close of zoom; scroll-restoration on Next.js navigation (existing `window.scrollTo(0,0)` on mount stays, moved into the new gallery).
 
@@ -58,6 +59,8 @@ Sharp edges to respect: don't introduce `overflow-x-hidden` on wrappers (breaks 
 1. `preview_start` the dev server (read-path only — **never** hit `/api/cron` or `/api/enrich`).
 2. Test products: `lobscur.com` McQueen skirt `new-arrival-alexander-mcqueen` (6 mixed model/packshot images), `dolcevitahub.com` Armani jacket `2000s-armani-collezioni-grey-geommetrical-biker-leather-jacket-1` (11 images), plus a 1-image and a sold product from the feed.
 3. Verify in browser at 1280 / 1440 / 1680 widths: scroll rhythm and seamlessness, counter ticks + odometer animation, panel stays fixed with centered content, description + More toggle, floating back link fade, zoom open (correct index) / thumb click smooth-scroll / active-thumb bar / wheel + arrows / X + Escape close / focus return / main-page position sync, sold state, reveal animations, `prefers-reduced-motion` (emulate), no horizontal scrollbar, sticky unbroken.
+   - **Keyboard containment:** with zoom open, Tab repeatedly — focus must cycle only through overlay controls (verify background is `inert`); Escape and rapid open/close must restore `inert` removal + focus return every time.
+   - **Short viewport:** at ~1280×620 with the description expanded, every panel element (store label through Browse store) must be reachable by scrolling the panel; nothing clipped above the top edge.
 4. Mobile viewport (375px): swipe gallery, accordions, CTA — identical to today.
 5. `npm run lint` + existing test suite (messages parity test guards new strings).
 6. Screenshots of every state as proof.
