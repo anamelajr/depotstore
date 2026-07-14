@@ -42,7 +42,7 @@ export default function DesktopNav({ stores = [] }) {
 
   return (
     <>
-      <nav className="sticky top-0 z-[1001] hidden md:flex h-[56px] border-b border-zinc-800 bg-[#0a0a0a]/95 text-zinc-50 backdrop-blur">
+      <nav className="sticky top-0 z-[1001] hidden md:flex h-[56px] border-b border-zinc-200 bg-white/95 text-zinc-950 backdrop-blur">
         <TopBar
           isMenuOpen={isMenuOpen}
           isSearchMode={isSearchMode}

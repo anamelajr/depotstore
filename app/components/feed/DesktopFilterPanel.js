@@ -105,7 +105,7 @@ export default function DesktopFilterPanel({
     <>
       {/* Overlay */}
       <div
-        className={`hidden md:block fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
+        className={`hidden md:block fixed inset-0 bg-black/30 z-40 transition-opacity duration-300 ${
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         aria-hidden="true"
@@ -120,13 +120,13 @@ export default function DesktopFilterPanel({
         aria-label={t("filter.refineLabel")}
         aria-hidden={!isOpen}
         inert={!isOpen}
-        className={`hidden md:flex flex-col fixed left-0 top-0 h-screen w-[360px] bg-[#0a0a0a] border-r border-zinc-800 z-50 transition-transform duration-300 ease-out ${
+        className={`hidden md:flex flex-col fixed left-0 top-0 h-screen w-[360px] bg-white border-r border-zinc-200 z-50 transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-5 border-b border-zinc-800 shrink-0">
-          <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-50">
+        <div className="flex items-center justify-between h-14 px-5 border-b border-zinc-200 shrink-0">
+          <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-950">
             {t("filter.refine")}
           </span>
           <button
@@ -134,7 +134,7 @@ export default function DesktopFilterPanel({
             type="button"
             onClick={onClose}
             aria-label={t("filter.closeLabel")}
-            className="font-mono text-[18px] leading-none text-zinc-400 transition-colors hover:text-zinc-50"
+            className="font-mono text-[18px] leading-none text-zinc-500 transition-colors hover:text-zinc-950"
           >
             ×
           </button>
@@ -144,7 +144,7 @@ export default function DesktopFilterPanel({
         <div className="flex-1 overflow-y-auto px-5 py-6 space-y-8">
           {/* CATEGORY section — above store */}
           <section>
-            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
               {t("filter.category")}
             </p>
             {CATEGORY_GROUPS.map((group) => {
@@ -157,7 +157,7 @@ export default function DesktopFilterPanel({
                     type="button"
                     onClick={() => onToggleCategory(group.value)}
                     className={`block w-full text-left py-2 pl-4 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                      active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                      active ? "text-zinc-950" : "text-zinc-600 hover:text-zinc-950"
                     }`}
                   >
                     {active && <span className="-ml-4 mr-1">— </span>}
@@ -178,11 +178,11 @@ export default function DesktopFilterPanel({
                     type="button"
                     onClick={() => toggleGroup(group.value)}
                     className={`flex w-full items-center justify-between py-2 pl-4 pr-1 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                      hasActiveChild ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                      hasActiveChild ? "text-zinc-950" : "text-zinc-600 hover:text-zinc-950"
                     }`}
                   >
                     <span>{group.label}</span>
-                    <span className="text-zinc-600 text-[13px] leading-none pr-1">
+                    <span className="text-zinc-400 text-[13px] leading-none pr-1">
                       {isExpanded ? "−" : "+"}
                     </span>
                   </button>
@@ -196,7 +196,7 @@ export default function DesktopFilterPanel({
                             type="button"
                             onClick={() => onToggleCategory(child.value)}
                             className={`block w-full text-left py-2 pl-8 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                              active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                              active ? "text-zinc-950" : "text-zinc-600 hover:text-zinc-950"
                             }`}
                           >
                             {active && <span className="-ml-4 mr-1">— </span>}
@@ -213,7 +213,7 @@ export default function DesktopFilterPanel({
 
           {/* STORE section — below category */}
           <section>
-            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600">
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
               {t("filter.store")}
             </p>
             {storeOptions.map((opt) => {
@@ -230,7 +230,7 @@ export default function DesktopFilterPanel({
                     }
                   }}
                   className={`block w-full text-left py-2 pl-4 font-mono text-[11px] uppercase tracking-widest transition-colors ${
-                    active ? "text-zinc-50" : "text-zinc-300 hover:text-zinc-50"
+                    active ? "text-zinc-950" : "text-zinc-600 hover:text-zinc-950"
                   }`}
                 >
                   {active && <span className="-ml-4 mr-1">— </span>}
@@ -242,11 +242,11 @@ export default function DesktopFilterPanel({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-zinc-800 px-5 py-4 shrink-0">
+        <div className="border-t border-zinc-200 px-5 py-4 shrink-0">
           <button
             type="button"
             onClick={onClearAll}
-            className="font-mono text-[11px] uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-50"
+            className="font-mono text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-950"
           >
             {t("filter.reset")}
           </button>

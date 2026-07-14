@@ -42,7 +42,7 @@ export default function DesktopSortMenu({
       ref={menuRef}
       role="menu"
       aria-label={t("sort.menuLabel")}
-      className="absolute bottom-full right-0 mb-2 w-[220px] bg-zinc-950/85 backdrop-blur border border-zinc-800/40 shadow-[0_8px_28px_rgba(0,0,0,0.6)] py-1.5"
+      className="absolute bottom-full right-0 mb-2 w-[220px] bg-white/95 backdrop-blur border border-zinc-200 shadow-[0_8px_28px_rgba(0,0,0,0.12)] py-1.5"
     >
       {getSortOptions(language).map((opt) => {
         const active = selectedSort === opt.value;
@@ -55,8 +55,8 @@ export default function DesktopSortMenu({
               onSortChange(opt.value);
               onClose();
             }}
-            className={`flex w-full items-center justify-between px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors hover:bg-white/5 ${
-              active ? "text-zinc-50" : "text-zinc-400 hover:text-zinc-50"
+            className={`flex w-full items-center justify-between px-4 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors hover:bg-zinc-950/5 ${
+              active ? "text-zinc-950" : "text-zinc-500 hover:text-zinc-950"
             }`}
           >
             <span>{opt.label}</span>

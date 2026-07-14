@@ -31,7 +31,7 @@ function CloseIcon() {
 }
 
 const baseLink =
-  "font-mono text-[11px] uppercase tracking-widest text-zinc-300 hover:text-zinc-50 transition-colors";
+  "font-mono text-[11px] uppercase tracking-widest text-zinc-600 hover:text-zinc-950 transition-colors";
 
 export default function TopBar({
   isMenuOpen,
@@ -72,7 +72,7 @@ export default function TopBar({
             }
           }}
           placeholder={t("nav.searchPlaceholder")}
-          className="flex-1 bg-transparent font-mono text-[13px] uppercase tracking-widest text-zinc-50 placeholder-zinc-600 outline-none"
+          className="flex-1 bg-transparent font-mono text-[13px] uppercase tracking-widest text-zinc-950 placeholder-zinc-400 outline-none"
         />
         <button
           type="button"
@@ -109,7 +109,7 @@ export default function TopBar({
         )}
       </div>
 
-      <Link href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-50">
+      <Link href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-950">
         DÉPÔT
       </Link>
 

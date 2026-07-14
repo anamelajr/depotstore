@@ -2,8 +2,16 @@ import Link from "next/link";
 import Price from "./Price.js";
 import T from "./T";
 import SaveShareRow from "./SaveShareRow";
+import ClampedDescription from "./ClampedDescription";
 import { buildFreshFeedUrl } from "../lib/feed-utils.js";
 
+const CONTACT_EMAIL = "hello@depot.paris";
+
+// Full-height sticky panel for the desktop PDP (YSL-style). The sticky
+// element itself is the scroll container; the inner wrapper's `my-auto`
+// centers the content when it fits and collapses to zero when it overflows —
+// never `justify-center` on the scroll container, which would push overflow
+// above the reachable top edge.
 export default function ProductInfoPanel({
   brand,
   storeName,
@@ -15,6 +23,7 @@ export default function ProductInfoPanel({
   storeLocation,
   handle,
   productUrl,
+  description,
 }) {
   const ctaHref = `https://${storeDomain}/products/${handle}?utm_source=depot`;
   // CTA text is a <T> leaf so it swaps live on language toggle.
@@ -26,71 +35,105 @@ export default function ProductInfoPanel({
   const multiSize = hasSizes && sizes.length > 1;
   const sizeValue = hasSizes ? sizes.join(" · ") : null;
 
-  // Heading combines brand + title; when brand is null the store label above
-  // already carries the store, so the heading is just the title.
-  const heading = brand ? `${brand} — ${title}` : title;
-
   return (
-    <div className="hidden lg:block lg:sticky lg:top-[calc(var(--nav-height)+2rem)] lg:self-start lg:pt-6">
-      {/* Store label */}
-      <Link
-        href={buildFreshFeedUrl({ store: storeDomain })}
-        className="font-mono text-[11px] uppercase tracking-[0.22em] underline underline-offset-[6px] decoration-[0.5px] text-zinc-600 hover:text-zinc-900 transition-colors"
-      >
-        {storeName}
-      </Link>
+    <div className="sticky top-[var(--nav-height)] flex h-[calc(100vh-var(--nav-height))] flex-col overflow-y-auto pl-8 pr-6">
+      <div className="my-auto w-full max-w-[400px] py-12">
+        {/* Brand + title heading with price directly beneath (YSL block) */}
+        <h1 className="font-mono text-[13px] font-semibold uppercase tracking-[0.08em] leading-[1.6] text-zinc-900">
+          {brand && <span className="block">{brand}</span>}
+          <span className={brand ? "block font-normal" : "block"}>{title}</span>
+        </h1>
+        {price && (
+          <div className="mt-2">
+            <Price
+              eur={price}
+              className="font-mono text-[13px] tracking-[0.06em] text-zinc-600"
+            />
+          </div>
+        )}
 
-      {/* Brand + title heading */}
-      <h1 className="mt-5 font-sans text-[20px] font-semibold uppercase tracking-[0.04em] leading-[1.35] text-zinc-900">
-        {heading}
-      </h1>
-
-      {/* Price */}
-      {price && (
-        <div className="mt-4">
-          <Price eur={price} className="font-mono text-[15px] text-zinc-800" />
+        {/* Store line — sits where YSL places the colour name */}
+        <div className="mt-12">
+          <Link
+            href={buildFreshFeedUrl({ store: storeDomain })}
+            className="font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-900 hover:text-zinc-500 transition-colors"
+          >
+            {storeName}
+            {storeLocation && (
+              <span className="text-zinc-400"> · {storeLocation}</span>
+            )}
+          </Link>
         </div>
-      )}
 
-      {/* Single divider — the only hairline above the store block */}
-      <div className="border-b border-zinc-200 mt-6 mb-5" />
+        {/* Size row — one clean black hairline, YSL-style */}
+        {hasSizes && (
+          <div className="mt-10 flex items-baseline justify-between border-b border-zinc-900 pb-3.5">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-900">
+              <T k={multiSize ? "product.sizes" : "product.size"} />
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-900">
+              {sizeValue}
+            </span>
+          </div>
+        )}
 
-      {/* Size — one quiet line */}
-      {hasSizes && (
-        <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-zinc-600">
-          <T k={multiSize ? "product.sizes" : "product.size"} /> {sizeValue}
-        </p>
-      )}
+        {/* Description */}
+        {description && (
+          <div className="mt-10">
+            <ClampedDescription text={description} />
+          </div>
+        )}
 
-      {/* CTA */}
-      <div className="mt-7">
-        <a
-          href={ctaHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full bg-black hover:bg-zinc-800 text-white text-center py-4 font-mono text-[11px] uppercase tracking-[0.22em] transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
-        >
-          <T k={available ? "product.buyAt" : "product.viewOn"} /> {storeName}
-        </a>
-      </div>
+        {/* Sold token */}
+        {!available && (
+          <p className="mt-10 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+            <T k="product.sold" />
+          </p>
+        )}
 
-      {/* Save / Share */}
-      <SaveShareRow productUrl={productUrl} title={title} className="mt-3 flex gap-6" />
+        {/* CTA */}
+        <div className={available ? "mt-10" : "mt-4"}>
+          <a
+            href={ctaHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full bg-black hover:bg-zinc-800 text-white text-center py-4 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
+          >
+            <T k={available ? "product.buyAt" : "product.viewOn"} /> {storeName}
+          </a>
+        </div>
 
-      {/* Store info — name · location with a link to the store feed. */}
-      <div className="mt-8">
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900">
-          {storeName}
-          {storeLocation && (
-            <span className="text-zinc-400"> · {storeLocation}</span>
-          )}
-        </p>
-        <Link
-          href={buildFreshFeedUrl({ store: storeDomain })}
-          className="mt-3 inline-block font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900 underline underline-offset-[6px] decoration-[0.5px] hover:text-zinc-500"
-        >
-          <T k="product.browseStore" /> →
-        </Link>
+        {/* Save / Share */}
+        <SaveShareRow
+          productUrl={productUrl}
+          title={title}
+          variant="inline"
+          className="mt-5 flex gap-8"
+        />
+
+        {/* Detail links — YSL-style chevron list under the buy button */}
+        <div className="mt-12 space-y-3.5">
+          <a
+            href={`${productUrl}?utm_source=depot`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-fit font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-900 hover:text-zinc-500 transition-colors"
+          >
+            <T k="product.moreDetails" /> <span aria-hidden="true">›</span>
+          </a>
+          <Link
+            href={buildFreshFeedUrl({ store: storeDomain })}
+            className="block w-fit font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-900 hover:text-zinc-500 transition-colors"
+          >
+            <T k="product.browseStore" /> <span aria-hidden="true">›</span>
+          </Link>
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="block w-fit font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-900 hover:text-zinc-500 transition-colors"
+          >
+            <T k="product.contact" /> <span aria-hidden="true">›</span>
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -318,7 +318,7 @@ export default function FeedClient({ stores = [] }) {
 
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-clip">
-      <div className="min-h-screen bg-[#0a0a0a] text-zinc-50">
+      <div className="min-h-screen bg-white text-zinc-950">
 
         {/* Mobile panels */}
         <MobileFilterPanel
@@ -371,15 +371,15 @@ export default function FeedClient({ stores = [] }) {
             </div>
           )}
           {loading ? (
-            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600">
               Loading products…
             </div>
           ) : error ? (
-            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-red-300">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-red-600">
               {error}
             </div>
           ) : products.length === 0 ? (
-            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950 p-6 text-sm text-zinc-300">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600">
               No products found.
             </div>
           ) : (
@@ -400,7 +400,7 @@ export default function FeedClient({ stores = [] }) {
                 ))}
               </div>
               <div className="flex flex-col items-center gap-4 pt-10">
-                <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
                   {products.length.toLocaleString(numberLocale)} {t("feed.countOf")} {total.toLocaleString(numberLocale)} {t("feed.countItems")}
                 </p>
                 {hasMore && (
@@ -408,7 +408,7 @@ export default function FeedClient({ stores = [] }) {
                     type="button"
                     onClick={handleLoadMore}
                     disabled={loadingMore}
-                    className="w-full border border-zinc-700 py-4 px-6 font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-400 transition-all duration-200 hover:border-zinc-400 hover:text-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed active:bg-zinc-900/40"
+                    className="w-full border border-zinc-300 py-4 px-6 font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-500 transition-all duration-200 hover:border-zinc-900 hover:text-zinc-950 disabled:opacity-40 disabled:cursor-not-allowed active:bg-zinc-100"
                   >
                     {loadingMore ? "—" : t("feed.loadMore")}
                   </button>

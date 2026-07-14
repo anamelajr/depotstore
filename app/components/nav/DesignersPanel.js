@@ -22,9 +22,9 @@ const TOP_DESIGNERS = [
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 const itemBase =
-  "block py-1 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-300 hover:text-zinc-50";
+  "block py-1 font-mono text-[11px] uppercase tracking-widest transition-colors text-zinc-600 hover:text-zinc-950";
 const labelStyle =
-  "mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600";
+  "mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400";
 const letterBase =
   "font-mono text-[11px] uppercase tracking-widest";
 
@@ -66,14 +66,14 @@ export default function DesignersPanel({ searchParams }) {
               <Link
                 key={letter}
                 href={`/designers#${letter}`}
-                className={`${letterBase} text-zinc-50`}
+                className={`${letterBase} text-zinc-950`}
               >
                 {letter}
               </Link>
             ) : (
               <span
                 key={letter}
-                className={`${letterBase} text-zinc-700`}
+                className={`${letterBase} text-zinc-300`}
               >
                 {letter}
               </span>
@@ -82,7 +82,7 @@ export default function DesignersPanel({ searchParams }) {
         </div>
         <Link
           href="/designers"
-          className="mt-6 inline-block font-mono text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-50 transition-colors"
+          className="mt-6 inline-block font-mono text-[11px] uppercase tracking-widest text-zinc-500 hover:text-zinc-950 transition-colors"
         >
           {t("nav.viewAllDesigners")} →
         </Link>
