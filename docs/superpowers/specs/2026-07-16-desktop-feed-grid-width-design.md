@@ -28,7 +28,25 @@ All changes are Tailwind class edits in two files; no logic changes.
   `grid grid-cols-2 gap-10 lg:grid-cols-3 lg:gap-x-3.5 lg:gap-y-16`
   (`gap-x-3.5` = 14px, `gap-y-16` = 64px)
 
-### 2. `app/feed/page.js`
+### 2. Responsive image delivery (Codex adversarial-review finding)
+
+`HoverSwapImage` requests a fixed `width=800` Shopify derivative, sized for the
+old ~400px card at 2× DPR. The new grid makes cards ~455px at 1440px and ~830px
+on a 27″ monitor, so retina displays would upscale (blur) the 800px image —
+defeating the redesign. Fix additively, opt-in, so no other consumer changes:
+
+- **`app/components/HoverSwapImage.js`**: accept an optional `sizes` prop. When
+  set **and** the URL is a canonical `cdn.shopify.com` URL, render
+  `srcSet={[800, 1200, 1600].map(w => shopifyImageUrl(url, w) + " " + w + "w")}`
+  plus the `sizes` attribute (both imgs). When absent (default), behavior is
+  byte-identical to today.
+- **`app/components/ProductCard.js`**: accept optional `imageSizes` prop,
+  thread it to `HoverSwapImage` as `sizes`.
+- **`app/feed/FeedClient.js`**: pass
+  `imageSizes="(min-width: 1024px) 33vw, 50vw"` to feed `ProductCard`s.
+- Homepage / MoreFromStore / other consumers pass nothing → unchanged.
+
+### 3. `app/feed/page.js`
 
 - **Loading fallback (line ~19)** mirrors the main container
   (`mx-auto max-w-7xl px-4 pb-24 pt-3 md:pb-32 md:pt-8`) — update it with the
@@ -39,7 +57,7 @@ All changes are Tailwind class edits in two files; no logic changes.
 
 - `overflow-x-clip` on the feed wrapper (FeedClient.js:320) — required for sticky nav (CLAUDE.md invariant).
 - Fixed bottom filter/sort bar (`DesktopFeedBar`, `DesktopSortMenu`) — position-fixed, independent of grid width.
-- `ProductCard.js` / `HoverSwapImage.js` — card markup, 4:5 aspect, typography all stay.
+- Card markup, 4:5 aspect, typography all stay (only the additive `sizes`/`imageSizes` props above touch `ProductCard.js` / `HoverSwapImage.js`).
 - Homepage grid (`app/page.js:111`).
 - Desktop active-filter chips row (FeedClient.js:354) — lives inside `<main>`, inherits the new width naturally.
 
@@ -52,6 +70,7 @@ All changes are Tailwind class edits in two files; no logic changes.
 2. Resize to mobile (375px): feed identical to today (2 cols, `gap-10`, 16px side padding).
 3. Check tablet `md` (768–1024): 2 columns with 24px side padding — acceptable intermediate state.
 4. Confirm the loading skeleton (`app/feed/page.js`) matches the loaded layout (no width jump).
-5. Homepage unchanged.
+5. Homepage unchanged — including its image requests (still plain `width=800` src, no srcset).
+6. In the network panel, feed card images carry `srcset` with 800/1200/1600 derivatives and the browser picks ≥1200 on a 2× display at desktop width.
 
 Read-path UI only — safe against prod Supabase; do not touch `/api/cron` / `/api/enrich`.

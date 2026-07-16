@@ -343,7 +343,7 @@ export default function FeedClient({ stores = [] }) {
           onOpenFilters={() => { setSortOpen(false); setFilterOpen(true); }}
           onOpenSort={() => { setFilterOpen(false); setSortOpen(true); }}
         />
-        <main className="mx-auto max-w-7xl px-4 pb-32 md:pb-32 pt-3 md:pt-8">
+        <main className="px-4 md:px-6 pb-32 md:pb-32 pt-3 md:pt-8">
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -384,7 +384,7 @@ export default function FeedClient({ stores = [] }) {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-10 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-10 lg:grid-cols-3 lg:gap-x-3.5 lg:gap-y-16">
                 {products.map((p) => (
                   <div
                     key={`${p.productUrl ?? "unknown"}-${p.name}`}
@@ -395,7 +395,7 @@ export default function FeedClient({ stores = [] }) {
                       sessionStorage.setItem("depot_feed_url", window.location.pathname + window.location.search);
                     }}
                   >
-                    <ProductCard product={p} />
+                    <ProductCard product={p} imageSizes="(min-width: 1024px) 33vw, 50vw" />
                   </div>
                 ))}
               </div>

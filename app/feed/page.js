@@ -16,7 +16,7 @@ export default async function FeedPage() {
 function FeedLoadingFallback() {
   return (
     <div className="min-h-screen bg-white font-mono text-zinc-950">
-      <main className="mx-auto max-w-7xl px-4 pb-24 pt-3 md:pb-32 md:pt-8">
+      <main className="px-4 md:px-6 pb-24 pt-3 md:pb-32 md:pt-8">
         <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
           Loading products...
         </p>
