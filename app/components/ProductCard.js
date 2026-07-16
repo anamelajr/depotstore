@@ -6,7 +6,7 @@ import HoverSwapImage from "./HoverSwapImage.js";
 import Price from "./Price.js";
 import { useLanguage } from "./LanguageProvider";
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, imageSizes }) {
   const { t } = useLanguage();
   const {
     name,
@@ -52,7 +52,7 @@ export default function ProductCard({ product }) {
       {/* Image */}
       <div className="relative aspect-[4/5] shrink-0 overflow-hidden bg-zinc-100">
         {imageUrl ? (
-          <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={displayTitle} />
+          <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={displayTitle} sizes={imageSizes} />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-100 text-xs text-zinc-400">
             {t("product.noImage")}
