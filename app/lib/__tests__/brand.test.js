@@ -7,7 +7,9 @@ import {
   canonicalBrand,
   titleContainsAllowedBrand,
   brandFromHandle,
+  BRAND_ALIASES,
 } from "../brand.js";
+import BRANDS from "../../brands.js";
 
 // titleLeaksAllowedBrandStrict is the WRITE-path guard for
 // scripts/backfillTitleClean.mjs (SKIP:brand_in_title). It must anchor at word
@@ -192,5 +194,54 @@ describe("alias-only brands stay recognised", () => {
   it("still returns null for a handle with no allowlisted slug", () => {
     expect(brandFromHandle("plain-wool-blazer")).toBe(null);
     expect(brandFromHandle("")).toBe(null);
+  });
+});
+
+
+// canonicalBrand made the alias table a WRITE-path concern, which couples it to
+// the /designers directory: those links are `/feed?brand=<BRANDS entry>` and
+// resolve through `.ilike("brand", "%entry%")`, which PostgreSQL evaluates
+// accent-SENSITIVELY. So an alias whose canonical form carries a diacritic the
+// directory entry lacks ("Alaia" → "ALAÏA") produces rows no directory link can
+// reach. Confirmed against production: `ilike '%Alaia%'` returned 7 rows while
+// 14 `ALAÏA` rows sat unreachable.
+//
+// The guard: every canonical label must be a case-insensitive superstring of
+// some BRANDS entry. Three aliases are grandfathered — their canonical targets
+// are in neither BRANDS nor the allowlist, a pre-existing dead-alias class
+// documented in docs/plan-uniform-brand-labels.md, unrelated to this change.
+const DIRECTORY_UNREACHABLE_ALIASES = new Set([
+  "BELLEVILLE SASSOON",
+  "FAYCAL AMOR",
+  "GIANFRANCO FERRE",
+]);
+
+describe("canonical labels stay reachable from /designers", () => {
+  it("matches some BRANDS entry under accent-sensitive ILIKE", () => {
+    const unreachable = Object.keys(BRAND_ALIASES)
+      .filter((alias) => !DIRECTORY_UNREACHABLE_ALIASES.has(alias))
+      .filter((alias) => {
+        const canonical = canonicalBrand(alias).toLowerCase();
+        return !BRANDS.some((b) => canonical.includes(b.toLowerCase()));
+      });
+    expect(unreachable).toEqual([]);
+  });
+
+  it("gives the Alaïa family exactly one working directory entry", () => {
+    expect(BRANDS).toContain("Alaïa");
+    // Both former entries were removed: accent-sensitive ILIKE meant neither
+    // could match the canonical ALAÏA label they now resolve to.
+    expect(BRANDS).not.toContain("Alaia");
+    expect(BRANDS).not.toContain("Azzedine Alaïa");
+  });
+
+  it("keeps the removed Alaïa spellings recognised and handle-recoverable", () => {
+    expect(isAllowedBrand("Alaia")).toBe(true);
+    expect(isAllowedBrand("Azzedine Alaïa")).toBe(true);
+    expect(brandFromHandle("azzedine-alaia-wool-dress")).toBeTruthy();
+    expect(brandFromHandle("alaia-leather-belt")).toBeTruthy();
+    expect(
+      canonicalBrand(brandFromHandle("alaia-leather-belt").toUpperCase())
+    ).toBe("ALAÏA");
   });
 });

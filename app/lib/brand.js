@@ -6,7 +6,7 @@ import BRANDS from "../brands.js";
 // stores ONLY the canonical form ("maison margiela"), so a title carrying the
 // common short spelling ("Margiela Jacket") would slip past the substring
 // detectors. See ALIAS_SPELLINGS below.
-const BRAND_ALIASES = {
+export const BRAND_ALIASES = {
   "MARGIELA": "MAISON MARGIELA",
   "MARTIN MARGIELA": "MAISON MARGIELA",
   "MAISON MARTIN MARGIELA": "MAISON MARGIELA",
