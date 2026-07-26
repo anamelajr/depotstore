@@ -36,7 +36,7 @@ So, inverting the usual schema-first rule (this is data, not schema — code doe
 **Rollback ordering (the mirror rule):** if the code deploy is ever reverted while the store rows are active, cron still discovers both domains from the DB but without the `FILTER_BY_BRAND` entries — the next hourly run imports both full catalogs unfiltered. Note that deactivating a store row only removes it from nav/map/filters/sync — product reads (`productQueries.js`) never join `stores.active`, so already-imported products would stay in the global feed and remain reachable via `?store=` links and PDP URLs. Full rollback therefore runs in this order:
 
 1. `UPDATE stores SET active = false WHERE domain IN ('treviseparis.com','chezsnowbunny.fr');`
-2. `UPDATE products SET hidden = true WHERE store_domain IN ('treviseparis.com','chezsnowbunny.fr');` — hidden, not deleted, matching the codebase's hide-don't-delete convention; reversible with `hidden = false` if the rollback is reversed. (Snapshot before running, per CLAUDE.md.)
+2. `UPDATE products SET hidden = true WHERE store_domain IN ('treviseparis.com','chezsnowbunny.fr');` — hidden, not deleted, matching the codebase's hide-don't-delete convention. (Snapshot before running, per CLAUDE.md.) **Reversing this rollback must NOT be a blanket `hidden = false`:** some rows in these domains are policy-hidden by the enrich pipeline (`hidden = true, enrich_attempts = MAX` — e.g. the 20 substring false positives) and must stay hidden. Restore with `UPDATE products SET hidden = false WHERE store_domain IN (…) AND enrich_attempts < 3;` — pipeline-rejected rows all carry `enrich_attempts = MAX`, so the attempts guard preserves them.
 3. Verify: the global feed and a direct `?store=` filter return none of these products; next cron summary no longer lists the domains.
 4. Revert the code (including removing the two domains from `FALLBACK_STORES` if the follow-up commit already shipped).
 
@@ -80,18 +80,20 @@ Coordinates geocoded via Nominatim from the user-supplied addresses:
 - Trévise — 9 Rue Oberkampf, 75011 Paris → `48.8631, 2.3682`
 - Chez Snow Bunny — 12 Rue Dupetit-Thouars, 75003 Paris → `48.8654, 2.3621`
 
+`ON CONFLICT … DO UPDATE SET active = true` (not `DO NOTHING`) so re-running after a rollback — which retains the row with `active = false` — actually reactivates it instead of silently no-opping. Confirm the statement reports `INSERT 0 1` / check `active = true` afterwards.
+
 Step 1 — Trévise first:
 ```sql
 INSERT INTO stores (domain, store_name, display_name, location, lat, lng, active) VALUES
   ('treviseparis.com', 'Trévise', 'Trévise', 'Oberkampf', 48.8631, 2.3682, true)
-ON CONFLICT (domain) DO NOTHING;
+ON CONFLICT (domain) DO UPDATE SET active = true;
 ```
 
 Step 2 — after the next cron cycle verifies Trévise (see Verification), Chez Snow Bunny:
 ```sql
 INSERT INTO stores (domain, store_name, display_name, location, lat, lng, active) VALUES
   ('chezsnowbunny.fr', 'Chez Snow Bunny', 'Chez Snow Bunny', 'Le Marais', 48.8654, 2.3621, true)
-ON CONFLICT (domain) DO NOTHING;
+ON CONFLICT (domain) DO UPDATE SET active = true;
 ```
 
 ## Verification
