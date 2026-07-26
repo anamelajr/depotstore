@@ -5,6 +5,7 @@ import { cleanTitle } from "../../lib/cleanTitle.js";
 import {
   assignCategory,
   isAllowedBrand,
+  canonicalBrand,
   FILTER_BY_BRAND,
   SELF_BRANDED_STORES,
   isSelfBranded,
@@ -195,7 +196,14 @@ export async function POST(request) {
       }
       if (result) {
         if (!isHandleFallback) openaiSucceeded++;
-        const { brand: newBrand, title: newTitle } = result;
+        // Both producers of a brand label converge on `result`: cleanTitle's
+        // model output and brandFromHandle's slug hit. Canonicalizing here —
+        // before the allowlist gate, isSelfBranded, assignCategory and the RPC
+        // write — is what makes one designer land under one stored label
+        // ("Just Cavalli" → "ROBERTO CAVALLI"). Non-aliased brands pass
+        // through unchanged.
+        const { brand: rawBrand, title: newTitle } = result;
+        const newBrand = canonicalBrand(rawBrand);
         // Allowlist gate for filtered stores. Hide the row instead of
         // deleting it. A delete would be re-created on the next sync
         // (Shopify still sells the item), then re-enriched, re-rejected,

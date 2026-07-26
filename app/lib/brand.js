@@ -24,7 +24,9 @@ const BRAND_ALIASES = {
   "DIOR HOMME": "DIOR",
   "GIANNI VERSACE": "VERSACE",
   "GUCCI BY TOM FORD": "GUCCI",
-  "CAVALLI CLASS": "CAVALLI",
+  "CAVALLI": "ROBERTO CAVALLI",
+  "JUST CAVALLI": "ROBERTO CAVALLI",
+  "CAVALLI CLASS": "ROBERTO CAVALLI",
   "BIKKEMBERGS": "DIRK BIKKEMBERGS",
 };
 
@@ -53,6 +55,16 @@ export function normalizeBrand(value) {
   const upper = value.trim().toUpperCase();
   const resolved = BRAND_ALIASES[upper] !== undefined ? BRAND_ALIASES[upper] : value;
   return normalizeBrandTokens(resolved);
+}
+
+// Canonical DISPLAY form for persistence. normalizeBrand() answers "are these
+// the same brand?" (lowercased, diacritic-stripped — not displayable); this
+// answers "what label do we store?". Returns the input unchanged when no alias
+// applies, so non-aliased brands keep the exact cleanTitle output.
+export function canonicalBrand(value) {
+  if (!value || typeof value !== "string") return value;
+  const upper = value.trim().toUpperCase();
+  return BRAND_ALIASES[upper] ?? value.trim();
 }
 
 // Raw alias spellings, normalized but NOT canonicalized — "margiela",
@@ -179,7 +191,15 @@ export function titleLeaksAllowedBrandStrict(rawTitle) {
 // or `miumiu-bag` even though those brand strings are accepted everywhere
 // else. Sorted by slug length descending so the most specific match wins
 // (e.g. "maison-margiela" before "margiela").
-const BRAND_HANDLE_SLUGS = BRANDS
+//
+// Built from BRANDS *plus* the alias keys — the same two-source construction
+// BRAND_SET_NORMALIZED uses. Without the alias keys, moving a name out of
+// BRANDS and into BRAND_ALIASES (the canonicalization pattern) would keep it
+// allowlist-recognised but silently kill handle recovery for it, e.g.
+// `cavalli-turquoise-belt` / `just-cavalli-*`. The returned label is
+// canonicalized downstream by canonicalBrand(), so a hit from either list
+// resolves to the same stored label.
+const BRAND_HANDLE_SLUGS = [...BRANDS, ...ALIAS_SPELLINGS]
   .flatMap((b) => {
     const dashed = b
       .normalize("NFD")

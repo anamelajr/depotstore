@@ -73,7 +73,6 @@ const BRANDS = [
   // French luxury
   "Chanel",
   "Dior",
-  "Christian Dior",
   "Saint Laurent",
   "Yves Saint Laurent",
   "YSL",
@@ -99,10 +98,8 @@ const BRANDS = [
   "Miu Miu",
   "Gucci",
   "Versace",
-  "Gianni Versace",
   "Dolce & Gabbana",
   "Roberto Cavalli",
-  "Cavalli",
   "Valentino",
   "Fendi",
   "Bottega Veneta",
