@@ -84,7 +84,16 @@ export default function FeedClient({ stores = [], initialData = null }) {
 
   // On mount: check sessionStorage for back-navigation scroll restore.
   // Runs before the filter fetch effect so restoreCountRef is set in time.
-  useEffect(() => {
+  //
+  // useLayoutEffect, not useEffect: with server-seeded state `loading` starts
+  // false, so a passive effect would let the first paint show the seeded
+  // 30-product grid before the restore state is even read — a visible flash
+  // (grid → blank → restored grid) plus a clamped browser scroll. Reading the
+  // saved state pre-paint and synchronously flipping `loading` back on keeps
+  // the first paint blank, exactly like the pre-SSR behavior. The read must
+  // NOT move earlier still (into a useState initializer): that would diverge
+  // from the server-rendered HTML during hydration.
+  useLayoutEffect(() => {
     const savedScroll = sessionStorage.getItem("depot_feed_scroll");
     const savedCount = sessionStorage.getItem("depot_feed_count");
     const savedKey = sessionStorage.getItem("depot_feed_filter_key");
@@ -106,6 +115,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
       scrollRestorePending.current = true;
       restoreCountRef.current = count;
       restoreDoneRef.current = false;
+      setLoading(true); // pre-paint: hide the seeded grid until the restore batch lands
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,6 +220,15 @@ export default function FeedClient({ stores = [], initialData = null }) {
     setLoading(true);
     setError(null);
 
+    // Tracks whether a restore fetch actually delivered products. A restore
+    // that fails or comes back empty never satisfies the scroll-restore
+    // layout effect's `products.length > 0` guard, so `scrollRestorePending`
+    // would stay true forever — and a stale pending flag makes the
+    // apply-server-data effect skip every later soft-nav payload while this
+    // effect skips too (serverMatch + consumed ref): a permanently stuck
+    // feed. When the restore settles without products, abandon it fully.
+    let restoreDelivered = false;
+
     const params = new URLSearchParams();
     params.set("page", "1");
     params.set("limit", String(limit));
@@ -229,6 +248,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
         setProducts(data.products || []);
         setTotal(data.total ?? 0);
         setError(null);
+        restoreDelivered = (data.products || []).length > 0;
       })
       .catch((err) => {
         if (err.name !== "AbortError") {
@@ -245,6 +265,17 @@ export default function FeedClient({ stores = [], initialData = null }) {
         if (restoreCount !== null) {
           restoreCountRef.current = null;   // restore consumed
           restoreDoneRef.current = true;    // unblocks the scroll-restore jump
+          if (!restoreDelivered) {
+            // Failed/empty restore: the layout effect will never run its
+            // cleanup, so do it here — drop the pending jump and the saved
+            // state so later navigations aren't blocked.
+            scrollRestorePending.current = false;
+            scrollRestoreY.current = null;
+            sessionStorage.removeItem("depot_feed_scroll");
+            sessionStorage.removeItem("depot_feed_count");
+            sessionStorage.removeItem("depot_feed_filter_key");
+            sessionStorage.removeItem("depot_feed_url");
+          }
         }
       });
 
