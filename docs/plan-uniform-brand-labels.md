@@ -47,14 +47,28 @@ label — the pattern already used for `"MARGIELA" → "MAISON MARGIELA"`.
 
 Verified experimentally this session (three isolated states):
 
-| | `isAllowedBrand("Cavalli")` | `titleContainsAllowedBrand` | `normalizeBrand` |
-|---|---|---|---|
-| today | true | true | `"cavalli"` |
-| BRANDS entry removed, **no alias** | **false** | **false** | `"cavalli"` |
-| removed **+ alias added** | true | true | `"roberto cavalli"` |
+| | `isAllowedBrand("Cavalli")` | `titleContainsAllowedBrand` | `normalizeBrand` | `brandFromHandle("cavalli-…")` |
+|---|---|---|---|---|
+| today | true | true | `"cavalli"` | `"Cavalli"` |
+| BRANDS entry removed, **no alias** | **false** | **false** | `"cavalli"` | **null** |
+| removed **+ alias added** | true | true | `"roberto cavalli"` | **null** ← change 3 fixes |
 
-**The two edits are a pair.** Removing a `BRANDS` entry without adding the
+**The two edits are a pair** — removing a `BRANDS` entry without adding the
 matching alias silently stops admitting that designer at sync time.
+
+**`BRANDS` has a third consumer the alias table does not reach.**
+`BRAND_HANDLE_SLUGS` ([`brand.js:184`](app/lib/brand.js)) is derived from
+`BRANDS` alone, unlike `BRAND_SET_NORMALIZED` which folds in alias keys. So the
+alias swap restores allowlist recognition but **not** handle recovery: after the
+swap `brandFromHandle("cavalli-turquoise-belt")` returns null while
+`isAllowedBrand("Cavalli")` still returns true. `brandFromHandle` is the
+deterministic rescue when `cleanTitle` returns null (a retryable failure per
+CLAUDE.md); losing it means those rows burn their retry budget unlabelled.
+
+Measured exposure: **145 live products** carry a `cavalli` handle without
+`roberto-cavalli` in it (`just-cavalli-leo-print-top`,
+`cavalli-turquoise-belt`, …) against 174 that carry the long form. Raised by
+Codex adversarial review, confirmed by execution.
 
 ## Code changes (one branch)
 
@@ -85,20 +99,53 @@ export function canonicalBrand(value) {
 }
 ```
 
-### 3. `app/brands.js` — drop the three duplicate entries
+### 3. `app/lib/brand.js` — derive handle slugs from aliases too
 
-Remove `"Cavalli"` (~line 105), `"Christian Dior"` (~76), `"Gianni Versace"`
-(~102). Each is (or becomes) an alias key, so recognition is preserved by
-change 1; `/designers` ([`app/designers/page.js:137`](app/designers/page.js))
-renders `BRANDS` directly, so this is what de-duplicates that page.
+Without this, change 4's `BRANDS` removals break handle recovery for the 145
+products measured above. `BRAND_HANDLE_SLUGS` currently reads:
+
+```js
+const BRAND_HANDLE_SLUGS = BRANDS
+```
+
+Extend the source to `BRANDS` **plus** `Object.keys(BRAND_ALIASES)` — the same
+two-source construction `BRAND_SET_NORMALIZED` already uses at
+[`brand.js:70`](app/lib/brand.js). Preserve the existing sort-by-slug-length-
+descending so the most specific slug still wins (`maison-margiela` before
+`margiela`, and now `just-cavalli` before `cavalli`).
+
+The returned label needs no change: `brandFromHandle`'s output is uppercased at
+[`enrich/route.js:186`](app/api/enrich/route.js) and then passes through
+`canonicalBrand` from change 2, so a slug hit resolves to the canonical label
+whichever list it came from.
+
+Net effect is additive — `just-cavalli-*` handles resolve after this change and
+do not today.
+
+### 4. `app/brands.js` — drop the three duplicate entries
+
+**Depends on changes 1 and 3 — apply those first.** Remove `"Cavalli"`
+(~line 105), `"Christian Dior"` (~76), `"Gianni Versace"` (~102). Each is (or
+becomes) an alias key, so allowlist recognition is preserved by change 1 and
+handle recovery by change 3; `/designers`
+([`app/designers/page.js:137`](app/designers/page.js)) renders `BRANDS`
+directly, so this is what de-duplicates that page.
 
 Leave `"Alaia"` / `"Azzedine Alaïa"` in `BRANDS` — `"Alaïa"` itself is not an
 entry, so removing them would empty Alaïa from the directory. Alaïa is
 SQL-only in this plan.
 
-### 4. `app/api/enrich/route.js` — canonicalize at the single write point
+### 5. `app/api/enrich/route.js` — canonicalize where both producers converge
 
-Apply once at destructuring (~line 198) so the allowlist gate, `isSelfBranded`,
+There are **two** producers of a brand label, not one: `cleanTitle`'s model
+output, and `brandFromHandle`'s slug hit (uppercased at
+[`enrich/route.js:186`](app/api/enrich/route.js)). The handle fallback is
+itself a source of split labels today — it returns the raw `BRANDS` entry, so
+it has been writing `"Cavalli"`, `"Christian Dior"` and `"Gianni Versace"`
+independently of the model.
+
+Both assign to the same `result`, so one canonicalization at the destructuring
+point (~line 198) covers both, and the allowlist gate, `isSelfBranded`,
 `assignCategory` and the RPC write all see the same canonical value:
 
 ```js
@@ -110,19 +157,27 @@ Import `canonicalBrand` alongside the existing `isAllowedBrand` import from
 `../../lib/stores.js` (re-exported there); add the re-export in
 [`app/lib/stores.js`](app/lib/stores.js) if absent.
 
-This is the **only** write site — cron's Step-2 upsert writes `brand: null` by
+This is the only *write* site: cron's Step-2 upsert writes `brand: null` by
 design ([`shopifyFetch.js`](app/lib/shopifyFetch.js), editorial fields stay
-null at sync), so no second path needs touching.
+null at sync), so no second path needs touching. (An earlier draft called it
+the only site full stop, which was wrong about the handle fallback — corrected
+above.)
 
-### 5. Tests — `app/lib/__tests__/brand.test.js` (extend, 114 lines today)
+### 6. Tests — `app/lib/__tests__/brand.test.js` (extend, 114 lines today)
 
 - `canonicalBrand`: `"Cavalli"`/`"Just Cavalli"`/`"Cavalli Class"` → `"ROBERTO
   CAVALLI"`; `"Gianni Versace"` → `"VERSACE"`; `"Christian Dior"`/`"Dior
   Homme"` → `"DIOR"`; `"Prada"` → `"Prada"` (untouched); `null`/`""` safe.
-- **Regression guard for the paired edit** — the state-B failure above:
+- **Regression guard, allowlist** — the state-B failure above:
   `isAllowedBrand("Cavalli")`, `isAllowedBrand("Christian Dior")`,
   `isAllowedBrand("Gianni Versace")` all still `true`, and
   `titleContainsAllowedBrand("Cavalli Turquoise Belt")` still `true`.
+- **Regression guard, handle recovery** — the defect this revision adds change
+  3 for. `brandFromHandle` must stay non-null for `"cavalli-turquoise-belt"`,
+  `"just-cavalli-zebra-print-skirt"`, `"christian-dior-saddle-bag"`,
+  `"gianni-versace-silk-shirt"`, and still return the long form for
+  `"roberto-cavalli-tiger-fur-cardigan"` (specificity ordering intact).
+- Guard the negative too: a handle with no allowlisted slug still returns null.
 
 ## Production SQL (user runs in Supabase SQL Editor, after deploy)
 
@@ -173,6 +228,10 @@ WHERE brand IN ('CAVALLI','JUST CAVALLI','CAVALLI CLASS','GIANNI VERSACE',
 3. Live-catalog admission unchanged — re-run the `passesBrandFilter` dry run
    against `treviseparis.com` and `chezsnowbunny.fr`: must stay **369** and
    **784** of 2,000 sampled. A drop means the paired-edit invariant broke.
+3b. Handle recovery preserved — run `brandFromHandle` over the five handles
+   listed in change 6 before and after; none may regress to null. This is the
+   check the original plan lacked, and the only reason the regression was
+   caught before implementation.
 4. Dev server: `/designers` shows one entry each for Dior, Versace, Roberto
    Cavalli; clicking through still returns products.
 
@@ -195,3 +254,22 @@ WHERE brand IN ('CAVALLI','JUST CAVALLI','CAVALLI CLASS','GIANNI VERSACE',
 - `MARGIELA`, `ALAIA`, `CÉLINE` etc. remain duplicated in the `BRANDS`
   directory listing; only the three named designers are de-duplicated here.
 - `FALLBACK_STORES` follow-up for the two new stores — still pending, separate.
+
+## Revision log
+
+**Rev 2 (2026-07-26)** — after Codex adversarial review, findings verified by
+execution before acceptance:
+
+- **Accepted:** `BRAND_HANDLE_SLUGS` is built from `BRANDS` only, so the
+  original step 3 would have silently broken handle recovery for 145 live
+  products. Added as change 3, with tests and verification step 3b. The
+  original plan's three-state experiment tested `isAllowedBrand` and
+  `titleContainsAllowedBrand` but never `brandFromHandle` — the gap that let
+  this through.
+- **Corrected:** the claim that enrich's RPC is the "only write site". The
+  handle fallback is a second producer and has been emitting non-canonical
+  labels independently of the model. The conclusion (canonicalize at the
+  destructuring point) still holds; the reasoning was wrong.
+- **Rejected:** two findings reporting canonicalization and directory
+  de-duplication as missing. Both describe steps this plan already specifies;
+  the review targeted the working tree, which held only a partial experiment.
