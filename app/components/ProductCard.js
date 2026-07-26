@@ -24,6 +24,7 @@ export default function ProductCard({ product, imageSizes }) {
   const SHORT_NAMES = {
     "Les Archives Paris": "Les Archives",
     "Numero 13 Vintage": "Numero 13",
+    "Chez Snow Bunny": "Snow Bunny",
   };
   const SHORT_BRANDS = {
     "COMME DES GARÇONS HOMME PLUS": "CDG Homme Plus",
