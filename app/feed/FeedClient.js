@@ -69,8 +69,18 @@ export default function FeedClient({ stores = [], initialData = null }) {
   // Scroll restore refs
   const scrollRestoreY = useRef(null);
   const scrollRestorePending = useRef(false);
-  // How many products to load on first fetch when restoring (null = normal LOAD_SIZE)
+  // How many products to load on first fetch when restoring (null = normal LOAD_SIZE).
+  // Cleared only once the restore batch has actually settled — NOT when the
+  // fetch is issued. With server-seeded state the fetch effect can re-run
+  // (StrictMode double-invoke, or any re-render before the batch lands), and a
+  // ref consumed at issue time would make the re-run see `null` + `serverMatch`
+  // and skip the restore entirely, leaving the grid at the seeded first page.
   const restoreCountRef = useRef(null);
+  // Set once the restore batch has been applied (or failed). Gates the
+  // scroll-restore layout effect, which would otherwise fire immediately:
+  // server-seeded state means `loading` starts false with a full first page,
+  // so the pre-paint jump would run against the short grid and clamp.
+  const restoreDoneRef = useRef(false);
 
   // On mount: check sessionStorage for back-navigation scroll restore.
   // Runs before the filter fetch effect so restoreCountRef is set in time.
@@ -95,6 +105,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
       scrollRestoreY.current = y;
       scrollRestorePending.current = true;
       restoreCountRef.current = count;
+      restoreDoneRef.current = false;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -119,6 +130,9 @@ export default function FeedClient({ stores = [], initialData = null }) {
   // paints, so the grid is never visible at scroll=0 — no flash, no snap.
   useLayoutEffect(() => {
     if (!scrollRestorePending.current || loading || products.length === 0) return;
+    // A restore is pending but its batch hasn't landed yet — jumping now would
+    // scroll against the seeded first page and clamp to its (shorter) height.
+    if (restoreCountRef.current !== null && !restoreDoneRef.current) return;
     scrollRestorePending.current = false;
     const y = scrollRestoreY.current;
     scrollRestoreY.current = null;
@@ -187,8 +201,10 @@ export default function FeedClient({ stores = [], initialData = null }) {
 
     setLoadMoreOffset(null); // cancel any pending Load More for the old filter
 
-    const limit = restoreCountRef.current !== null ? restoreCountRef.current : LOAD_SIZE;
-    restoreCountRef.current = null; // consume
+    // Read, don't consume: the ref is cleared in `finally` once the batch has
+    // actually settled, so a re-run of this effect before then still restores.
+    const restoreCount = restoreCountRef.current;
+    const limit = restoreCount !== null ? restoreCount : LOAD_SIZE;
 
     const controller = new AbortController();
     setLoading(true);
@@ -221,7 +237,16 @@ export default function FeedClient({ stores = [], initialData = null }) {
           setTotal(0);
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        // Aborted = this run was superseded (effect re-run or unmount). Leave
+        // the restore state intact so the replacement run still restores.
+        if (controller.signal.aborted) return;
+        setLoading(false);
+        if (restoreCount !== null) {
+          restoreCountRef.current = null;   // restore consumed
+          restoreDoneRef.current = true;    // unblocks the scroll-restore jump
+        }
+      });
 
     return () => controller.abort();
   }, [filterKey]); // eslint-disable-line react-hooks/exhaustive-deps

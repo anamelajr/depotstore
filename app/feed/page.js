@@ -49,7 +49,10 @@ async function FeedLoader({ sp }) {
   try {
     const [storesResult, productsResult] = await Promise.race([
       Promise.all([
-        getActiveStores(), // degrades internally to FALLBACK_STORES on { error }
+        // Degrades internally to FALLBACK_STORES on { error }. The signal is
+        // required, not belt-and-braces: an un-aborted stalled query keeps the
+        // HTTP response open long past the deadline even once the race rejects.
+        getActiveStores({ signal: controller.signal }),
         fetchProductsPage({
           store: store !== ALL_STORES_VALUE ? store : null,
           categorySlugs,

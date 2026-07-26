@@ -48,12 +48,20 @@ function mapStoreRow(row) {
   };
 }
 
-export async function getActiveStores() {
-  const { data, error } = await supabaseAdmin
+// `signal` is optional (default undefined → existing callers unaffected).
+// Without it a stalled Supabase connection keeps the HTTP response open even
+// after the caller has given up on the promise — racing a timeout around this
+// function is NOT enough to bound a render, the underlying request has to be
+// aborted.
+export async function getActiveStores({ signal } = {}) {
+  let query = supabaseAdmin
     .from("stores")
     .select("domain, store_name, display_name, location, lat, lng")
     .eq("active", true)
     .order("store_name");
+  if (signal) query = query.abortSignal(signal);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Failed to fetch stores:", error.message);
