@@ -30,6 +30,23 @@ accepts laptop as sole copy of old history.
   `.in("id", chunk)` of 500.
 - Supabase MVs/views/pg_cron job are retired **before** pruning starts (post-
   deletion they'd compute wrong lifecycles).
+- **Ledger days ≠ orphan days** (Codex finding #1, verified in prod): the
+  2026-05-21 backfill (20,352 rows via
+  `scripts/sql/2026-06-06-inventory-backfill-2026-05-21.sql`) exists in
+  `inventory_snapshots` but deliberately NOT in the ledger — the ledger alone
+  defines cold_start. `cold_start`, `departures`, seed-day, and `daily_flow`
+  derive **only from mirrored ledger days** (`in_ledger = 1`); orphan days are
+  tracked for pruning but never shape lifecycle semantics. An orphan-fed
+  cold_start would flip every `gap_exit` to a false "departed", move the
+  censoring boundary, and break MV parity.
+- **Fail closed on archive-continuity violations** (Codex finding #2): a day
+  with `local_row_count = 0` is NEVER marked verified — remote 0 == local 0 is
+  evidence of a lost/fresh/mispathed archive after pruning, not of completeness.
+  When remote state shows pruning has occurred (earliest remote snapshot day >
+  earliest ledger day), the archiver refuses to verify/prune/rebuild against an
+  uninitialized or gap-containing local DB and exits nonzero with a
+  restore-from-backup message. Silent acceptance would let backup rotation age
+  out the last good copy.
 
 ## Architecture
 
@@ -109,13 +126,18 @@ CREATE INDEX IF NOT EXISTS idx_snap_hsd  ON inventory_snapshots(handle, store_do
 
 CREATE TABLE IF NOT EXISTS archive_days (          -- ledger mirror + state machine
   observed_date TEXT PRIMARY KEY,
+  in_ledger INTEGER NOT NULL DEFAULT 0,-- 1 = mirrored from inventory_snapshot_days;
+                                       -- 0 = orphan day (rows, no ledger entry —
+                                       -- e.g. the 2026-05-21 backfill). Derived
+                                       -- SQL uses ONLY in_ledger=1; pruning uses both.
   supabase_row_count INTEGER,          -- ledger row_count (WARN-ONLY crosscheck)
   local_row_count INTEGER,
-  verified_at TEXT,                    -- only after remote count == local count
+  verified_at TEXT,                    -- only after remote count == local count AND local > 0
   deleted_from_supabase_at TEXT        -- only after remote count == 0
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
--- schema_version, last_run_at, last_run_status, last_archived_day
+-- schema_version, last_run_at, last_run_status, last_archived_day,
+-- initialized_at (set on first fully-verified mirror; continuity guard input)
 
 CREATE TABLE IF NOT EXISTS lifecycle (             -- derived, rebuilt each run
   handle TEXT, store_domain TEXT, brand TEXT, title TEXT, name TEXT,
@@ -140,12 +162,16 @@ Source: `scripts/sql/2026-07-03-inventory-insights-mv.sql:44-117` (lifecycle),
 here — the UNIQUE constraint makes per-(handle,store,date) ties impossible);
 `date - date` → `CAST(julianday(a)-julianday(b) AS INTEGER)`; booleans → 0/1
 (NULL semantics of `available = 0 AND prev_available = 1` match Postgres);
-`cold_start` = `MIN(observed_date) FROM archive_days` (the ledger mirror).
+`cold_start` = MIN over **ledger days only** (`archive_days WHERE in_ledger = 1`)
+— exactly mirroring the MV's `FROM inventory_snapshot_days`. The 2026-05-21
+orphan backfill day must NOT participate in bounds/departures/flow, or gap_exit
+and censoring semantics diverge from the MV and parity fails.
 
 ```sql
 INSERT INTO lifecycle
 WITH
-bounds AS (SELECT MIN(observed_date) AS cold_start FROM archive_days),
+ledger AS (SELECT observed_date FROM archive_days WHERE in_ledger = 1),
+bounds AS (SELECT MIN(observed_date) AS cold_start FROM ledger),
 agg AS (
   SELECT handle, store_domain, MIN(observed_date) AS first_seen,
          MAX(observed_date) AS last_seen, COUNT(*) AS days_observed
@@ -170,7 +196,7 @@ flips AS (
 departures AS (
   SELECT a.handle, a.store_domain,
     CASE WHEN a.last_seen >= b.cold_start THEN
-      (SELECT MIN(d.observed_date) FROM archive_days d WHERE d.observed_date > a.last_seen)
+      (SELECT MIN(d.observed_date) FROM ledger d WHERE d.observed_date > a.last_seen)
     END AS departed_at,
     (a.last_seen < b.cold_start) AS gap_exit
   FROM agg a CROSS JOIN bounds b
@@ -202,17 +228,32 @@ SELECT d.observed_date,
   (SELECT COUNT(*) FROM lifecycle l WHERE l.departed_at = d.observed_date),
   (SELECT COUNT(*) FROM inventory_snapshots s
      WHERE s.observed_date = d.observed_date AND s.available = 1),
-  (d.observed_date = (SELECT MIN(observed_date) FROM archive_days))
-FROM archive_days d ORDER BY d.observed_date;
+  (d.observed_date = (SELECT MIN(observed_date) FROM archive_days WHERE in_ledger = 1))
+FROM archive_days d WHERE d.in_ledger = 1 ORDER BY d.observed_date;
 ```
 
 ## Archiver run algorithm (archiverCore.js)
 
 1. **Preflight** — load env, require URL + service key, mkdir archive+logs, open
-   DB, migrate schema. `O_EXCL` lockfile with stale-PID detection (launchd
-   already serializes per label; this guards manual runs).
+   DB (note whether the file existed), migrate schema. `O_EXCL` lockfile with
+   stale-PID detection (launchd already serializes per label; this guards
+   manual runs).
 2. **Mirror ledger** — page `inventory_snapshot_days` → upsert
-   `archive_days.supabase_row_count`.
+   `archive_days` with `in_ledger = 1` + `supabase_row_count`.
+2b. **Continuity guard (fail closed)** — detect prior pruning from REMOTE state
+   alone: `remote_min_snap` = earliest `inventory_snapshots.observed_date`
+   (indexed head query on `observed_at`); `remote_min_ledger` = earliest ledger
+   day. If `remote_min_ledger < remote_min_snap` (ledger days exist with no
+   remote rows → pruning has happened), require the local archive to be
+   initialized (`meta.initialized_at` set) AND to contain rows for every ledger
+   day older than `remote_min_snap`. Any gap — fresh file, wrong
+   `DEPOT_ARCHIVE_DB` path, partial restore — aborts BEFORE verify/prune/
+   rebuild with `archive-continuity-violation: restore ~/DepotArchive from
+   backup` and a nonzero exit. Mirroring (step 3) may still run first — it only
+   adds rows and is always safe; nothing may be verified, deleted, or
+   republished to the dashboard from a continuity-violating archive.
+   `meta.initialized_at` is set once, at the end of the first run in which
+   every remote day verified clean (P1 exit criterion).
 3. **Mirror rows by id watermark** — `cursor = local MAX(id)`; loop
    `.select("*").gt("id", cursor).order("id", asc).limit(1000)` (keyset — PK-
    indexed, immune to offset drift + 8s cap); each page one transaction with
@@ -220,17 +261,23 @@ FROM archive_days d ORDER BY d.observed_date;
    always higher ids. Crash mid-run → committed pages stand, resume from
    watermark.
 4. **Recount** — refresh `archive_days.local_row_count` from local GROUP BY;
-   also insert archive_days rows for **orphan days** (rows but no ledger entry —
-   a never-completed capture; without this they'd never be pruned).
+   also insert archive_days rows for **orphan days** (rows but no ledger entry)
+   with `in_ledger = 0` — the known one is the 2026-05-21 backfill (20,352
+   rows, verified in prod); future ones would be never-completed captures.
+   Orphans are prunable (they hold real rows that Supabase should shed) but
+   NEVER feed cold_start/departures/flow (invariant above).
 5. **Cutoff** — 14th-newest ledger day (`--retain`). Candidates = local days
    strictly older, `deleted_from_supabase_at IS NULL`.
 6. **Verify** (per candidate lacking `verified_at`) — remote
    `.select("id",{count:"exact",head:true}).eq("observed_date", day)` must
-   **equal** local count → set `verified_at`. Ledger `row_count` mismatch is
-   warn-only (partial-run capture races make it approximate — NOT ground truth).
-   Remote > local → day-repair (paged re-read + INSERT OR IGNORE), re-verify
-   once. Remote < local on unverified day → loud log, skip, never delete.
-   `--deep-verify` re-reads and hash-compares per-row (run once before drain).
+   **equal** local count **and local count must be > 0** → set `verified_at`.
+   Remote 0 == local 0 is NEVER verification — it is a continuity violation
+   (the day was pruned but this archive has no rows for it): fatal error, abort
+   run nonzero. Ledger `row_count` mismatch is warn-only (partial-run capture
+   races make it approximate — NOT ground truth). Remote > local → day-repair
+   (paged re-read + INSERT OR IGNORE), re-verify once. Remote < local on
+   unverified day → loud log, skip, never delete. `--deep-verify` re-reads and
+   hash-compares per-row (run once before drain).
 7. **Delete** (only `--prune`, per candidate WITH `verified_at`) — local ids for
    the day, chunks of 500 → `.delete({count:"exact"}).in("id", chunk)`; then
    remote count must be 0 → set `deleted_from_supabase_at`. Crash mid-delete
@@ -287,8 +334,9 @@ risk. Its lock may collide with one hourly capture attempt — capture is failur
 isolated and retries next hour by design. Run a few minutes after the top of an
 hour. Also drop the three dead backfill tables while in the editor (~25 MB):
 `atdawn_hide_backfill_2026_05_17`, `products_subcategory_backfill_snapshot`,
-`products_pre_subcategory_snapshot` (forfeits the never-imported 2026-05-21
-head-start — accepted).
+`products_pre_subcategory_snapshot` — the last one's 2026-05-21 head-start was
+**already imported** into `inventory_snapshots` (verified: 20,352 rows at
+observed_date 2026-05-21), so dropping it forfeits nothing.
 
 ## Rollout (safety-first order)
 
@@ -299,8 +347,11 @@ head-start — accepted).
   `v_product_lifecycle`/`v_daily_flow` vs local `lifecycle`/`daily_flow`
   (canonicalized: sorted store+handle, booleans coerced, dates as strings; run
   right after a mirror so local max day == MV max day — MV refreshes at :20).
-  Must diff to zero. Then diff full `getInventoryInsights` JSON with readers
-  toggled. Eyeball `/admin/inventory` in `next dev`.
+  Must diff to zero. The 2026-05-21 orphan day is the acid test: the MV's
+  `gap_exit` rows must reproduce exactly (any local "departed @ 2026-06-10"
+  rows mean the orphan leaked into cold_start). Then diff full
+  `getInventoryInsights` JSON with readers toggled. Eyeball `/admin/inventory`
+  in `next dev`.
 - **P3 — Retire + automate.** Apply retirement SQL. Run `--prune` once manually
   (drains ~700k rows in ~1,400 chunked deletes). Install plist + bootstrap;
   confirm a scheduled run fires and logs.
@@ -316,14 +367,21 @@ Vitest (`app/lib/__tests__/inventoryArchive.test.js`) against
 - **derive.js**: fixtures with hand-computed expectations — flip sale; delist-
   only; flip-then-linger (flip wins days_to_sell); gap_exit; censored seed-day;
   relist-after-gap (no departure); NULL `available` around a flip (LAG NULL must
-  not count); empty ledger → zero rows.
+  not count); empty ledger → zero rows; **orphan-day exclusion** (fixture
+  mirroring the 2026-05-21 backfill: an `in_ledger=0` day older than every
+  ledger day must not shift cold_start, must leave pre-ledger exits as
+  `gap_exit` not `departed`, and must not appear in `daily_flow`).
 - **localReaders**: exact 15/5-column shapes; strict boolean coercion; feed
   outputs through `computeKpis`/`buildVelocityBuckets`/`storeSummary` and match
   the supabase-path fixtures (cross-engine parity at unit level).
 - **archiverCore**: mirror idempotency (run twice → identical DB); crash-resume;
   verify-gate blocks deletes on count mismatch; day-repair; **delete never
   called on unverified day**; delete-resume on half-deleted day; cutoff math;
-  orphan-day handling; ledger-mismatch warn-only.
+  orphan-day handling (in_ledger=0, prunable); ledger-mismatch warn-only;
+  **continuity guards**: remote-0==local-0 is fatal, never verified; fresh DB
+  when remote shows pruning evidence → abort before verify/prune/rebuild
+  (covers deleted file, mistyped `DEPOT_ARCHIVE_DB`, partial restore);
+  `meta.initialized_at` set only after a fully-verified mirror.
 - **inventoryAnalytics.js**: existing tests unchanged; one new test for the
   `readers` override.
 
