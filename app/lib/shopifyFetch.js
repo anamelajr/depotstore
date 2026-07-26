@@ -119,6 +119,25 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Sync-time curation gate for FILTER_BY_BRAND stores. Pure — exported for
+// tests. Decision order:
+//   1. Existing curated brand row — preserved unconditionally: without it, an
+//      active row whose vendor/raw-title don't match the allowlist would be
+//      filtered out of this run, miss the synced_at refresh, and get deleted
+//      by the cron's stale cleanup.
+//   2. Vendor, only when it resolves to an allowlisted brand. Vendor is
+//      free-text and Shopify pre-fills it with the shop's own name, so a
+//      non-allowlisted vendor (e.g. "CHEZ SNOW BUNNY" on every row) must
+//      fall through to the title check, not veto it.
+//   3. Title contains an allowlisted brand.
+export function passesBrandFilter(p, existing) {
+  const existingBrand = existing?.brand ? normalizeBrand(existing.brand) : null;
+  if (existingBrand) return isAllowedBrand(existingBrand);
+  const vendorBrand = normalizeBrand(p.vendor);
+  if (vendorBrand && isAllowedBrand(vendorBrand)) return true;
+  return titleContainsAllowedBrand(p.name);
+}
+
 export async function fetchStoreProducts(store) {
   const base =
     store.domain === "www.dotcomme.net"
@@ -170,19 +189,7 @@ export async function fetchStoreProducts(store) {
     .map((p) => {
       if (FILTER_BY_BRAND.has(p.storeDomain)) {
         const existing = p.handle ? existingByHandle[p.handle] : null;
-        // Path 1 (existing curated brand) is preserved — without it, an
-        // active row whose vendor/raw-title don't match the allowlist
-        // would be filtered out of this run, miss the synced_at refresh,
-        // and get deleted by the cron's stale cleanup.
-        const resolvedBrand =
-          (existing?.brand ? normalizeBrand(existing.brand) : null) ||
-          normalizeBrand(p.vendor) ||
-          (titleContainsAllowedBrand(p.name) ? "matched_via_title" : null);
-
-        if (!resolvedBrand) return null;
-        if (resolvedBrand !== "matched_via_title" && !isAllowedBrand(resolvedBrand)) {
-          return null;
-        }
+        if (!passesBrandFilter(p, existing)) return null;
       }
 
       // Editorial fields stay null at sync time. /api/enrich runs cleanTitle
