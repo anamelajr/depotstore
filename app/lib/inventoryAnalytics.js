@@ -33,6 +33,33 @@ export async function readLifecycle({ store = null, db = supabaseAdmin } = {}) {
   return rows;
 }
 
+/**
+ * Read v_daily_flow, NEWEST-first, optionally windowed in SQL.
+ *
+ * PostgREST caps unranged reads (hosted default max-rows = 1000); ascending
+ * order would silently keep the OLDEST ~1000 days, so a "Last 90 days" chart
+ * could render empty after ~2.7 years of ledger. Newest-first degrades benignly
+ * instead (oldest days drop first — long after the flagged rollup revisit); the
+ * caller re-sorts ascending for the chart.
+ *
+ * NOTE: the flow series is GLOBAL (all stores) — v_daily_flow has no store grain
+ * in v1. KPIs no longer read it; the page labels the flow panel "(all stores)"
+ * whenever a store filter is active.
+ *
+ * @param {object} opts {since?: string|null, db?: client}
+ * @returns {Promise<object[]>}
+ */
+export async function readFlow({ since = null, db = supabaseAdmin } = {}) {
+  let q = db
+    .from("v_daily_flow")
+    .select("observed_date, arrivals, departures, active, is_seed_day")
+    .order("observed_date", { ascending: false });
+  if (since) q = q.gte("observed_date", since);
+  const { data, error } = await q;
+  if (error) throw new Error(`daily-flow read failed: ${error.message}`);
+  return data ?? [];
+}
+
 // Canonical exit date for date-windowing: flip FIRST, then departure — the same
 // precedence as the SQL sell signal (days_to_sell = COALESCE(flip, departure)).
 // Flip-and-linger stores (~74% of inventory) delist an item weeks after it
@@ -197,33 +224,32 @@ const TOP_N = 12;
 /**
  * One call the dashboard uses. Reads lifecycle (store-filtered in SQL) + daily flow,
  * applies the date window, and returns every panel's shaped data.
- * @param {object} opts {store?, sinceDays?, db?}
+ *
+ * `readers` swaps the storage backend without touching a line of the analytics:
+ * the local-archive dashboard passes the SQLite readers
+ * (app/lib/inventoryArchive/localReaders.js). Defaults preserve the Supabase path.
+ *
+ * @param {object} opts {store?, sinceDays?, db?, readers?}
  */
-export async function getInventoryInsights({ store = null, sinceDays = null, db = supabaseAdmin } = {}) {
+export async function getInventoryInsights({
+  store = null,
+  sinceDays = null,
+  db = supabaseAdmin,
+  readers = {},
+} = {}) {
+  const readLifecycleFn = readers.readLifecycle ?? readLifecycle;
+  const readFlowFn = readers.readFlow ?? readFlow;
   const since = sinceDays ? isoDaysAgo(sinceDays) : null;
-  const allRows = await readLifecycle({ store, db });
+  const allRows = await readLifecycleFn({ store, db });
   // gap_exit rows (backfill-only, gone before cold start) have no observable
   // dates at all — they'd corrupt every panel. Dropped once here, surfaced as
   // meta.gapExits (never silently).
   const observed = allRows.filter((r) => r.current_status !== "gap_exit");
   const rows = filterLifecycle(observed, { since });
 
-  // Flow read: the date window is pushed into SQL (.gte) and rows come back
-  // NEWEST-first. PostgREST caps unranged reads (hosted default max-rows =
-  // 1000); ascending order would silently keep the OLDEST ~1000 days, so a
-  // "Last 90 days" chart could render empty after ~2.7 years of ledger.
-  // Newest-first degrades benignly instead (oldest days drop first — long
-  // after the flagged rollup revisit); re-sorted ascending in JS for the chart.
-  // NOTE: the flow series is GLOBAL (all stores) — v_daily_flow has no store
-  // grain in v1. KPIs no longer read it; the page labels the flow panel
-  // "(all stores)" whenever a store filter is active.
-  let flowQuery = db
-    .from("v_daily_flow")
-    .select("observed_date, arrivals, departures, active, is_seed_day")
-    .order("observed_date", { ascending: false });
-  if (since) flowQuery = flowQuery.gte("observed_date", since);
-  const { data: flowRaw, error: flowError } = await flowQuery;
-  if (flowError) throw new Error(`daily-flow read failed: ${flowError.message}`);
+  // Flow rows come back NEWEST-first (see readFlow) — re-sorted ascending in JS
+  // for the chart.
+  const flowRaw = await readFlowFn({ since, db });
   const flow = flowSeries(
     (flowRaw ?? [])
       .slice()

@@ -93,6 +93,17 @@ need a parallel pass over the interleaved RPCs + `resolveCategoryFilter`
   stale-delete — reordering silently corrupts departure history, which is
   append-only and cannot be recomputed.
 
+- **The archiver deletes only frozen, verified id sets.** A day in
+  `inventory_snapshots` may be pruned only after remote count == local count > 0,
+  a `day_manifest` row (count + hash + `max_id`), and a successful
+  `archive_day_registry` upsert; the delete set is local ids `<= manifest.max_id`,
+  never a date-predicate delete and never "all ids for the day" (bigserial is
+  monotonic, so a post-verification backfill row can't enter the set). Any
+  continuity violation — a pruned day with no manifest, a local day short of its
+  manifest count, remote 0 read as "matches local 0" — aborts the run nonzero
+  **before** anything verifies, deletes, or rebuilds the derived tables. Deletion
+  needs `--prune`; the default run is mirror-only.
+
 ## DB objects not in git
 
 Live only in Supabase. Confirm the full column list against production before
@@ -125,6 +136,14 @@ any change.
 - **`enrich_runs` table** — token-spend telemetry; insert failures are swallowed
   by routes, so dropping it won't break sync. DDL:
   [`docs/enrich-runs-logging-spec.md`](docs/enrich-runs-logging-spec.md).
+- **`archive_day_registry` table** — durable REMOTE witness for the local
+  inventory archive (`observed_date PK, in_ledger, row_count, row_hash,
+  verified_at`; RLS on, no policies). Written by `scripts/inventoryArchiver.mjs`
+  at verification time, **before** that day is pruned; never pruned itself. It is
+  the only proof a pruned ORPHAN day (rows with no ledger entry — the 2026-05-21
+  backfill) ever existed, so the archiver's continuity guard enumerates required
+  days from `archive_day_registry ∪ inventory_snapshot_days`. DDL:
+  [`scripts/sql/2026-07-26-archive-day-registry.sql`](scripts/sql/2026-07-26-archive-day-registry.sql).
 - **`mv_product_lifecycle` / `mv_daily_flow` MVs + `refresh_inventory_insights()`
   + pg_cron job `refresh-inventory-insights`** — the insights `v_*` views are
   thin wrappers over these MVs, refreshed hourly by pg_cron gated on a new
@@ -190,6 +209,10 @@ Standard: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 Annotated:
 
 - `NEXT_PUBLIC_BASE_URL` — defaults to `http://localhost:3000`.
+- `DEPOT_ARCHIVE_DB` — laptop-only path to the local inventory archive
+  (`~/DepotArchive/inventory-archive.sqlite`). When set, `/admin/inventory` reads
+  the full local history via `app/lib/inventoryArchive/localReaders.js`; unset
+  (Vercel), it reads Supabase and never loads `node:sqlite`.
 - `CRON_SECRET` — bearer for `/api/cron` + `/api/enrich`; also a GitHub Actions
   repo secret.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` — auto-injected by Vercel; lets cron

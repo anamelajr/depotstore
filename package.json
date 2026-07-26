@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "archive": "node scripts/inventoryArchiver.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
