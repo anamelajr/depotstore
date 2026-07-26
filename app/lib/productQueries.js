@@ -108,9 +108,13 @@ export async function fetchInterleavedProducts({
   limit,
   offset = 0,
   client = null,
+  // Optional AbortSignal (default undefined → existing callers unaffected).
+  // Lets the server-rendered feed cancel a timed-out query instead of
+  // leaving it racing the client retry.
+  signal = undefined,
 } = {}) {
   const c = client || (await getDefaultClient());
-  return c.rpc("get_interleaved_products", {
+  const q = c.rpc("get_interleaved_products", {
     p_store: store,
     p_category: category,
     p_subcategory: subcategory,
@@ -119,6 +123,7 @@ export async function fetchInterleavedProducts({
     p_limit: limit,
     p_offset: offset,
   });
+  return signal ? q.abortSignal(signal) : q;
 }
 
 export async function countInterleavedProducts({
@@ -128,13 +133,15 @@ export async function countInterleavedProducts({
   search = null,
   brand = null,
   client = null,
+  signal = undefined,
 } = {}) {
   const c = client || (await getDefaultClient());
-  return c.rpc("count_interleaved_products", {
+  const q = c.rpc("count_interleaved_products", {
     p_store: store,
     p_category: category,
     p_subcategory: subcategory,
     p_search: search,
     p_brand: brand,
   });
+  return signal ? q.abortSignal(signal) : q;
 }

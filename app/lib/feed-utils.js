@@ -2,6 +2,10 @@ import BRANDS from "../brands";
 
 export const ALL_STORES_VALUE = "ALL";
 export const PAGE_SIZE = 42;
+// Feed page size — shared by FeedClient (client fetches / Load More) and
+// the server-rendered first page so the SSR payload matches exactly what
+// the client would have fetched.
+export const LOAD_SIZE = 30;
 
 export function buildFeedUrl(current, updates) {
   const seed =

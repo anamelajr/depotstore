@@ -11,13 +11,11 @@ import FilterChip from "../components/feed/FilterChip";
 import MobileSearchStrip from "../components/MobileSearchStrip";
 import MobileFeedActionBar from "../components/MobileFeedActionBar";
 import MobileFilterPanel from "../components/MobileFilterPanel";
-import { ALL_STORES_VALUE, buildFeedUrl } from "../lib/feed-utils";
+import { ALL_STORES_VALUE, LOAD_SIZE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_MAP } from "../lib/sort-options";
 import { useLanguage } from "../components/LanguageProvider";
 
-const LOAD_SIZE = 30;
-
-export default function FeedClient({ stores = [] }) {
+export default function FeedClient({ stores = [], initialData = null }) {
   const storeOptions = [
     { value: ALL_STORES_VALUE, label: "All Stores" },
     ...stores.map((s) => ({ value: s.domain, label: s.storeName })),
@@ -34,6 +32,17 @@ export default function FeedClient({ stores = [] }) {
   const urlSort = searchParams.get("sort") || "interleaved";
   const selectedBrand = searchParams.get("brand") || "";
 
+  // ── Filter key — changes whenever filters/sort/search change ──
+  // Hoisted above state: it's a pure derivation of searchParams and both the
+  // sessionStorage-restore effect and the seeded state below read it.
+  const categoriesKey = urlCategories.join(",");
+  const filterKey = `${selectedStore}|${categoriesKey}|${searchQuery}|${urlSort}|${selectedBrand}`;
+
+  // The server rendered page 1 for this exact filter → consume it instead of
+  // re-fetching through /api/products. Deterministic from props + URL, so no
+  // hydration mismatch and the grid ships inside the SSR HTML.
+  const serverMatch = initialData !== null && initialData.filterKey === filterKey;
+
   // Local state for instant UI feedback
   const [localCategories, setLocalCategories] = useState(urlCategories);
   const [localStore, setLocalStore] = useState(selectedStore);
@@ -48,9 +57,9 @@ export default function FeedClient({ stores = [] }) {
   const [desktopSortOpen, setDesktopSortOpen] = useState(false);
 
   // Fetch state
-  const [products, setProducts] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(serverMatch ? initialData.products : []);
+  const [total, setTotal] = useState(serverMatch ? initialData.total : 0);
+  const [loading, setLoading] = useState(!serverMatch);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
@@ -60,12 +69,31 @@ export default function FeedClient({ stores = [] }) {
   // Scroll restore refs
   const scrollRestoreY = useRef(null);
   const scrollRestorePending = useRef(false);
-  // How many products to load on first fetch when restoring (null = normal LOAD_SIZE)
+  // How many products to load on first fetch when restoring (null = normal LOAD_SIZE).
+  // Cleared only once the restore batch has actually settled — NOT when the
+  // fetch is issued. With server-seeded state the fetch effect can re-run
+  // (StrictMode double-invoke, or any re-render before the batch lands), and a
+  // ref consumed at issue time would make the re-run see `null` + `serverMatch`
+  // and skip the restore entirely, leaving the grid at the seeded first page.
   const restoreCountRef = useRef(null);
+  // Set once the restore batch has been applied (or failed). Gates the
+  // scroll-restore layout effect, which would otherwise fire immediately:
+  // server-seeded state means `loading` starts false with a full first page,
+  // so the pre-paint jump would run against the short grid and clamp.
+  const restoreDoneRef = useRef(false);
 
   // On mount: check sessionStorage for back-navigation scroll restore.
   // Runs before the filter fetch effect so restoreCountRef is set in time.
-  useEffect(() => {
+  //
+  // useLayoutEffect, not useEffect: with server-seeded state `loading` starts
+  // false, so a passive effect would let the first paint show the seeded
+  // 30-product grid before the restore state is even read — a visible flash
+  // (grid → blank → restored grid) plus a clamped browser scroll. Reading the
+  // saved state pre-paint and synchronously flipping `loading` back on keeps
+  // the first paint blank, exactly like the pre-SSR behavior. The read must
+  // NOT move earlier still (into a useState initializer): that would diverge
+  // from the server-rendered HTML during hydration.
+  useLayoutEffect(() => {
     const savedScroll = sessionStorage.getItem("depot_feed_scroll");
     const savedCount = sessionStorage.getItem("depot_feed_count");
     const savedKey = sessionStorage.getItem("depot_feed_filter_key");
@@ -86,14 +114,35 @@ export default function FeedClient({ stores = [] }) {
       scrollRestoreY.current = y;
       scrollRestorePending.current = true;
       restoreCountRef.current = count;
+      restoreDoneRef.current = false;
+      setLoading(true); // pre-paint: hide the seeded grid until the restore batch lands
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Apply server-rendered data ──
+  // Declared after the restore effect so restore refs are set first on mount.
+  // On mount this is a no-op re-commit of the seeded state; on every soft nav
+  // (filter/sort/search change) it applies the fresh server payload, which
+  // commits in the same render as the new searchParams — the old grid stays
+  // visible until the swap, so no blank frame and no client fetch.
+  useEffect(() => {
+    if (!serverMatch) return;
+    if (restoreCountRef.current !== null || scrollRestorePending.current) return; // restore path refetches
+    setLoadMoreOffset(null); // cancel pending Load More for the old filter
+    setProducts(initialData.products);
+    setTotal(initialData.total);
+    setError(null);
+    setLoading(false);
+  }, [initialData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After the restore batch is loaded, jump to the saved position before paint.
   // useLayoutEffect fires synchronously after DOM mutations and before the browser
   // paints, so the grid is never visible at scroll=0 — no flash, no snap.
   useLayoutEffect(() => {
     if (!scrollRestorePending.current || loading || products.length === 0) return;
+    // A restore is pending but its batch hasn't landed yet — jumping now would
+    // scroll against the seeded first page and clamp to its (shorter) height.
+    if (restoreCountRef.current !== null && !restoreDoneRef.current) return;
     scrollRestorePending.current = false;
     const y = scrollRestoreY.current;
     scrollRestoreY.current = null;
@@ -147,23 +196,38 @@ export default function FeedClient({ stores = [] }) {
   useEffect(() => { setLocalStore(selectedStore); }, [selectedStore]);
   useEffect(() => { setSelectedSort(urlSort); }, [urlSort]);
 
-  // ── Filter key — changes whenever filters/sort/search change ──
-  const categoriesKey = urlCategories.join(",");
-  const filterKey = `${selectedStore}|${categoriesKey}|${searchQuery}|${urlSort}|${selectedBrand}`;
-
   // ── Initial / reset fetch ──
   // Runs on mount and whenever filterKey changes.
   // On mount it respects restoreCountRef (set above) for back-nav restore.
   // On filter change it cancels any in-flight Load More and resets state.
   useEffect(() => {
+    // Server payload already covers this filterKey — the apply-effect above
+    // seeded/committed it. Only fetch when it doesn't: initialData null
+    // (server fetch failed or timed out — this is the recovery path), a
+    // stale key, or a pending back-nav restore (which must never be skipped:
+    // the scroll-restore useLayoutEffect fires off loading/products changes,
+    // which only happen if this fetch runs).
+    if (serverMatch && restoreCountRef.current === null) return;
+
     setLoadMoreOffset(null); // cancel any pending Load More for the old filter
 
-    const limit = restoreCountRef.current !== null ? restoreCountRef.current : LOAD_SIZE;
-    restoreCountRef.current = null; // consume
+    // Read, don't consume: the ref is cleared in `finally` once the batch has
+    // actually settled, so a re-run of this effect before then still restores.
+    const restoreCount = restoreCountRef.current;
+    const limit = restoreCount !== null ? restoreCount : LOAD_SIZE;
 
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+
+    // Tracks whether a restore fetch actually delivered products. A restore
+    // that fails or comes back empty never satisfies the scroll-restore
+    // layout effect's `products.length > 0` guard, so `scrollRestorePending`
+    // would stay true forever — and a stale pending flag makes the
+    // apply-server-data effect skip every later soft-nav payload while this
+    // effect skips too (serverMatch + consumed ref): a permanently stuck
+    // feed. When the restore settles without products, abandon it fully.
+    let restoreDelivered = false;
 
     const params = new URLSearchParams();
     params.set("page", "1");
@@ -184,6 +248,7 @@ export default function FeedClient({ stores = [] }) {
         setProducts(data.products || []);
         setTotal(data.total ?? 0);
         setError(null);
+        restoreDelivered = (data.products || []).length > 0;
       })
       .catch((err) => {
         if (err.name !== "AbortError") {
@@ -192,10 +257,38 @@ export default function FeedClient({ stores = [] }) {
           setTotal(0);
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        // Aborted = this run was superseded (effect re-run or unmount). Leave
+        // the restore state intact so the replacement run still restores.
+        if (controller.signal.aborted) return;
+        setLoading(false);
+        if (restoreCount !== null) {
+          restoreCountRef.current = null;   // restore consumed
+          restoreDoneRef.current = true;    // unblocks the scroll-restore jump
+          if (!restoreDelivered) {
+            // Failed/empty restore: the layout effect will never run its
+            // cleanup, so do it here — drop the pending jump and the saved
+            // state so later navigations aren't blocked.
+            scrollRestorePending.current = false;
+            scrollRestoreY.current = null;
+            sessionStorage.removeItem("depot_feed_scroll");
+            sessionStorage.removeItem("depot_feed_count");
+            sessionStorage.removeItem("depot_feed_filter_key");
+            sessionStorage.removeItem("depot_feed_url");
+          }
+        }
+      });
 
     return () => controller.abort();
   }, [filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Kept current every render so the Load More effect can compare the key a
+  // request was issued under against the live one when the response lands.
+  // Declared before the Load More effect so it commits first: effects run in
+  // declaration order, and the Load More effect reads this ref to stamp the
+  // request it issues.
+  const filterKeyRef = useRef(filterKey);
+  useEffect(() => { filterKeyRef.current = filterKey; }, [filterKey]);
 
   // ── Load More fetch ──
   // Fetches the next LOAD_SIZE products at loadMoreOffset and appends them.
@@ -204,6 +297,7 @@ export default function FeedClient({ stores = [] }) {
     if (loadMoreOffset === null) return;
 
     const controller = new AbortController();
+    const requestFilterKey = filterKeyRef.current; // captured at request start
     setLoadingMore(true);
 
     // Use explicit offset, not page math: loadMoreOffset isn't guaranteed
@@ -225,6 +319,10 @@ export default function FeedClient({ stores = [] }) {
         return res.json();
       })
       .then((data) => {
+        // Stale: the filter moved on while this batch was in flight. Nothing
+        // overwrites `products` wholesale on the server-driven path, so an
+        // unguarded append would leave old-filter cards in the new grid.
+        if (filterKeyRef.current !== requestFilterKey) return;
         setProducts((prev) => [...prev, ...(data.products || [])]);
         setTotal(data.total ?? 0);
       })
@@ -347,7 +445,9 @@ export default function FeedClient({ stores = [] }) {
           {/* Mobile product count */}
           <div className="md:hidden px-0 pt-0 pb-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              {loading ? "Loading…" : `${total} ${total === 1 ? "product" : "products"}`}
+              {/* Non-breaking space keeps the line box so the grid doesn't
+                  shift when the count arrives; visually blank. */}
+              {loading ? " " : `${total} ${total === 1 ? "product" : "products"}`}
             </p>
           </div>
           {(searchQuery || selectedBrand) && (
@@ -370,11 +470,7 @@ export default function FeedClient({ stores = [] }) {
               )}
             </div>
           )}
-          {loading ? (
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600">
-              Loading products…
-            </div>
-          ) : error ? (
+          {loading ? null : error ? (
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-sm text-red-600">
               {error}
             </div>
