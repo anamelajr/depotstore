@@ -49,14 +49,38 @@ accepts laptop as sole copy of old history.
   out the last good copy.
 - **The `day_manifest` is the immutable verified baseline** (Codex round-2
   finding #1): at verification time each day (ledger AND orphan) gets exactly
-  one append-only manifest row `{row_count, row_hash}` that recount/mirror
-  NEVER updates. Every run, before verify/prune/rebuild, every manifest day's
+  one manifest row `{row_count, row_hash, max_id}`. Recount/mirror NEVER update
+  it; the ONLY mutation path is explicit re-verification against live remote
+  data (below). Every run, before verify/prune/rebuild, every manifest day's
   live `COUNT(*)` must equal its manifest count — this catches truncated or
   mid-run-backup restores that a presence check would accept (a restored
   mid-mirror day with partial rows, or a missing orphan day, silently changes
   `agg`/`latest`/`flips`). A pruned remote day absent from the manifest is
   equally fatal. Hashes are rechecked only by `--deep-verify` (counts catch
   lost rows; rows are immutable — per-run hashing of 1M+ rows is not worth it).
+- **Deletes are frozen at the verification watermark** (Codex round-3 finding
+  #1): the delete set for a day is its local ids `<= manifest.max_id` — never
+  "all local ids for the day". Postgres bigserial is monotonic, so any row
+  inserted after verification (e.g. a manual old-date backfill, the 2026-05-21
+  pattern) has a higher id and can NEVER be deleted unverified. Immediately
+  before deleting, the day is rechecked (live count == manifest count, live
+  MAX(id) == manifest.max_id); divergence routes through re-verification
+  first. Post-verify divergence where the remote day still exists →
+  **re-verify**: recompute count/hash/max_id against remote, update manifest +
+  remote registry, log old→new loudly. Divergence where the remote day is gone
+  → fatal. After deleting the frozen set, a nonzero remote remainder is a loud
+  error and the tombstone is NOT written (no wedge: next run re-verifies).
+- **`archive_day_registry` is the durable remote witness** (Codex round-3
+  finding #2): a tiny never-pruned Supabase table (`observed_date PK,
+  in_ledger, row_count, row_hash, verified_at`; RLS on, no policies — same
+  convention as the ledger) upserted at verification time, BEFORE any pruning
+  of that day. Orphan days have no ledger row, so after pruning the registry is
+  the only durable proof they existed — without it, restoring a backup that
+  predates a pruned orphan day passes every local check and silently loses the
+  sole copy. The continuity guard enumerates required days from
+  **registry ∪ ledger**, and registry counts must match the local manifest.
+  Registry upsert failure fails verification (no tombstone possible). Size:
+  ~1 row/day — negligible against the quota this project recovers.
 - **Backups target the atomic snapshot, never the live WAL DB** (Codex round-2
   finding #2): file-copying a live WAL database (Time Machine during a run) can
   produce a torn/corrupt copy. Each successful run ends with `VACUUM INTO` a
@@ -111,6 +135,9 @@ accepts laptop as sole copy of old history.
   `~/DepotArchive/logs/archiver-YYYY-MM.jsonl` (monthly rotation, prune >12mo).
 - `scripts/launchd/com.depot.inventory-archiver.plist` — checked-in template
   (content below); installed copy → `~/Library/LaunchAgents/`.
+- `scripts/sql/2026-07-XX-archive-day-registry.sql` — the durable remote
+  witness table (DDL below in Invariants); **apply via SQL Editor BEFORE P1**
+  (schema before dependent code — the archiver writes it at verify time).
 - `scripts/sql/2026-07-XX-inventory-insights-retire.sql` — retirement + reclaim.
 
 **Modify:**
@@ -154,16 +181,19 @@ CREATE TABLE IF NOT EXISTS archive_days (          -- ledger mirror + state mach
   verified_at TEXT,                    -- only after remote count == local count AND local > 0
   deleted_from_supabase_at TEXT        -- only after remote count == 0
 );
--- Immutable verified baseline (Codex round-2 #1). One row per day, written
--- ONCE at verification time; mirror/recount never touch it. Covers ledger AND
--- orphan days. row_hash = SHA-256 over the day's rows ordered by id
+-- Immutable verified baseline (Codex round-2 #1). One row per day, written at
+-- verification time; mirror/recount never touch it — the only mutation path is
+-- explicit re-verification against live remote data (round-3 #1). Covers
+-- ledger AND orphan days. row_hash = SHA-256 over the day's rows ordered by id
 -- (id|handle|store_domain|available|price per row) — rechecked only by
--- --deep-verify.
+-- --deep-verify. max_id = MAX(id) at verification: the deletion watermark
+-- (delete set = local ids <= max_id, never "all ids for the day").
 CREATE TABLE IF NOT EXISTS day_manifest (
   observed_date TEXT PRIMARY KEY,
   in_ledger INTEGER NOT NULL,
   row_count INTEGER NOT NULL,
   row_hash TEXT NOT NULL,
+  max_id INTEGER NOT NULL,
   verified_at TEXT NOT NULL
 );
 
@@ -278,12 +308,14 @@ FROM archive_days d WHERE d.in_ledger = 1 ORDER BY d.observed_date;
    `archive-continuity-violation: restore ~/DepotArchive from backup`.
    (a) *Remote-evidence check*: `remote_min_snap` = earliest
    `inventory_snapshots.observed_date` (indexed head query on `observed_at`);
-   `remote_min_ledger` = earliest ledger day. If `remote_min_ledger <
-   remote_min_snap` (pruning has happened), the archive must be initialized
-   (`meta.initialized_at`) and every remote day (ledger or orphan) older than
-   `remote_min_snap` must be present in `day_manifest` — a pruned day with no
-   manifest entry means this file never verified it and Supabase can no longer
-   repair it.
+   required-day set = **`archive_day_registry` ∪ ledger** days older than
+   `remote_min_snap` (the registry is what makes pruned ORPHAN days
+   enumerable — the ledger alone cannot witness them). If that set is
+   non-empty (pruning has happened), the archive must be initialized
+   (`meta.initialized_at`) and every required day must be present in
+   `day_manifest` **with row_count matching the registry** — a pruned day
+   missing or mismatched means this file never (or incompletely) verified it
+   and Supabase can no longer repair it.
    (b) *Manifest-integrity check*: for EVERY `day_manifest` row, live
    `COUNT(*)` on `idx_snap_date` must equal `row_count`. Catches truncated and
    mid-run-backup restores (partial day rows) and missing orphan days that a
@@ -309,24 +341,38 @@ FROM archive_days d WHERE d.in_ledger = 1 ORDER BY d.observed_date;
    strictly older, `deleted_from_supabase_at IS NULL`.
 6. **Verify** (per candidate lacking `verified_at`) — remote
    `.select("id",{count:"exact",head:true}).eq("observed_date", day)` must
-   **equal** local count **and local count must be > 0** → set `verified_at`
-   AND insert the day's `day_manifest` row (count + hash) — exactly once,
-   never updated. Remote 0 == local 0 is NEVER verification — it is a
-   continuity violation (the day was pruned but this archive has no rows for
-   it): fatal error, abort run nonzero. Remote 0 with local > 0 but **no
-   manifest entry** is equally fatal (pruned day this file never verified —
-   e.g. a mid-mirror restore). Ledger `row_count` mismatch is warn-only
-   (partial-run capture races make it approximate — NOT ground truth).
-   Remote > local → day-repair (paged re-read + INSERT OR IGNORE), re-verify
-   once. Remote < local on unverified day → loud log, skip, never delete.
-   `--deep-verify` re-reads remote days and hash-compares per-row, and
-   recomputes local hashes against `day_manifest` (run once before drain).
-7. **Delete** (only `--prune`, per candidate WITH `verified_at`) — local ids for
-   the day, chunks of 500 → `.delete({count:"exact"}).in("id", chunk)`; then
-   remote count must be 0 → set `deleted_from_supabase_at`. Crash mid-delete
-   self-heals: `verified_at` already set, next run resumes the same frozen ids.
-   (Verification is skip-if-already-verified precisely so a half-deleted day
-   can't deadlock the state machine.)
+   **equal** local count **and local count must be > 0** → write the day's
+   `day_manifest` row (count + hash + `max_id` watermark), **upsert the remote
+   `archive_day_registry` row** (upsert failure = verification failure, no
+   tombstone possible), then set `verified_at`. Remote 0 == local 0 is NEVER
+   verification — it is a continuity violation: fatal, abort nonzero. Remote 0
+   with local > 0 but **no manifest entry** is equally fatal (pruned day this
+   file never verified — e.g. a mid-mirror restore). Ledger `row_count`
+   mismatch is warn-only (partial-run capture races make it approximate — NOT
+   ground truth). Remote > local → day-repair (paged re-read + INSERT OR
+   IGNORE), re-verify once. Remote < local on unverified day → loud log, skip,
+   never delete. `--deep-verify` re-reads remote days and hash-compares
+   per-row, and recomputes local hashes against `day_manifest` (run once
+   before drain).
+6b. **Re-verify** (already-verified day whose live state diverged from its
+   manifest — detected in 2b(b) or the pre-delete recheck): allowed ONLY when
+   the divergent rows all have `id > manifest.max_id` AND the remote day still
+   exists (i.e. a legitimate post-verification insert, like a manual old-date
+   backfill). Recompute count/hash/max_id against remote, update manifest +
+   registry, log old→new loudly. Any other divergence — remote day gone, or
+   rows missing below the watermark — is fatal (restore-from-backup).
+7. **Delete** (only `--prune`, per candidate WITH `verified_at`) — pre-delete
+   recheck first: live count == manifest count AND live MAX(id) ==
+   `manifest.max_id`; divergence routes through 6b before any delete. Delete
+   set = local ids **`<= manifest.max_id`** (frozen at verification — a row
+   inserted after verify has a higher bigserial id and can never enter the
+   set), chunks of 500 → `.delete({count:"exact"}).in("id", chunk)`; then
+   remote count must be 0 → set `deleted_from_supabase_at`. A nonzero
+   remainder (post-verify rows appeared mid-run) → loud error, NO tombstone;
+   next run re-verifies via 6b and finishes cleanly. Crash mid-delete
+   self-heals: `verified_at` already set, next run resumes the same frozen
+   ids. (Verification is skip-if-already-verified precisely so a half-deleted
+   day can't deadlock the state machine.)
 8. **Rebuild derived** — transactional refill of `lifecycle` + `daily_flow`,
    `ANALYZE`, update `meta`.
 9. **Snapshot** (every successful run that changed data) — `VACUUM INTO`
@@ -392,9 +438,11 @@ observed_date 2026-05-21), so dropping it forfeits nothing.
 
 ## Rollout (safety-first order)
 
-- **P1 — Archiver, mirror-only.** Build modules + CLI + tests. Claude runs it
-  (no `--prune`) until every ledger day shows `local_row_count == remote count`;
-  run `--deep-verify` once over all days.
+- **P1 — Archiver, mirror-only.** Apply `archive-day-registry.sql` via the SQL
+  Editor FIRST (schema before dependent code). Build modules + CLI + tests.
+  Claude runs the archiver (no `--prune`) until every ledger day shows
+  `local_row_count == remote count` and the registry is fully populated; run
+  `--deep-verify` once over all days.
 - **P2 — Dashboard on local + parity.** Wire readers; `--parity` diffs
   `v_product_lifecycle`/`v_daily_flow` vs local `lifecycle`/`daily_flow`
   (canonicalized: sorted store+handle, booleans coerced, dates as strings; run
@@ -440,9 +488,17 @@ Vitest (`app/lib/__tests__/inventoryArchive.test.js`) against
   recount/mirror; live count ≠ manifest count aborts (mid-mirror-restore
   fixture: day with partial rows); pruned day with rows but no manifest entry
   aborts; orphan days carry manifest rows too (restore missing only the
-  2026-05-21 day must abort); **snapshot**: tmp → integrity+manifest check →
-  atomic rename; failed check leaves the previous snapshot untouched; prune
-  refuses to run when no verified snapshot exists.
+  2026-05-21 day must abort); **watermark guards** (round 3): late old-date
+  insert between verify and delete → frozen set deletes only ids <= max_id,
+  remainder detected, no tombstone, next run re-verifies via 6b and completes;
+  pre-delete recheck routes divergence through 6b; re-verify is fatal when the
+  remote day is gone or rows are missing below the watermark; **registry
+  guards**: stale-snapshot restore missing a pruned orphan day's rows AND
+  manifest is caught by the registry ∪ ledger required-day set; registry
+  upsert failure blocks `verified_at` (and therefore any tombstone);
+  **snapshot**: tmp → integrity+manifest check → atomic rename; failed check
+  leaves the previous snapshot untouched; prune refuses to run when no
+  verified snapshot exists.
 - **inventoryAnalytics.js**: existing tests unchanged; one new test for the
   `readers` override.
 
@@ -459,6 +515,9 @@ P3); `npm test`; dashboard eyeball on localhost before any deletion is enabled.
   immutable; hashes live in the manifest and are checked by `--deep-verify`)
   and a separate automated restore drill (the snapshot's post-build
   integrity+manifest check on a freshly-opened file IS the restore test).
+  From round 3, persisting exact verified id SETS was trimmed to the
+  `max_id` watermark — bigserial monotonicity makes one integer equivalent to
+  storing all ~22k ids per day.
 - Homebrew node upgrades: `node:sqlite` is stable in 26.x; plist uses the stable
   symlink; if node vanishes, launchd logs failures and Supabase buffers days —
   no data-loss window exists by construction.
