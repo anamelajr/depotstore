@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   mkdirSync, existsSync, openSync, fsyncSync, closeSync, renameSync, rmSync,
-  appendFileSync, readdirSync, unlinkSync, statSync, readFileSync,
+  appendFileSync, readdirSync, unlinkSync, statSync, readFileSync, writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { createClient } from "@supabase/supabase-js";
@@ -113,9 +113,11 @@ function pruneOldLogs() {
 // --- lock (launchd already serializes per label; this guards manual runs) ----
 
 function acquireLock() {
+  // The PID is written IN the exclusive create — a create-empty-then-append
+  // sequence leaves a window where a concurrent invocation reads an empty file,
+  // classifies the live lock as stale, and clears it.
   try {
-    const fd = openSync(LOCK_PATH, "wx");
-    closeSync(fd);
+    writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
   } catch (e) {
     if (e.code !== "EEXIST") throw e;
     // Stale-PID detection: a lock whose owner is gone is not a lock.
@@ -132,10 +134,10 @@ function acquireLock() {
     }
     log({ level: "warn", event: "stale_lock_cleared", lock: LOCK_PATH });
     rmSync(LOCK_PATH, { force: true });
-    const fd = openSync(LOCK_PATH, "wx");
-    closeSync(fd);
+    // If another stale-reclaimer wins this re-create, EEXIST propagates and the
+    // run aborts nonzero — correct: exactly one process may hold the lock.
+    writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
   }
-  try { appendFileSync(LOCK_PATH, String(process.pid)); } catch { /* advisory only */ }
 }
 
 const releaseLock = () => rmSync(LOCK_PATH, { force: true });
