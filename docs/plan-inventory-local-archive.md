@@ -47,14 +47,33 @@ accepts laptop as sole copy of old history.
   uninitialized or gap-containing local DB and exits nonzero with a
   restore-from-backup message. Silent acceptance would let backup rotation age
   out the last good copy.
+- **The `day_manifest` is the immutable verified baseline** (Codex round-2
+  finding #1): at verification time each day (ledger AND orphan) gets exactly
+  one append-only manifest row `{row_count, row_hash}` that recount/mirror
+  NEVER updates. Every run, before verify/prune/rebuild, every manifest day's
+  live `COUNT(*)` must equal its manifest count — this catches truncated or
+  mid-run-backup restores that a presence check would accept (a restored
+  mid-mirror day with partial rows, or a missing orphan day, silently changes
+  `agg`/`latest`/`flips`). A pruned remote day absent from the manifest is
+  equally fatal. Hashes are rechecked only by `--deep-verify` (counts catch
+  lost rows; rows are immutable — per-run hashing of 1M+ rows is not worth it).
+- **Backups target the atomic snapshot, never the live WAL DB** (Codex round-2
+  finding #2): file-copying a live WAL database (Time Machine during a run) can
+  produce a torn/corrupt copy. Each successful run ends with `VACUUM INTO` a
+  temp file → `PRAGMA integrity_check` → per-day counts vs manifest → atomic
+  rename to `inventory-archive.snapshot.sqlite`. The snapshot is only ever
+  replaced whole, so ANY backup of it is consistent; restores use the snapshot.
+  First `--prune` is gated on a verified snapshot existing.
 
 ## Architecture
 
 - **Local store:** built-in `node:sqlite` (Node 26, zero deps; verified working
   at `/opt/homebrew/bin/node`). File: `~/DepotArchive/inventory-archive.sqlite`
   — in `$HOME` root deliberately (iCloud sync interacts badly with WAL); user's
-  backups cover it. `PRAGMA wal_checkpoint(TRUNCATE)` at end of each run keeps
-  the at-rest file backup-consistent.
+  backups cover the folder. Backup consistency comes from the per-run
+  `VACUUM INTO` snapshot (`inventory-archive.snapshot.sqlite`, atomic-rename
+  replaced, integrity-checked against the manifest) — never from file-copying
+  the live WAL DB, which can tear mid-run.
 - **Mirror-all, read-local-only:** archiver copies ALL new rows every run
   (keyset watermark on id), deletes only rows older than the cutoff. Local file
   always holds complete history; dashboard reads local only (staleness ≤ ~1 day,
@@ -135,9 +154,23 @@ CREATE TABLE IF NOT EXISTS archive_days (          -- ledger mirror + state mach
   verified_at TEXT,                    -- only after remote count == local count AND local > 0
   deleted_from_supabase_at TEXT        -- only after remote count == 0
 );
+-- Immutable verified baseline (Codex round-2 #1). One row per day, written
+-- ONCE at verification time; mirror/recount never touch it. Covers ledger AND
+-- orphan days. row_hash = SHA-256 over the day's rows ordered by id
+-- (id|handle|store_domain|available|price per row) — rechecked only by
+-- --deep-verify.
+CREATE TABLE IF NOT EXISTS day_manifest (
+  observed_date TEXT PRIMARY KEY,
+  in_ledger INTEGER NOT NULL,
+  row_count INTEGER NOT NULL,
+  row_hash TEXT NOT NULL,
+  verified_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 -- schema_version, last_run_at, last_run_status, last_archived_day,
--- initialized_at (set on first fully-verified mirror; continuity guard input)
+-- initialized_at (set on first fully-verified mirror; continuity guard input),
+-- last_snapshot_at (last successful VACUUM INTO snapshot)
 
 CREATE TABLE IF NOT EXISTS lifecycle (             -- derived, rebuilt each run
   handle TEXT, store_domain TEXT, brand TEXT, title TEXT, name TEXT,
@@ -240,20 +273,26 @@ FROM archive_days d WHERE d.in_ledger = 1 ORDER BY d.observed_date;
    manual runs).
 2. **Mirror ledger** — page `inventory_snapshot_days` → upsert
    `archive_days` with `in_ledger = 1` + `supabase_row_count`.
-2b. **Continuity guard (fail closed)** — detect prior pruning from REMOTE state
-   alone: `remote_min_snap` = earliest `inventory_snapshots.observed_date`
-   (indexed head query on `observed_at`); `remote_min_ledger` = earliest ledger
-   day. If `remote_min_ledger < remote_min_snap` (ledger days exist with no
-   remote rows → pruning has happened), require the local archive to be
-   initialized (`meta.initialized_at` set) AND to contain rows for every ledger
-   day older than `remote_min_snap`. Any gap — fresh file, wrong
-   `DEPOT_ARCHIVE_DB` path, partial restore — aborts BEFORE verify/prune/
-   rebuild with `archive-continuity-violation: restore ~/DepotArchive from
-   backup` and a nonzero exit. Mirroring (step 3) may still run first — it only
-   adds rows and is always safe; nothing may be verified, deleted, or
-   republished to the dashboard from a continuity-violating archive.
-   `meta.initialized_at` is set once, at the end of the first run in which
-   every remote day verified clean (P1 exit criterion).
+2b. **Continuity guard (fail closed)** — two independent checks, both required
+   BEFORE verify/prune/rebuild; failure of either aborts nonzero with
+   `archive-continuity-violation: restore ~/DepotArchive from backup`.
+   (a) *Remote-evidence check*: `remote_min_snap` = earliest
+   `inventory_snapshots.observed_date` (indexed head query on `observed_at`);
+   `remote_min_ledger` = earliest ledger day. If `remote_min_ledger <
+   remote_min_snap` (pruning has happened), the archive must be initialized
+   (`meta.initialized_at`) and every remote day (ledger or orphan) older than
+   `remote_min_snap` must be present in `day_manifest` — a pruned day with no
+   manifest entry means this file never verified it and Supabase can no longer
+   repair it.
+   (b) *Manifest-integrity check*: for EVERY `day_manifest` row, live
+   `COUNT(*)` on `idx_snap_date` must equal `row_count`. Catches truncated and
+   mid-run-backup restores (partial day rows) and missing orphan days that a
+   presence check would accept. Cheap: one indexed count per day.
+   Mirroring (step 3) may still run first — it only adds rows and is always
+   safe; nothing may be verified, deleted, or republished to the dashboard from
+   a continuity-violating archive. `meta.initialized_at` is set once, at the
+   end of the first run in which every remote day verified clean (P1 exit
+   criterion).
 3. **Mirror rows by id watermark** — `cursor = local MAX(id)`; loop
    `.select("*").gt("id", cursor).order("id", asc).limit(1000)` (keyset — PK-
    indexed, immune to offset drift + 8s cap); each page one transaction with
@@ -270,14 +309,18 @@ FROM archive_days d WHERE d.in_ledger = 1 ORDER BY d.observed_date;
    strictly older, `deleted_from_supabase_at IS NULL`.
 6. **Verify** (per candidate lacking `verified_at`) — remote
    `.select("id",{count:"exact",head:true}).eq("observed_date", day)` must
-   **equal** local count **and local count must be > 0** → set `verified_at`.
-   Remote 0 == local 0 is NEVER verification — it is a continuity violation
-   (the day was pruned but this archive has no rows for it): fatal error, abort
-   run nonzero. Ledger `row_count` mismatch is warn-only (partial-run capture
-   races make it approximate — NOT ground truth). Remote > local → day-repair
-   (paged re-read + INSERT OR IGNORE), re-verify once. Remote < local on
-   unverified day → loud log, skip, never delete. `--deep-verify` re-reads and
-   hash-compares per-row (run once before drain).
+   **equal** local count **and local count must be > 0** → set `verified_at`
+   AND insert the day's `day_manifest` row (count + hash) — exactly once,
+   never updated. Remote 0 == local 0 is NEVER verification — it is a
+   continuity violation (the day was pruned but this archive has no rows for
+   it): fatal error, abort run nonzero. Remote 0 with local > 0 but **no
+   manifest entry** is equally fatal (pruned day this file never verified —
+   e.g. a mid-mirror restore). Ledger `row_count` mismatch is warn-only
+   (partial-run capture races make it approximate — NOT ground truth).
+   Remote > local → day-repair (paged re-read + INSERT OR IGNORE), re-verify
+   once. Remote < local on unverified day → loud log, skip, never delete.
+   `--deep-verify` re-reads remote days and hash-compares per-row, and
+   recomputes local hashes against `day_manifest` (run once before drain).
 7. **Delete** (only `--prune`, per candidate WITH `verified_at`) — local ids for
    the day, chunks of 500 → `.delete({count:"exact"}).in("id", chunk)`; then
    remote count must be 0 → set `deleted_from_supabase_at`. Crash mid-delete
@@ -286,9 +329,18 @@ FROM archive_days d WHERE d.in_ledger = 1 ORDER BY d.observed_date;
    can't deadlock the state machine.)
 8. **Rebuild derived** — transactional refill of `lifecycle` + `daily_flow`,
    `ANALYZE`, update `meta`.
-9. **Finish** — `PRAGMA wal_checkpoint(TRUNCATE)`; JSON summary line
-   (`mirrored, verifiedDays, deletedDays, deletedRows, durationMs`); exit 0.
-   Fatal errors: structured log + nonzero exit; safe at any point by ordering.
+9. **Snapshot** (every successful run that changed data) — `VACUUM INTO`
+   `inventory-archive.snapshot.tmp` → open it read-only: `PRAGMA
+   integrity_check` + per-day counts vs `day_manifest` → fsync → atomic
+   `rename()` over `inventory-archive.snapshot.sqlite`; set
+   `meta.last_snapshot_at`. This IS the restore test: the file backups protect
+   is verified-consistent by construction, and only ever replaced whole.
+   (~seconds for a ~200 MB file, daily.) Snapshot failure fails the run
+   nonzero but never blocks the already-completed mirror/verify state.
+10. **Finish** — `PRAGMA wal_checkpoint(TRUNCATE)` (hygiene, no longer the
+   backup-consistency mechanism); JSON summary line (`mirrored, verifiedDays,
+   deletedDays, deletedRows, snapshotOk, durationMs`); exit 0. Fatal errors:
+   structured log + nonzero exit; safe at any point by ordering.
 
 Concurrency: cron writes only today; archiver deletes only old days; dashboard
 opens the file `readonly` under WAL — no interference anywhere.
@@ -352,9 +404,11 @@ observed_date 2026-05-21), so dropping it forfeits nothing.
   rows mean the orphan leaked into cold_start). Then diff full
   `getInventoryInsights` JSON with readers toggled. Eyeball `/admin/inventory`
   in `next dev`.
-- **P3 — Retire + automate.** Apply retirement SQL. Run `--prune` once manually
-  (drains ~700k rows in ~1,400 chunked deletes). Install plist + bootstrap;
-  confirm a scheduled run fires and logs.
+- **P3 — Retire + automate.** Apply retirement SQL. Preconditions for the first
+  `--prune`: `--deep-verify` clean over all days, AND a verified snapshot file
+  exists (`meta.last_snapshot_at` set, integrity-checked). Run `--prune` once
+  manually (drains ~700k rows in ~1,400 chunked deletes). Install plist +
+  bootstrap; confirm a scheduled run fires and logs.
 - **P4 — Reclaim.** VACUUM FULL + size guards; confirm Supabase usage drops
   under quota; confirm row count plateaus at ~14 × 22k over following days.
 
@@ -381,7 +435,14 @@ Vitest (`app/lib/__tests__/inventoryArchive.test.js`) against
   **continuity guards**: remote-0==local-0 is fatal, never verified; fresh DB
   when remote shows pruning evidence → abort before verify/prune/rebuild
   (covers deleted file, mistyped `DEPOT_ARCHIVE_DB`, partial restore);
-  `meta.initialized_at` set only after a fully-verified mirror.
+  `meta.initialized_at` set only after a fully-verified mirror; **manifest
+  guards**: manifest rows written once at verify and never updated by
+  recount/mirror; live count ≠ manifest count aborts (mid-mirror-restore
+  fixture: day with partial rows); pruned day with rows but no manifest entry
+  aborts; orphan days carry manifest rows too (restore missing only the
+  2026-05-21 day must abort); **snapshot**: tmp → integrity+manifest check →
+  atomic rename; failed check leaves the previous snapshot untouched; prune
+  refuses to run when no verified snapshot exists.
 - **inventoryAnalytics.js**: existing tests unchanged; one new test for the
   `readers` override.
 
@@ -390,8 +451,14 @@ P3); `npm test`; dashboard eyeball on localhost before any deletion is enabled.
 
 ## Residual risks (accepted)
 
-- Laptop = sole copy of pruned history → user's backups + WAL checkpoint keep
-  the file backup-consistent (optional future: monthly `VACUUM INTO` snapshot).
+- Laptop = sole copy of pruned history → user's backups capture the atomic
+  `VACUUM INTO` snapshot (verified-consistent by construction, replaced only
+  whole); the manifest makes any truncated/torn restore fail closed instead of
+  silently publishing corrupted analytics. Deliberately NOT adopted from the
+  Codex review: per-run hash verification (counts catch lost rows; rows are
+  immutable; hashes live in the manifest and are checked by `--deep-verify`)
+  and a separate automated restore drill (the snapshot's post-build
+  integrity+manifest check on a freshly-opened file IS the restore test).
 - Homebrew node upgrades: `node:sqlite` is stable in 26.x; plist uses the stable
   symlink; if node vanishes, launchd logs failures and Supabase buffers days —
   no data-loss window exists by construction.
