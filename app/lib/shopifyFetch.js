@@ -6,7 +6,11 @@ import {
 } from "./brand.js";
 import { parseSizes } from "./parseSizes.js";
 
-export const FILTER_BY_BRAND = new Set(["dolcevitahub.com"]);
+export const FILTER_BY_BRAND = new Set([
+  "dolcevitahub.com",
+  "treviseparis.com",
+  "chezsnowbunny.fr",
+]);
 
 async function fetchExistingEditorialByHandle(storeDomain) {
   const map = {};

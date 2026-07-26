@@ -45,5 +45,7 @@ INSERT INTO stores (domain, store_name, display_name, location, lat, lng, active
   ('yourgarmentz.com',     'yourgarmentz',       'yourgarmentz',       'Paris',                  NULL,    NULL,   true),
   ('www.dotcomme.net',     'dot COMME',          'dot COMME',          'Le Marais',              NULL,    NULL,   true),
   ('escoparis.com',        'ESCO',               'ESCO',               'Paris',                  NULL,    NULL,   true),
-  ('graindesell.shop',     'Grain de sell',      'Grain de sell',      'Paris',                  NULL,    NULL,   true)
+  ('graindesell.shop',     'Grain de sell',      'Grain de sell',      'Paris',                  NULL,    NULL,   true),
+  ('treviseparis.com',     'Trévise',            'Trévise',            'Oberkampf',              48.8631, 2.3682, true),
+  ('chezsnowbunny.fr',     'Chez Snow Bunny',    'Chez Snow Bunny',    'Le Marais',              48.8654, 2.3621, true)
 ON CONFLICT (domain) DO NOTHING;
