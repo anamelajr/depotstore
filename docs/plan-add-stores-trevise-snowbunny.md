@@ -113,6 +113,24 @@ ON CONFLICT (domain) DO UPDATE SET active = true;
 
 **Expected one-time cost:** ~1,013 available rows enriched (245 Trévise + 768 Chez Snow Bunny) ⇒ ~1,013 `cleanTitle` OpenAI calls, plus ~20 wasted calls on the known substring false positives. Cron duration will grow (Chez Snow Bunny alone is 20 paginated fetches × 500 ms sleep ≈ +15–30 s) — watch it stays under `maxDuration = 300`.
 
+## Post-mortem addendum (2026-07-26, after activation)
+
+The dry-run predicate above (`isAllowedBrand(vendor) || titleContainsAllowedBrand(title)`)
+was NOT what the shipped code implemented. The shipped resolution chain used
+`normalizeBrand(p.vendor)` — which normalizes text but never consults the
+allowlist — so any non-empty vendor short-circuited the title check and was
+then rejected by `isAllowedBrand`. Chez Snow Bunny sets `vendor` to the shop's
+own name on every product (Shopify's default), so its first sync imported **0**
+products; Trévise imported 330 instead of 369 (the 39 delta = off-list vendor
++ allowlisted-brand title).
+
+Fixed by extracting `passesBrandFilter` (exported, unit-tested in
+`app/lib/__tests__/shopifyFetch.test.js`): vendor now wins only when it IS an
+allowlisted brand, otherwise resolution falls through to the title check —
+matching this plan's predicate. Side effect (accepted): dolcevitahub gains the
+~5% of rows the veto was silently dropping. Dry runs must exercise the real
+exported function, not a re-implementation of it.
+
 ## Out of scope
 - Retro Chic (Wix — skipped entirely per user).
 - Any allowlist/brand additions (per user).
