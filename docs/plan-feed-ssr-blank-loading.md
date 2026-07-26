@@ -55,6 +55,31 @@ this version incorporates the fixes:
    server re-render but forks the data path in two, loses SSR'd filter
    URLs, and fights the framework's model.)
 
+A second review round added three hardening fixes (adopted in cheap form;
+the review's heavier remedies — full AbortSignal propagation through all
+shared query helpers, deterministic race-timing test harnesses — were
+judged disproportionate and skipped):
+
+3. **Bound the whole loader, not just the product fetch.** `getActiveStores`
+   already degrades to `FALLBACK_STORES` on Supabase `{ error }` returns,
+   but the loader now runs stores + products concurrently under one 4s
+   deadline with a try/catch around everything — a throw or stall in
+   either degrades to `FALLBACK_STORES` + `initialData = null` instead of
+   an error page or an indefinite blank shell.
+4. **Actually cancel the timed-out server query.** `fetchProductsPage`
+   accepts an optional `signal` applied via `.abortSignal()` at its query
+   call sites, and the loader aborts it when the deadline fires (timer
+   cleared on success) — no orphaned query racing the client retry during
+   a slowdown. The two interleaved RPC helpers gain an optional trailing
+   `signal` param (backwards-compatible) so the default feed path is
+   covered too.
+5. **Guard Load More against a now-persistent stale-response race.** Today
+   a stale Load More response landing during a filter change is papered
+   over by the follow-up client refetch replacing `products` wholesale;
+   under the new server-driven path nothing overwrites it, so the append
+   would persist. Each Load More response is now discarded unless the
+   `filterKey` it was issued under still matches the current one.
+
 ## Steps
 
 ### 1. NEW `app/lib/fetchProductsPage.js` — extracted query core
@@ -74,13 +99,22 @@ export async function fetchProductsPage({
   sort = null,         // null | "newest" | "oldest" | "price_asc" | "price_desc"
   limit,
   offset = 0,
-} = {}) // → Promise<{ products, total }>; THROWS on Supabase/RPC error
+  signal = undefined,  // optional AbortSignal; applied via .abortSignal() at query call sites
+} = {}) // → Promise<{ products, total }>; THROWS on Supabase/RPC error or abort
 ```
 
 Alias expansion and category resolution happen inside the function so both
 callers get identical semantics. Use the dynamic `getDefaultClient()`
 supabase-import pattern from `app/lib/productQueries.js:5-8`. All sort
 paths (including price sort) go through this one function.
+
+When `signal` is provided, chain `.abortSignal(signal)` onto the queries
+this function builds directly (price-sort and direct-sort branches). For
+the interleaved branch, add an optional trailing `signal` parameter to
+`fetchInterleavedProducts` / `countInterleavedProducts` in
+`app/lib/productQueries.js` (default `undefined` — existing callers
+unaffected) and chain `.abortSignal()` there when set. The API route
+passes no signal, so its behavior is unchanged.
 
 ### 2. `app/api/products/route.js` — thin parser
 
@@ -126,27 +160,43 @@ export default async function FeedPage({ searchParams }) {
     for both `?category=a&category=b` and `?category=a,b` URLs), and
     `filterKey = `${store}|${categoriesKey}|${search}|${sort}|${brand}``
     (identical to `FeedClient.js:152`).
-  - `const stores = await getActiveStores();`
-  - Bounded product fetch:
+  - Concurrent, bounded, cancellable fetch of stores + products — the
+    entire loader body is covered, so a throw or stall in either
+    dependency degrades instead of erroring or hanging:
 
     ```js
     const SERVER_FETCH_TIMEOUT_MS = 4000;
+    let stores = FALLBACK_STORES;   // newly exported from app/lib/stores.js
     let initialData = null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SERVER_FETCH_TIMEOUT_MS);
     try {
-      const result = await Promise.race([
-        fetchProductsPage({ store: …, categorySlugs, search, brand,
-          sort: SORT_MAP[urlSort] || null, limit: LOAD_SIZE, offset: 0 }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("server fetch timeout")), SERVER_FETCH_TIMEOUT_MS)),
+      const [storesResult, productsResult] = await Promise.race([
+        Promise.all([
+          getActiveStores(),        // degrades internally to FALLBACK_STORES on { error }
+          fetchProductsPage({ store: …, categorySlugs, search, brand,
+            sort: SORT_MAP[urlSort] || null, limit: LOAD_SIZE, offset: 0,
+            signal: controller.signal }),
+        ]),
+        new Promise((_, reject) => {
+          controller.signal.addEventListener("abort", () =>
+            reject(new Error("server fetch timeout")), { once: true });
+        }),
       ]);
-      initialData = { products: result.products, total: result.total, filterKey };
+      stores = storesResult;
+      initialData = { products: productsResult.products, total: productsResult.total, filterKey };
     } catch (err) {
       console.warn(`[FeedLoader] server fetch failed, falling back to client fetch: ${err.message}`);
+    } finally {
+      clearTimeout(timer);
     }
     ```
 
-    (The race doesn't cancel the underlying query — acceptable: PostgREST's
-    own 8s statement_timeout reaps it.)
+    The abort actually cancels the in-flight product query (via
+    `.abortSignal()` in `fetchProductsPage`), so the client retry never
+    races an orphaned server query during a slowdown. The stores query has
+    no signal, but the outer race stops it from holding the render past
+    the deadline, and its own `{ error }` path already returns fallbacks.
   - `return <FeedClient stores={stores} initialData={initialData} />;`
 
 ### 5. `app/feed/FeedClient.js` — server-driven data, blank loading UI
@@ -202,7 +252,31 @@ saved count ≤ LOAD_SIZE): the scroll-restore `useLayoutEffect` (line 95)
 re-fires off `loading`/`products` state changes, which only happen if the
 restore fetch runs — skipping it would silently break scroll restoration.
 
-**d) Blank loading JSX:**
+**d) Load More stale-response guard.** The Load More effect (lines
+203-239) keeps its structure, but each request captures the `filterKey` it
+was issued under and the response is discarded if the key has moved on.
+Add a ref kept current every render (`const filterKeyRef = useRef(filterKey);
+filterKeyRef.current = filterKey;`), then in the effect:
+
+```js
+const requestFilterKey = filterKeyRef.current;   // captured at request start
+…
+.then((data) => {
+  if (filterKeyRef.current !== requestFilterKey) return; // stale: filter changed mid-flight
+  setProducts((prev) => [...prev, ...(data.products || [])]);
+  setTotal(data.total ?? 0);
+})
+```
+
+Why: today a stale Load More response landing during a filter change is
+overwritten moments later by the client refetch's wholesale
+`setProducts(data.products)`. The server-driven path removes that
+overwrite, so an unguarded stale append (old-filter products mixed into
+the new grid) would persist. The abort-on-cleanup stays as-is; this guard
+covers the window where the response handler has already run before
+cleanup fires.
+
+**e) Blank loading JSX:**
 - Grid area (lines 373-376): `{loading ? null : error ? … }` — delete the
   grey pill; error and "No products found." branches unchanged.
 - Mobile count (line 350): `{loading ? " " : …}` — a non-breaking
@@ -215,7 +289,8 @@ restore fetch runs — skipping it would silently break scroll restoration.
 |---|---|
 | First visit / category click (full navigation) | Blank shell streams, then products arrive in SSR HTML; `loading` starts false; no loading UI ever |
 | Filter/sort/search change (router.push, no remount) | Server re-render carries new `initialData`; ONE query (server-side); old grid stays visible until the new data commits — no blank, no client fetch |
-| Supabase down / slow (> 4s) at render | Race rejects → `initialData = null` → client fetch path (one retry, as today); worst case ≈ 4s + today's single client attempt |
+| Supabase down / slow (> 4s) at render | Deadline aborts the product query (no orphaned work) and the race unblocks the render → `FALLBACK_STORES` + `initialData = null` → client fetch path (one retry, as today); worst case ≈ 4s + today's single client attempt; a thrown/stalled stores query degrades identically instead of erroring |
+| Stale Load More response lands during a filter change | Response's captured `filterKey` no longer matches → discarded; no mixed-filter grid |
 | Server data stale vs URL (any mismatch) | `serverMatch` false → normal client fetch, grid blank while fetching |
 | Back-nav restore (`restoreCountRef` set) | Apply-effect and skip-guard both defer → refetch `limit=count` exactly as today; scroll restored pre-paint |
 | Explicit sort URLs (`?sort=price_asc`…) | SSR'd via the same shared branches; unknown sorts → `SORT_MAP[x] || null` → interleaved, matching client |
@@ -223,11 +298,13 @@ restore fetch runs — skipping it would silently break scroll restoration.
 
 ## Files
 
-1. `app/lib/fetchProductsPage.js` — new, extracted query core
+1. `app/lib/fetchProductsPage.js` — new, extracted query core (+ optional `signal`)
 2. `app/api/products/route.js` — thin parser
-3. `app/feed/page.js` — streaming shell, async `FeedLoader` inside Suspense, bounded fetch
-4. `app/feed/FeedClient.js` — hoist filterKey, seeded state, apply-server-data effect, fetch guard, blank JSX
+3. `app/feed/page.js` — streaming shell, async `FeedLoader` inside Suspense, bounded + cancellable fetch
+4. `app/feed/FeedClient.js` — hoist filterKey, seeded state, apply-server-data effect, fetch guard, Load More stale guard, blank JSX
 5. `app/lib/feed-utils.js` — `LOAD_SIZE` export
+6. `app/lib/stores.js` — export `FALLBACK_STORES` (used by the loader's catch path)
+7. `app/lib/productQueries.js` — optional trailing `signal` param on `fetchInterleavedProducts` / `countInterleavedProducts` (backwards-compatible)
 
 ## Verification (read-only / localhost safe; NEVER hit /api/cron or /api/enrich)
 
@@ -252,5 +329,9 @@ restore fetch runs — skipping it would silently break scroll restoration.
 7. **Outage fallback (review finding #2):** run dev with an invalid
    `NEXT_PUBLIC_SUPABASE_URL` — `/feed` streams the blank shell promptly,
    falls back to the client path (error card if that also fails), no 500;
-   total wait bounded ≈ 4s + one client attempt.
-8. `npm run build` passes (no client/server import violations).
+   total wait bounded ≈ 4s + one client attempt; store dropdown shows the
+   `FALLBACK_STORES` list.
+8. **Stale Load More guard:** with devtools network throttled, start a
+   Load More then immediately toggle a category — the new grid must
+   contain only new-filter products (no appended old-filter batch).
+9. `npm run build` passes (no client/server import violations).
