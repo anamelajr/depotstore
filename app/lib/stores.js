@@ -23,7 +23,7 @@ export {
 // Intentionally minimal: domain + storeName only. Downstream consumers
 // like ParisMap filter by `lat != null` so fallback rows are silently
 // omitted from the map — preferred over crashing or showing stale geo.
-const FALLBACK_STORES = [
+export const FALLBACK_STORES = [
   { domain: "lobscur.com", storeName: "L'OBSCUR" },
   { domain: "dolcevitahub.com", storeName: "Dolce Vita Hub" },
   { domain: "seyswardrobe.fr", storeName: "Seys Wardrobe" },
