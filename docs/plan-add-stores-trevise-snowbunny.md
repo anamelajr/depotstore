@@ -29,11 +29,16 @@ Inserting the `stores` rows is what activates syncing (cron iterates `getActiveS
 
 So, inverting the usual schema-first rule (this is data, not schema — code doesn't break without the rows):
 
-1. Merge + deploy the code changes (branch → PR → user merges → Vercel deploy).
+1. Merge + deploy the code changes **except the `FALLBACK_STORES` entries** (branch → PR → user merges → Vercel deploy). The fallback entries ship in a follow-up commit only after both stores are activated and verified — see change 2 below for why.
 2. **Then** insert the `stores` rows via the Supabase SQL Editor (MCP is read-only per CLAUDE.md — the user runs the SQL, provide it ready to paste), **staggered**: insert Trévise first, verify its sync + enrich drain over the next cron cycle, then insert Chez Snow Bunny. `/api/enrich` has no run lease or row lock — two overlapping drains can select the same batch and double-spend OpenAI calls. Staggering keeps each drain small (245 rows, then 768) so it completes well inside one hourly cycle; a lease is deliberately out of scope for a one-time backfill this size.
 3. Next hourly GitHub-Actions cron picks the stores up automatically. Do **not** trigger `/api/cron` or `/api/enrich` locally (writes prod, spends OpenAI — CLAUDE.md invariant).
 
-**Rollback ordering (the mirror rule):** if the code deploy is ever reverted while the store rows are active, cron still discovers both domains from the DB but without the `FILTER_BY_BRAND` entries — the next hourly run imports both full catalogs unfiltered. Rollback must therefore run in the reverse order: first `UPDATE stores SET active = false WHERE domain IN ('treviseparis.com','chezsnowbunny.fr');`, confirm the next cron summary no longer lists those domains, then revert the code.
+**Rollback ordering (the mirror rule):** if the code deploy is ever reverted while the store rows are active, cron still discovers both domains from the DB but without the `FILTER_BY_BRAND` entries — the next hourly run imports both full catalogs unfiltered. Note that deactivating a store row only removes it from nav/map/filters/sync — product reads (`productQueries.js`) never join `stores.active`, so already-imported products would stay in the global feed and remain reachable via `?store=` links and PDP URLs. Full rollback therefore runs in this order:
+
+1. `UPDATE stores SET active = false WHERE domain IN ('treviseparis.com','chezsnowbunny.fr');`
+2. `UPDATE products SET hidden = true WHERE store_domain IN ('treviseparis.com','chezsnowbunny.fr');` — hidden, not deleted, matching the codebase's hide-don't-delete convention; reversible with `hidden = false` if the rollback is reversed. (Snapshot before running, per CLAUDE.md.)
+3. Verify: the global feed and a direct `?store=` filter return none of these products; next cron summary no longer lists the domains.
+4. Revert the code (including removing the two domains from `FALLBACK_STORES` if the follow-up commit already shipped).
 
 ## Code changes (one branch)
 
@@ -46,12 +51,14 @@ export const FILTER_BY_BRAND = new Set([
 ]);
 ```
 
-### 2. `app/lib/stores.js` — append to `FALLBACK_STORES`
+### 2. `app/lib/stores.js` — append to `FALLBACK_STORES` (**follow-up commit, AFTER both stores are activated and verified**)
 ```js
   { domain: "treviseparis.com", storeName: "Trévise" },
   { domain: "chezsnowbunny.fr", storeName: "Chez Snow Bunny" },
 ```
 (Fallback entries are intentionally minimal — domain + storeName only, matching the existing comment.)
+
+**Why deferred:** `getActiveStores()` returns the entire `FALLBACK_STORES` list whenever the Supabase `stores` read fails. If the new domains were in the fallback before their DB rows exist, a transient read error during cron would sync them early — bypassing the staggered activation and producing feed products whose PDPs 404 (PDP requires the `stores` row). The fallback list must only ever contain stores that are already live. For the same reason, a rollback that deactivates the DB rows must also remove these fallback entries (see Rollback ordering).
 
 ### 3. `supabase/schema.sql` — append to the seed `INSERT` block (docs-only mirror, `ON CONFLICT DO NOTHING`)
 ```sql
