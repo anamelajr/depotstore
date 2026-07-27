@@ -611,6 +611,25 @@ describe("archiverCore — continuity guards", () => {
     expect(out.reverifyDays).toEqual([D(1)]);
   });
 
+  it("aborts when a pruned ledger day has a manifest but no registry witness", async () => {
+    const db = await memDb();
+    nextId = 1;
+    const rows = [snap({ handle: "A", observed_date: D(1) }), snap({ handle: "B", observed_date: D(3) })];
+    const fake = makeFakeSupabase({
+      snapshots: rows,
+      ledger: [{ observed_date: D(1), row_count: 1 }, { observed_date: D(3), row_count: 1 }],
+    });
+    seedLocal(db, { rows, ledgerDays: [D(1), D(3)] });
+    setMeta(db, "initialized_at", "2026-07-01T00:00:00.000Z");
+    await verifyDay(db, fake.client, D(1), { now, log: () => {} });
+    // Simulate the day being pruned AND the registry losing its witness row.
+    fake.tables.inventory_snapshots = fake.tables.inventory_snapshots.filter((r) => r.observed_date !== D(1));
+    fake.tables.archive_day_registry = [];
+    await expect(continuityGuard(db, fake.client, { log: () => {} })).rejects.toThrow(
+      /no archive_day_registry witness/,
+    );
+  });
+
   it("aborts the run when --deep-verify finds a hash mismatch, before any delete", async () => {
     const db = await memDb();
     nextId = 1;

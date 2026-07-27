@@ -295,7 +295,17 @@ export async function continuityGuard(db, supabase, { log }) {
         );
       }
       const reg = registryByDay.get(day);
-      if (reg && reg.row_count !== m.row_count) {
+      if (!reg) {
+        // Every pruned day was witnessed in the registry BEFORE its delete, so
+        // a manifested-but-unwitnessed pruned day means the registry itself has
+        // lost data — the guarantee orphan-day recovery depends on. Fail while
+        // the local copy still exists and the registry can be repaired.
+        fatal(
+          "archive-continuity-violation",
+          `day ${day} was pruned but has no archive_day_registry witness — the remote registry lost data; repair it from day_manifest before pruning anything further`,
+        );
+      }
+      if (reg.row_count !== m.row_count) {
         fatal(
           "archive-continuity-violation",
           `day ${day}: registry row_count ${reg.row_count} != manifest ${m.row_count} — ${RESTORE_HINT}`,
