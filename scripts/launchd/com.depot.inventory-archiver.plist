@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Checked-in template for the local inventory archiver (docs/plan-inventory-local-archive.md).
+
+  Paths point at the MAIN CHECKOUT (~/depotstore), not a worktree — install only
+  after this branch is merged:
+
+    cp scripts/launchd/com.depot.inventory-archiver.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.depot.inventory-archiver.plist
+    launchctl kickstart -p gui/$(id -u)/com.depot.inventory-archiver   # optional smoke run
+
+  Why these settings:
+   - absolute node path: launchd runs with a bare environment and cwd=/
+   - --env: the script's default .env.local resolution is relative to the script,
+     which is correct here, but passing it explicitly makes the unit self-describing
+   - RunAtLoad: covers a Mac that was powered off at both scheduled times
+   - two StartCalendarInterval entries: sleep-missed events coalesce on wake
+   - ThrottleInterval: never re-fire within 5 minutes
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.depot.inventory-archiver</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/anamelajr/depotstore/scripts/inventoryArchiver.mjs</string>
+    <string>--prune</string>
+    <string>--env</string>
+    <string>/Users/anamelajr/depotstore/.env.local</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/anamelajr/depotstore</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key><integer>9</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>21</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/Users/anamelajr/DepotArchive/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/anamelajr/DepotArchive/logs/launchd.err.log</string>
+</dict>
+</plist>

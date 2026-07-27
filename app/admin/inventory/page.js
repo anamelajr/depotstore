@@ -22,9 +22,28 @@ export default async function InventoryInsightsPage({ searchParams }) {
   const rangeKey = RANGES.some((r) => r.key === sp?.range) ? sp.range : "30";
   const sinceDays = rangeKey === "all" ? null : Number(rangeKey);
 
+  // Local-archive mode: when DEPOT_ARCHIVE_DB points at the SQLite mirror, read
+  // the full history from it instead of Supabase (which keeps only a ~14-day hot
+  // window). The env var is never set on Vercel, so prod never loads node:sqlite
+  // — hence the dynamic import.
+  const archivePath = process.env.DEPOT_ARCHIVE_DB;
+  let readers = {};
+  let archiveMeta = null;
+  let archiveError = null;
+  if (archivePath) {
+    try {
+      const mod = await import("../../lib/inventoryArchive/localReaders.js");
+      readers = mod.makeLocalReaders({ path: archivePath });
+      archiveMeta = await mod.getArchiveMeta({ path: archivePath });
+    } catch (e) {
+      archiveError = e.message;
+      readers = {};
+    }
+  }
+
   let data, error;
   try {
-    data = await getInventoryInsights({ store, sinceDays });
+    data = await getInventoryInsights({ store, sinceDays, readers });
   } catch (e) {
     error = e.message;
   }
@@ -35,8 +54,13 @@ export default async function InventoryInsightsPage({ searchParams }) {
       <div style={{ maxWidth: 720 }}>
         <h1 style={{ fontSize: 22, fontWeight: 400 }}>Inventory insights</h1>
         <p style={{ color: "#c98b7a" }}>Could not load insights: {error}</p>
-        <p style={muted}>If the views are missing, apply
-          <code> scripts/sql/2026-06-08-inventory-insights.sql</code> in the SQL Editor.</p>
+        {archivePath ? (
+          <p style={muted}>Reading the local archive at <code>{archivePath}</code>. If the file is
+            missing or empty, run <code>npm run archive</code> to mirror from Supabase.</p>
+        ) : (
+          <p style={muted}>If the views are missing, apply
+            <code> scripts/sql/2026-07-03-inventory-insights-mv.sql</code> in the SQL Editor.</p>
+        )}
       </div>
     );
   }
@@ -52,6 +76,20 @@ export default async function InventoryInsightsPage({ searchParams }) {
         (pre-deploy) items. {meta.totalTracked.toLocaleString()} products tracked.
         {meta.gapExits > 0 && ` ${meta.gapExits.toLocaleString()} pre-tracking exits excluded.`}
       </p>
+
+      {archiveMeta && (
+        <p style={{ ...muted, fontSize: 12, marginTop: -12, marginBottom: 20 }}>
+          Data as of {archiveMeta.lastArchivedDay ?? "—"} · local archive
+          ({archiveMeta.days} days, {archiveMeta.snapshotRows.toLocaleString()} snapshot rows;
+          last run {archiveMeta.lastRunAt ?? "never"}).
+        </p>
+      )}
+      {archiveError && (
+        <p style={{ color: "#c98b7a", fontSize: 12, marginTop: -12, marginBottom: 20 }}>
+          Local archive unavailable ({archiveError}) — showing Supabase data, which keeps only the
+          recent hot window. Run <code>npm run archive</code>.
+        </p>
+      )}
 
       {/* Filters (plain GET form) */}
       <form method="get" style={{ display: "flex", gap: 12, marginBottom: 24, fontSize: 13 }}>
