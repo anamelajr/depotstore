@@ -611,6 +611,24 @@ describe("archiverCore — continuity guards", () => {
     expect(out.reverifyDays).toEqual([D(1)]);
   });
 
+  it("aborts the run when --deep-verify finds a hash mismatch, before any delete", async () => {
+    const db = await memDb();
+    nextId = 1;
+    const rows = [snap({ handle: "A", observed_date: D(1) })];
+    const fake = makeFakeSupabase({ snapshots: rows, ledger: [{ observed_date: D(1), row_count: 1 }] });
+    seedLocal(db, { rows, ledgerDays: [D(1)] });
+    await verifyDay(db, fake.client, D(1), { now, log: () => {} });
+    // Corrupt the mirrored row so the local hash no longer matches the manifest.
+    db.prepare("UPDATE inventory_snapshots SET price = '€999.00' WHERE handle = 'A'").run();
+    setMeta(db, "last_snapshot_at", "2026-07-25T00:00:00.000Z"); // pass the prune gate
+    await expect(
+      runArchiver({ db, supabase: fake.client, retainDays: 1, prune: true, deepVerify: true, log: () => {} }),
+    ).rejects.toMatchObject({ code: "deep-verify-failed" });
+    // Nothing was deleted from Supabase off the diverged mirror.
+    expect(fake.calls.deletes).toHaveLength(0);
+    expect(fake.tables.inventory_snapshots).toHaveLength(1);
+  });
+
   it("refuses to prune before a verified snapshot exists", async () => {
     const db = await memDb();
     const fake = makeFakeSupabase({ snapshots: [], ledger: [] });

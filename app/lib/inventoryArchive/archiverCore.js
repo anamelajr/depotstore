@@ -606,7 +606,18 @@ export async function runArchiver({
     summary.reverifiedDays += 1;
   }
 
-  if (deepVerify) summary.deepVerify = await deepVerifyAll(db, supabase, { log });
+  if (deepVerify) {
+    summary.deepVerify = await deepVerifyAll(db, supabase, { log });
+    // A hash mismatch means the archive diverges from the source rows — fail
+    // closed before any verification or deletion can act on a diverged mirror.
+    if (summary.deepVerify.problems.length > 0) {
+      fatal(
+        "deep-verify-failed",
+        `deep-verify found ${summary.deepVerify.problems.length} hash mismatch(es): ` +
+          `${JSON.stringify(summary.deepVerify.problems.slice(0, 3))} — ${RESTORE_HINT}`,
+      );
+    }
+  }
 
   const cutoff = computeCutoff(db, retainDays);
   summary.cutoff = cutoff;
