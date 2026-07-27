@@ -7,6 +7,7 @@ import { supabaseAdmin } from "./supabase.js";
 export {
   normalizeBrand,
   isAllowedBrand,
+  canonicalBrand,
   BRAND_SET_NORMALIZED,
   brandFromHandle,
 } from "./brand.js";
