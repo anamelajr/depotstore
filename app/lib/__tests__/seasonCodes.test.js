@@ -94,6 +94,17 @@ describe("normalizeSeasonCodes — spelled-out seasons", () => {
     expect(normalizeSeasonCodes("Indian Summer Dress")).toBe("Indian Summer Dress");
     expect(normalizeSeasonCodes("Fall Winter Coat")).toBe("Fall Winter Coat");
   });
+  // Codex round 1: COMPOUND_* accept an apostrophe year, so SEASON_YEAR must
+  // consume it too — otherwise this title strands as the half-normalized
+  // "FW '03 Pants".
+  it("completes normalization of an apostrophe-year compound season", () => {
+    expect(normalizeSeasonCodes("Fall/Winter '03 Pants")).toBe("FW03 Pants");
+    expect(normalizeSeasonCodes("Spring/Summer '99 Top")).toBe("SS99 Top");
+  });
+  it("consumes an apostrophe directly on a season code", () => {
+    expect(normalizeSeasonCodes("FW '03 Wool Coat")).toBe("FW03 Wool Coat");
+    expect(normalizeSeasonCodes("SS'04 Dress")).toBe("SS04 Dress");
+  });
 });
 
 describe("normalizeSeasonCodes — decade markers", () => {

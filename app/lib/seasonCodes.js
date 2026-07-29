@@ -33,6 +33,9 @@ const VALID_PAIRS = new Set(["FW", "SS", "AW"]);
 
 // Pass C — the core rule. Uppercases the prefix, shortens each year to two
 // digits, and normalizes a split year onto a slash ("FW10-11" → "FW10/11").
+// The optional apostrophe after the prefix pairs with the compound-season
+// lookaheads above, which accept "'03" — without it, "Fall/Winter '03" would
+// strand as the half-normalized "FW '03".
 //
 // Guards, each load-bearing:
 //   \b + mandatory digits — "Sswing"/"Awning" carry no digit run, so they
@@ -43,7 +46,7 @@ const VALID_PAIRS = new Set(["FW", "SS", "AW"]);
 //     prefix, not a season code.
 // Both land in the backfill's manual-review report instead.
 const SEASON_YEAR =
-  /\b(FW|SS|AW)\s?((?:19|20)\d{2}|\d{2})(?:\s?[/-]\s?((?:19|20)\d{2}|\d{2}))?(?!\d)(?!s\b)/gi;
+  /\b(FW|SS|AW)\s?'?((?:19|20)\d{2}|\d{2})(?:\s?[/-]\s?((?:19|20)\d{2}|\d{2}))?(?!\d)(?!s\b)/gi;
 
 // Pass D — decade markers keep a lowercase "s" ("2000S" → "2000s"). Anchored
 // on a true decade (\d0) so a style code like "2003S" is left alone.
