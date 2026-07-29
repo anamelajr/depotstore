@@ -30,6 +30,16 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
   smaller groups are dropped from the chart (they'd otherwise fake 100% rates off 2–3
   items). Sort by `turnoverRate` desc, tie-break by `exited` desc. Keep the exported
   shape unchanged otherwise so tests extend rather than rewrite.
+- **Denominator contract (Codex round 3):** with a date window active, the rows reaching
+  `rankTurnover` are (active now) + (exited in window) per brand — which is identically
+  (stock present at window start) + (arrivals during the window), the standard simple
+  sell-through denominator. Codex's claim that this is a survivor-biased cohort is
+  incorrect (pre-window exits are excluded from numerator AND denominator; every
+  start-of-window and mid-window item is included), but two residues are real and are
+  adopted: (a) captions/tooltips state the formula explicitly — "left ÷ (stock at window
+  start + new arrivals)" — instead of a vague phrase; (b) the metric is not
+  exposure-weighted (a day-29 arrival counts as fully exposed) — named as a caption-level
+  limitation; an item-days exposure metric goes to Not in scope.
 - **Unit contract (Codex adversarial finding):** `turnoverRate` stays a 0–1 fraction
   internally; each group additionally gets `turnoverPct` = `Math.round(turnoverRate *
   1000) / 10` (0–100, one decimal). The chart, axis, labels, and tooltip all use
@@ -53,9 +63,10 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
     started are counted (N of M exits in this window)."
   - Flow: "New listings vs removals per day, all stores combined." When a store filter is
     active, make the all-stores scope a full caption sentence, not just a title suffix.
-  - Brand/category: "Ranked by the share of each brand's stock that left in this window
-    — sold or removed; stores don't reliably distinguish. Brands with under 20 tracked
-    items are hidden so one big store can't dominate. Days = average time to leave."
+  - Brand/category: "% = items that left ÷ items available in the window (stock at the
+    start + new arrivals) — sold or removed; stores don't reliably distinguish, and a
+    late arrival counts as fully available. Brands with under 20 tracked items are
+    hidden so one big store can't dominate. Days = average time to leave."
 
 ### 3. `app/admin/inventory/page.js`
 - Thread `meta.sellableExits` / `kpis.exitedPeriod` into the captions.
@@ -76,12 +87,18 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
 - Add a case: rows with `current_status: "departed"` (non-sale removals) count into
   `exited`/`turnoverRate` — locking in that the field is "left", not "sold"; the UI
   label contract above is what keeps the wording honest.
+- Denominator boundary cases (Codex round 3), via `filterLifecycle` + `rankTurnover`
+  composed: a pre-window exit appears in neither numerator nor denominator; a mid-window
+  arrival still active appears in the denominator only; an item present at window start
+  that exits in-window appears in both — proving denominator = start stock + arrivals.
 
 ## Not in scope
 - Per-store flow chart (v_daily_flow has no store grain in v1) — caption only.
 - Sold-vs-removed split (a true sales-only ranking restricted to reliable flip signals),
   price/GMV panels, aging report, brand-alias normalization — later phases. This pass
   only makes the labels honest about the mix.
+- Exposure-weighted turnover (item-days denominator) — the simple sell-through rate is
+  kept for v1 with its limitation stated in the caption.
 
 ## Verification
 - `npm test -- inventoryAnalytics` passes.
