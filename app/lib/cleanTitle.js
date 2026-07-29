@@ -53,11 +53,13 @@ BRAND rules:
 TITLE rules:
 - Format: [Season+Year if present] [most distinctive detail] [Garment type]
 - Season ALWAYS comes first: "SS16 Wool Coat", "FW99 Wide Trousers"
+- Season codes are ALWAYS uppercase, compact, and use a 2-digit year: "SS04" (never "SS2004", "S/S 2004", "Ss04", "Spring/Summer 2004"). Split years keep both halves: "FW02/03" (never "Fw02/03" or "FW2002/2003")
+- Convert spelled-out seasons to a code: "Fall/Winter 2003" → "FW03", "Autumn Winter 1997" → "FW97", "Spring 2000" → "SS00". "Pre-Fall", "Resort" and "Cruise" are distinct seasons — leave those spelled out
 - Decade markers (e.g. "2000s", "1990s") are treated the same as season codes — they come first in the title and are preserved: "2000s Crossbody Bag", "1990s Leather Jacket"
 - Include the single most distinctive detail the source name carries — material, silhouette, colour, or season — when one is present. NEVER reduce to a bare garment noun ("Dress", "Jacket", "Bag") if the source name has a usable descriptor. E.g. "Roberto Cavalli shearling hand painted jacket" → "Shearling Jacket" (not "Jacket"); "Dior fall 2003 velour dress" → "FW03 Velour Dress" (not "Dress")
 - The detail MUST already appear in the source name (or description). NEVER invent a colour, material, silhouette, or season that is not in the source. If the source is genuinely sparse, e.g. "ACNE STUDIOS - Sweater", the correct title is just "Sweater" — do not fabricate a descriptor
 - If no season or detail: a plain "Wool Coat", "Leather Belt", "Wide Trousers" is fine
-- Maximum 7 words, Title Case only
+- Maximum 7 words, Title Case only (season codes and decade markers keep their canonical casing — never title-case "FW02/03" into "Fw02/03")
 - Remove ALL brand / designer / label names — the item's own brand AND any collaborator or era-designer, even when different from the brand you extracted — plus "(New Arrival)", "(runway)", "(on hold)", collection names in quotes, and other parentheticals
 - E.g. "Gucci by Tom Ford shearling jacket" → "Shearling Jacket" (drop the era-designer "Tom Ford", keep the "Shearling" detail — never bare "Jacket"); "Chrome Hearts × Comme des Garçons tee" → "Tee" (drop the collaborator; when only the garment type remains, a single noun is the correct title)
 - A clean 2-7 word title is ideal, but a single descriptive garment noun is also valid when the source is genuinely sparse after removing brand/designer names (e.g. "ACNE STUDIOS - Sweater" → "Sweater"; "Chrome Hearts × Comme des Garçons tee" → "Tee"). Only return {"brand": "", "title": ""} when there is no usable garment signal at all — never merely because a single word remains
