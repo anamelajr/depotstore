@@ -62,12 +62,16 @@ Modeled on `scripts/backfillTitleClean.mjs` conventions (dotenv `.env.local`, `-
 - Header comment: sanctioned exception to the write-once editorial rule; applies ONLY `normalizeSeasonCodes` to existing non-null titles; never regenerates.
 - Imports the normalizer from `../app/lib/seasonCodes.js` — same module as the route, one source of truth.
 - Dry-run default: print `id, store_domain, old → new` for every proposed change (~2,600 expected, year-shortening dominates). `--apply` does per-row CAS: `.update({title: proposed}).eq("id", row.id).eq("title", row.title)`; count `cas_noop` on 0 rows.
-- Manual-review section (printed, never written): `SS19999`-style 5+ digit codes, `A2013`, `FW90s`, season-code-not-first titles.
+- Manual-review section semantics (clarified after adversarial review):
+  - **Typo classes (`SS19999`-style 5+ digit codes, `A2013`, `FW90s`) are never written** — the normalizer's regex guards (`(?!\d)`, `(?!s\b)`, prefix validation) make them no-ops by construction, and backfill-level tests pin that as a contract (zero proposed writes), not an accident of the regex.
+  - **Season-code-not-first titles (5 rows, e.g. "Top - FW2010") DO receive in-place format normalization** ("Top - FW10") — a deterministic casing/format fix that neither changes word order nor precludes a later manual reorder. They still appear in the manual-review report, flagged for the *position* issue that automation deliberately doesn't touch.
 - Summary: scanned / would-write / unchanged / cas_noop / manual-review.
 
 ### 5. Tests (vitest, `npm test`)
 
 **New `app/lib/__tests__/seasonCodes.test.js`** — full prod catalog: all forms above, the left-alone set (SS19999/A2013/FW90s/Pre-Fall/Resort/Cruise/`1998 Wool Coat`), non-matches (Sswing, Awning, Ferragamo), null/empty, and idempotence over every case.
+
+**Zero-write contract tests** (per adversarial review): assert `normalizeSeasonCodes(x) === x` for every typo-class example — meaning the backfill's `proposed === row.title` skip guarantees zero writes for those rows — and assert season-not-first titles change format only, never token order (`"Top - FW2010"` → `"Top - FW10"`, word count and order identical).
 
 **Extend `app/lib/__tests__/handleFallback.test.js`**: widened-guard cases (`Fw02/03`→`FW02/03`, `f/w02`→`F/W02`, `FW1998,` stays uppercase, bare `s/s`→`S/S`); update composition-test expectations to the 2-digit standard (e.g. McQueen canary `FW1998 …`→`FW98 …`) — deliberate expectation change, note in commit.
 
