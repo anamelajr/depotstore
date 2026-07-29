@@ -28,13 +28,18 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
   smaller groups are dropped from the chart (they'd otherwise fake 100% rates off 2–3
   items). Sort by `turnoverRate` desc, tie-break by `exited` desc. Keep the exported
   shape unchanged otherwise so tests extend rather than rewrite.
+- **Unit contract (Codex adversarial finding):** `turnoverRate` stays a 0–1 fraction
+  internally; each group additionally gets `turnoverPct` = `Math.round(turnoverRate *
+  1000) / 10` (0–100, one decimal). The chart, axis, labels, and tooltip all use
+  `turnoverPct` exclusively — never plot the fraction on a 0–100 axis, and never scale
+  only in the label formatter.
 
 ### 2. `app/admin/inventory/_components/InventoryCharts.js`
 - `Panel`: accept an optional `caption` prop — small muted line under the title.
 - `TurnoverBars`: re-orient the chart around demand, not volume, to counter the
   Dolce-Vita-Hub saturation (one store's 12k exits currently dominates every ranking):
-  - bars plot and **rank by `turnoverRate`** (% of that brand's/category's tracked items
-    that exited in the window), x-axis 0–100%;
+  - bars plot **`turnoverPct`** (0–100, from the unit contract above) with an explicit
+    axis domain `[0, 100]`, ranked by rate;
   - visible right-side label: `"62% · 9d · 310 items"` (rate · avg days · tracked count);
   - richer tooltip: % sold, avg days-to-sell, exited, active, total tracked;
   - `—` for days when `avgDaysToSell` is null.
@@ -58,7 +63,10 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
 - Update the `getInventoryInsights` integration expectations: `storeBreakdown` is now
   windowed/filtered; assert new `meta.sellableExits`.
 - `rankTurnover`: new cases — sorts by rate desc; drops groups below the 20-item
-  sample floor; tie-breaks by exited count.
+  sample floor; tie-breaks by exited count; `turnoverRate: 0.62` yields
+  `turnoverPct: 62` (and e.g. `0.625` → `62.5`). No React render tests — the repo has
+  no component-test infra; axis/label agreement is covered by the shared `turnoverPct`
+  field plus the browser check in Verification.
 - Add a case: date window excludes an old exit from `storeBreakdown` counts.
 
 ## Not in scope
