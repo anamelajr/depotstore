@@ -7,12 +7,23 @@
 // (FW1998, SS99, AW2000) and decade markers (2000s, 1990s) per
 // cleanTitle's prompt examples. Other tokens get standard title case
 // (first letter upper, rest lower).
+//
+// The season guard admits split years ("FW02/03"), letter-slash prefixes
+// ("F/W02") and a trailing comma or period, because the generic branch below
+// lowercases everything after the first character — that is how "FW02/03"
+// once became "Fw02/03". Uppercasing is all this function owes them; the
+// compaction to the house form is normalizeSeasonCodes' job downstream
+// (app/lib/seasonCodes.js).
 export function toTitleCase(s) {
   return s
     .split(/\s+/)
     .map((token) => {
       if (!token) return token;
-      if (/^(FW|SS|AW)\d{2,4}$/i.test(token)) return token.toUpperCase();
+      if (/^(F\/?W|S\/?S|A\/?W)\d{2,4}([/-]\d{2,4})?[.,]?$/i.test(token)) {
+        return token.toUpperCase();
+      }
+      // Bare "S/S" — the year is the next token ("S/S 2004").
+      if (/^[FSA]\/[WS]$/i.test(token)) return token.toUpperCase();
       if (/^\d{4}s$/i.test(token)) return token.toLowerCase();
       return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
     })

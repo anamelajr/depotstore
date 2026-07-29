@@ -16,6 +16,7 @@ import {
   sanitizeFallbackTitle,
   nameWithoutBrand,
 } from "../../lib/handleFallback.js";
+import { normalizeSeasonCodes } from "../../lib/seasonCodes.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -202,8 +203,14 @@ export async function POST(request) {
         // write — is what makes one designer land under one stored label
         // ("Just Cavalli" → "ROBERTO CAVALLI"). Non-aliased brands pass
         // through unchanged.
-        const { brand: rawBrand, title: newTitle } = result;
+        // Titles get the same treatment one line down: both producers can emit
+        // a season code in whatever shape their source used ("SS2004",
+        // "S/S 2004", "Fw02/03"), and the RPC write is COALESCE-guarded, so a
+        // non-canonical title that lands here is permanent. Normalizing at the
+        // shared choke point is what keeps one season under one stored form.
+        const { brand: rawBrand, title: rawTitle } = result;
         const newBrand = canonicalBrand(rawBrand);
+        const newTitle = normalizeSeasonCodes(rawTitle);
         // Allowlist gate for filtered stores. Hide the row instead of
         // deleting it. A delete would be re-created on the next sync
         // (Shopify still sells the item), then re-enriched, re-rejected,

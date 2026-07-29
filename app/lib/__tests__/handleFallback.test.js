@@ -5,10 +5,13 @@ import {
   nameWithoutBrand,
 } from "../handleFallback.js";
 import { brandFromHandle } from "../brand.js";
+import { normalizeSeasonCodes } from "../seasonCodes.js";
 
 // Compose the helpers the same way enrich/route.js does at the fallback
 // site so the tests exercise the actual integrated behavior, not just each
-// helper in isolation.
+// helper in isolation. Note the ordering: the word-count gate runs on the
+// title-cased text, and normalizeSeasonCodes is applied afterwards at the
+// shared choke point — same as the route.
 function recoverFromHandleFallback(name, handle) {
   const handleBrand = brandFromHandle(handle);
   if (!handleBrand) return null;
@@ -17,7 +20,10 @@ function recoverFromHandleFallback(name, handle) {
   );
   const titleWords = fallbackTitle.split(/\s+/).filter(Boolean).length;
   if (titleWords < 1 || titleWords > 7) return null;
-  return { brand: handleBrand.toUpperCase(), title: fallbackTitle };
+  return {
+    brand: handleBrand.toUpperCase(),
+    title: normalizeSeasonCodes(fallbackTitle),
+  };
 }
 
 describe("toTitleCase — season/decade preservation", () => {
@@ -44,6 +50,27 @@ describe("toTitleCase — season/decade preservation", () => {
   });
   it("returns empty string for empty input", () => {
     expect(toTitleCase("")).toBe("");
+  });
+
+  // Regression for the "Fw02/03" production bug: these tokens all used to miss
+  // the anchored season guard and fall through to the generic branch, which
+  // lowercases everything after the first character.
+  it("preserves a split-year season code", () => {
+    expect(toTitleCase("Fw02/03 PRINTED COTTON TEE")).toBe(
+      "FW02/03 Printed Cotton Tee",
+    );
+  });
+  it("preserves a letter-slash season code", () => {
+    expect(toTitleCase("f/w02 wool coat")).toBe("F/W02 Wool Coat");
+  });
+  it("preserves a bare letter-slash prefix ahead of its year", () => {
+    expect(toTitleCase("s/s 2004 leather vest")).toBe("S/S 2004 Leather Vest");
+  });
+  it("preserves a season code carrying trailing punctuation", () => {
+    expect(toTitleCase("FW1998, black denim")).toBe("FW1998, Black Denim");
+  });
+  it("preserves a dash split-year season code", () => {
+    expect(toTitleCase("fw10-11 LEATHER BOOTS")).toBe("FW10-11 Leather Boots");
   });
 });
 
@@ -78,9 +105,11 @@ describe("handle-fallback gate — integrated", () => {
       "ALEXANDER MCQUEEN FW1998 «JOAN» BLACK DENIM MINI SKIRT",
       "alexander-mcqueen-fw1998-joan-black-denim-mini-skirt",
     );
+    // The season code shortens to the 2-digit house form at the choke point;
+    // before normalizeSeasonCodes existed this asserted "FW1998 …".
     expect(result).toEqual({
       brand: "ALEXANDER MCQUEEN",
-      title: "FW1998 Black Denim Mini Skirt",
+      title: "FW98 Black Denim Mini Skirt",
     });
   });
   it("recovers CDG SHIRT 5-word descriptor (8-word input)", () => {
