@@ -5,9 +5,11 @@
 The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were agreed:
 
 1. **Show the hidden numbers.** `rankTurnover` (app/lib/inventoryAnalytics.js) already
-   computes `turnoverRate` (% of a brand's/category's tracked items that exited — the real
-   demand signal) and `avgDaysToSell` (how fast they move), but the brand/category charts
-   display only the raw `exited` count. Raw counts just reward the biggest store.
+   computes `turnoverRate` (% of a brand's/category's tracked items that exited) and
+   `avgDaysToSell` (how fast they move), but the brand/category charts display only the
+   raw `exited` count. Raw counts just reward the biggest store. NOTE (Codex round 2):
+   exits mix true sales with plain removals (`isExited` counts `sold` + `departed`), so
+   every UI label must say "left" / "sold or removed" — never bare "% sold" or "demand".
 2. **Make the filters honest.** The store/date selectors update the KPI cards and the top
    charts, but the per-store table is hard-coded to all-time/all-stores
    (`storeSummary(observed)` at inventoryAnalytics.js:264), and the flow chart is always
@@ -41,7 +43,10 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
   - bars plot **`turnoverPct`** (0–100, from the unit contract above) with an explicit
     axis domain `[0, 100]`, ranked by rate;
   - visible right-side label: `"62% · 9d · 310 items"` (rate · avg days · tracked count);
-  - richer tooltip: % sold, avg days-to-sell, exited, active, total tracked;
+  - richer tooltip: **% left (sold or removed)**, avg days to leave, left, active, total
+    tracked — no tooltip or label field may read "% sold" (exits include plain removals);
+  - panel titles drop the demand claim: "Brand turnover — % of stock that left" /
+    "Category turnover — % of stock that left" (replacing "exited (demand proxy)");
   - `—` for days when `avgDaysToSell` is null.
 - Captions wired from props:
   - Velocity: "How long items take to leave. Only items first listed after tracking
@@ -49,8 +54,8 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
   - Flow: "New listings vs removals per day, all stores combined." When a store filter is
     active, make the all-stores scope a full caption sentence, not just a title suffix.
   - Brand/category: "Ranked by the share of each brand's stock that left in this window
-    (brands with under 20 tracked items are hidden) — so one big store can't dominate
-    the ranking. Days = average time to leave."
+    — sold or removed; stores don't reliably distinguish. Brands with under 20 tracked
+    items are hidden so one big store can't dominate. Days = average time to leave."
 
 ### 3. `app/admin/inventory/page.js`
 - Thread `meta.sellableExits` / `kpis.exitedPeriod` into the captions.
@@ -68,11 +73,15 @@ The `/admin/inventory` dashboard is hard to interpret. Three cheap fixes were ag
   no component-test infra; axis/label agreement is covered by the shared `turnoverPct`
   field plus the browser check in Verification.
 - Add a case: date window excludes an old exit from `storeBreakdown` counts.
+- Add a case: rows with `current_status: "departed"` (non-sale removals) count into
+  `exited`/`turnoverRate` — locking in that the field is "left", not "sold"; the UI
+  label contract above is what keeps the wording honest.
 
 ## Not in scope
 - Per-store flow chart (v_daily_flow has no store grain in v1) — caption only.
-- Sold-vs-removed split, price/GMV panels, aging report, brand-alias normalization —
-  later phases.
+- Sold-vs-removed split (a true sales-only ranking restricted to reliable flip signals),
+  price/GMV panels, aging report, brand-alias normalization — later phases. This pass
+  only makes the labels honest about the mix.
 
 ## Verification
 - `npm test -- inventoryAnalytics` passes.
