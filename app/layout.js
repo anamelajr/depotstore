@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import LayoutClient from "./components/LayoutClient";
 import Footer from "./components/Footer";
 import { LanguageProvider } from "./components/LanguageProvider";
@@ -85,6 +86,7 @@ export default async function RootLayout({ children }) {
         </LanguageProvider>
       </body>
       <Analytics />
+      <SpeedInsights />
     </html>
   );
 }
