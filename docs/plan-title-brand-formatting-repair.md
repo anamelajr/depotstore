@@ -28,8 +28,8 @@ Broken product titles/brands surfaced on the site (e.g. brand `YVES SAINT LAUREN
   "Yves Saint Laurent", "YSL" as three separate allowlist entries. `brandFromHandle` sorts slugs
   longest-first, so `yves-saint-laurent` always wins.
 
-**Audit results (visible rows; full id lists in
-`/private/tmp/claude-501/-Users-anamelajr-depotstore--claude-worktrees-supabase-mcp-access-076d5e/80c6ae58-d47a-4a47-94eb-afc341e0c14c/scratchpad/audit_results.json`):**
+**Audit results (visible rows as of 2026-08-01; full id lists in
+[`docs/snapshots/2026-08-01-title-audit.json`](snapshots/2026-08-01-title-audit.json)):**
 36 brand-word-in-title · 16 season-not-first · 10 dash titles · 9 lowercase-after-slash ·
 5 trailing "By" · 27 null-title (treviseparis, likely mid-queue — verify only).
 Brand splits: SAINT LAURENT 119 / YVES SAINT LAURENT 165 / YSL 1; MAISON MARGIELA 141 /
@@ -132,7 +132,7 @@ NULLed titles re-enter the hourly queue and go through `cleanTitle` with the new
 ```sql
 -- Bucket 1: brand correct, title junk (Ysl…, sub-line dashes, brand-leak, trailing By,
 -- free-form season-not-first, "Shorts - Red"):
-UPDATE products SET title = NULL, enrich_attempts = 0 WHERE id IN (…from audit JSON…);
+UPDATE products SET title = NULL, enrich_attempts = 0 WHERE id IN (…from docs/snapshots/2026-08-01-title-audit.json…);
 -- Bucket 2: brand also wrong (e.g. "Dior - B23" under 1017 ALYX 9SM): full editorial reset —
 -- subcategory must reset with category (products_subcategory_matches_category CHECK):
 UPDATE products SET brand=NULL, title=NULL, category=NULL, subcategory=NULL, enrich_attempts=0
@@ -151,7 +151,8 @@ only if stuck at 3, reset attempts.
 1. `npx vitest run` + `npm run build` before PR.
 2. `node scripts/backfillTitleRepairs.mjs` dry-run → review → `--apply` → re-run dry expecting zero changes (idempotence).
 3. After 1–2 hourly crons, re-run the read-only audit script
-   (`scratchpad/audit_titles.py`): all violation classes ≈ 0 on visible rows; one label per brand family;
+   (`scripts/auditTitles.py`, reads anon creds from `.env.local`): all violation classes ≈ 0 on
+   visible rows; one label per brand family;
    `enrich_runs` shows normal null-rate and `remaining` draining to 0.
 4. Never trigger `/api/cron` or `/api/enrich` locally (CLAUDE.md).
 
