@@ -149,14 +149,27 @@ slash-casing (`Wool/silk` → `Wool/Silk`, token-local, don't re-case whole titl
 Mechanism confirmed: enrich batch SELECT picks `brand|title|category IS NULL` + `enrich_attempts < 3`;
 NULLed titles re-enter the hourly queue and go through `cleanTitle` with the new guards. ~60–90 rows.
 
+**Stale-audit safety (Codex round-2 finding — accepted):** the audit snapshot predates B1/B2 and
+any manual edits, and some rows sit in *multiple* audit classes (`Top - FW10` is both
+season-not-first and dash) — B2 fixes those first, and a bare `WHERE id IN (…)` would then NULL
+the freshly repaired title. So B3 uses per-row CAS on the exact audited old value, mirroring B2's
+model, and rows that no longer match are *reported, not updated*. (Hourly enrichment itself cannot
+alter these rows — COALESCE only fills NULLs and the targets are non-NULL — so no enrich pause is
+needed; the CAS guards against B2 overlap and manual edits.) Build the statements from the
+snapshot JSON, excluding ids B2 already repaired:
+
 ```sql
 -- Bucket 1: brand correct, title junk (Ysl…, sub-line dashes, brand-leak, trailing By,
--- free-form season-not-first, "Shorts - Red"):
-UPDATE products SET title = NULL, enrich_attempts = 0 WHERE id IN (…from docs/snapshots/2026-08-01-title-audit.json…);
+-- free-form season-not-first, "Shorts - Red"). One row per statement, CAS on old title:
+UPDATE products SET title = NULL, enrich_attempts = 0
+WHERE id = <id> AND title = '<audited old title>';
 -- Bucket 2: brand also wrong (e.g. "Dior - B23" under 1017 ALYX 9SM): full editorial reset —
--- subcategory must reset with category (products_subcategory_matches_category CHECK):
+-- subcategory must reset with category (products_subcategory_matches_category CHECK).
+-- CAS on both audited values:
 UPDATE products SET brand=NULL, title=NULL, category=NULL, subcategory=NULL, enrich_attempts=0
-WHERE id IN (…);
+WHERE id = <id> AND title = '<audited old title>' AND brand = '<audited old brand>';
+-- Afterwards: SELECT id, brand, title FROM products WHERE id IN (<all B3 ids>) AND title IS NOT NULL;
+-- any survivors are rows whose state drifted since the audit → review by hand, don't force.
 ```
 Manual-review exclusions (flag, don't auto-reset): the two `MM6 …` titles under MAISON MARGIELA
 (brand should possibly BE `MM6`), `Hermes By Martin 1990s Silk Cardigan Top` (Margiela Hermès era).
@@ -170,10 +183,12 @@ only if stuck at 3, reset attempts.
 
 1. `npx vitest run` + `npm run build` before PR.
 2. `node scripts/backfillTitleRepairs.mjs` dry-run → review → `--apply` → re-run dry expecting zero changes (idempotence).
-3. After 1–2 hourly crons, re-run the read-only audit script
-   (`scripts/auditTitles.py`, reads anon creds from `.env.local`): all violation classes ≈ 0 on
-   visible rows; one label per brand family;
-   `enrich_runs` shows normal null-rate and `remaining` draining to 0.
+3. After 1–2 hourly crons, re-run the read-only audit:
+   `python3 scripts/auditTitles.py [out.json]` (anon creds from `.env.local` env; output arg
+   optional). The script now enforces both invariants itself: title-violation classes AND
+   brand-family convergence (legacy-label list + case/diacritic split detection), exiting nonzero
+   on any hard violation — `null_or_empty_title` reports but doesn't fail (transient mid-queue).
+   Expect exit 0. Also check `enrich_runs`: normal null-rate, `remaining` draining to 0.
 4. Never trigger `/api/cron` or `/api/enrich` locally (CLAUDE.md).
 
 ## Rollout order

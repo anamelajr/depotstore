@@ -66,8 +66,36 @@ def classify(r):
     if re.search(r"\((?!runway)", t): issues.append("parenthetical")
     return issues
 
+# Brand-family convergence check (Phase C of docs/plan-title-brand-formatting-repair.md):
+# any of these legacy labels surviving in `brand`, or any two stored labels that fold to
+# the same string (case/diacritic split), is a violation → exit 1.
+LEGACY_BRAND_LABELS = {
+    "YVES SAINT LAURENT", "YSL", "SAINT LAURENT PARIS",
+    "MARGIELA", "MARTIN MARGIELA", "MAISON MARTIN MARGIELA",
+    "COMME DES GARCONS", "COMME DES GARCONS HOMME PLUS",
+    "GIANFRANCO FERRE", "FERRE", "FERRÉ",
+    "COURREGES", "McQUEEN", "MCQUEEN", "ALEXANDER McQUEEN",
+    "FAYCAL", "FAYCAL AMOR",
+}
+
+def audit_brands(rows):
+    counts = Counter((r["brand"] or "NULL") for r in rows)
+    violations = []
+    for label, n in sorted(counts.items()):
+        if label in LEGACY_BRAND_LABELS:
+            violations.append(f"legacy label survives: {label!r} x{n}")
+    fold_groups = defaultdict(list)
+    for label, n in counts.items():
+        if label != "NULL":
+            fold_groups[fold(label)].append((label, n))
+    for variants in fold_groups.values():
+        if len(variants) > 1:
+            violations.append(f"split label group: {variants}")
+    return violations
+
 rows = fetch_all()
 print(f"total visible rows: {len(rows)}", file=sys.stderr)
+brand_violations = audit_brands(rows)
 by_issue = defaultdict(list)
 for r in rows:
     for i in classify(r):
@@ -78,8 +106,19 @@ for k, v in sorted(by_issue.items(), key=lambda kv: -len(kv[1])):
     out[k] = {"count": len(v),
               "examples": [{"id": r["id"], "brand": r["brand"], "title": r["title"],
                             "store": r["store_domain"], "tag": i} for i, r in v[:200]]}
-json.dump(out, open(sys.argv[1], "w"), ensure_ascii=False, indent=1)
+out_path = sys.argv[1] if len(sys.argv) > 1 else "title-audit.json"
+json.dump(out, open(out_path, "w"), ensure_ascii=False, indent=1)
+print(f"wrote {out_path}", file=sys.stderr)
 for k, v in out.items():
     print(f"{k}: {v['count']}")
     for e in v["examples"][:8]:
         print(f"   [{e['store']}] {e['brand']} | {e['title']}  ({e['tag']})")
+print("--- brand-family convergence:")
+if brand_violations:
+    for v in brand_violations:
+        print(f"  VIOLATION: {v}")
+else:
+    print("  OK: no legacy labels, no split label groups")
+# null_or_empty_title is transient (rows mid-enrich-queue), so it reports but doesn't fail.
+hard_issues = {k: v for k, v in by_issue.items() if k != "null_or_empty_title"}
+sys.exit(1 if (brand_violations or hard_issues) else 0)
