@@ -2,7 +2,6 @@
 const BRANDS = [
   // Avant-garde
   "Maison Margiela",
-  "Margiela",
   "MM6",
   "Yohji Yamamoto",
   "Comme des Garçons",
@@ -67,14 +66,11 @@ const BRANDS = [
   "Enfants Riches Deprimes",
   "Enfants Riches Déprimés",
   "Alain Paul",
-  "Lanvin",
 
   // French luxury
   "Chanel",
   "Dior",
   "Saint Laurent",
-  "Yves Saint Laurent",
-  "YSL",
   "Givenchy",
   "Celine",
   "Céline",
@@ -82,7 +78,6 @@ const BRANDS = [
   "Louis Vuitton",
   "Hermès",
   "Balenciaga",
-  "Courrèges",
   "Cartier",
   "Goyard",
   "Schiaparelli",
@@ -130,7 +125,6 @@ const BRANDS = [
 
   // American
   "Rick Owens",
-  "Helmut Lang",
   "Tom Ford",
   "Marc Jacobs",
   "Willy Chavarria",

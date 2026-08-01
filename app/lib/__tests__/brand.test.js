@@ -7,6 +7,7 @@ import {
   canonicalBrand,
   titleContainsAllowedBrand,
   brandFromHandle,
+  brandSpellings,
   BRAND_ALIASES,
 } from "../brand.js";
 import BRANDS from "../../brands.js";
@@ -198,6 +199,100 @@ describe("alias-only brands stay recognised", () => {
 });
 
 
+// The split brand families collapsed by
+// docs/plan-title-brand-formatting-repair.md. Each of these shipped as two or
+// three distinct labels in `products.brand`, splitting the designer across
+// filter chips.
+describe("split brand families — one designer, one label", () => {
+  it("folds the YSL family onto SAINT LAURENT", () => {
+    expect(canonicalBrand("YSL")).toBe("SAINT LAURENT");
+    expect(canonicalBrand("Yves Saint Laurent")).toBe("SAINT LAURENT");
+    expect(canonicalBrand("SAINT LAURENT PARIS")).toBe("SAINT LAURENT");
+    expect(canonicalBrand("Saint Laurent")).toBe("Saint Laurent"); // no alias, unchanged
+  });
+
+  it("folds the remaining case / diacritic splits", () => {
+    expect(canonicalBrand("Comme des Garcons")).toBe("COMME DES GARÇONS");
+    expect(canonicalBrand("COMME DES GARCONS HOMME PLUS")).toBe(
+      "COMME DES GARÇONS HOMME PLUS"
+    );
+    expect(canonicalBrand("Ferre")).toBe("GIANFRANCO FERRÉ");
+    expect(canonicalBrand("FERRÉ")).toBe("GIANFRANCO FERRÉ");
+    expect(canonicalBrand("Gianfranco Ferre")).toBe("GIANFRANCO FERRÉ");
+    expect(canonicalBrand("McQueen")).toBe("ALEXANDER MCQUEEN");
+    expect(canonicalBrand("Courreges")).toBe("COURRÈGES");
+    expect(canonicalBrand("Faycal")).toBe("FAYÇAL AMOR");
+    expect(canonicalBrand("Margiela")).toBe("MAISON MARGIELA");
+  });
+
+  // A2 removed these from BRANDS; the alias keys are what keep them admitted
+  // at sync time and recoverable from a handle. Losing either is silent.
+  it("keeps the names removed from BRANDS recognised and handle-recoverable", () => {
+    for (const name of ["YSL", "Yves Saint Laurent", "Margiela"]) {
+      expect(isAllowedBrand(name)).toBe(true);
+    }
+    expect(brandFromHandle("ysl-rectangular-metal-glasses")).toBeTruthy();
+    expect(
+      canonicalBrand(
+        brandFromHandle("ysl-rectangular-metal-glasses").toUpperCase()
+      )
+    ).toBe("SAINT LAURENT");
+    expect(
+      canonicalBrand(
+        brandFromHandle("yves-saint-laurent-silk-blouse").toUpperCase()
+      )
+    ).toBe("SAINT LAURENT");
+    expect(
+      canonicalBrand(brandFromHandle("margiela-tabi-boots").toUpperCase())
+    ).toBe("MAISON MARGIELA");
+  });
+
+  it("keeps MM6 a brand in its own right", () => {
+    expect(BRANDS).toContain("MM6");
+    expect(canonicalBrand("MM6")).toBe("MM6");
+  });
+
+  // The short-token leak class the model guard used to wave through.
+  it("flags the short alias spellings as title leaks", () => {
+    expect(titleLeaksAllowedBrandStrict("Ysl Logo Messenger Bag")).toBe(true);
+    expect(titleLeaksAllowedBrandStrict("MM6 Velvet Distressed Pants")).toBe(true);
+  });
+});
+
+describe("brandSpellings — every spelling of one family", () => {
+  it("returns canonical plus every alias key pointing at it", () => {
+    expect(new Set(brandSpellings("Yves Saint Laurent"))).toEqual(
+      new Set(["SAINT LAURENT", "YVES SAINT LAURENT", "YSL", "SAINT LAURENT PARIS"])
+    );
+    expect(new Set(brandSpellings("MAISON MARGIELA"))).toEqual(
+      new Set([
+        "MAISON MARGIELA",
+        "MARGIELA",
+        "MARTIN MARGIELA",
+        "MAISON MARTIN MARGIELA",
+      ])
+    );
+  });
+
+  it("sorts longest-first so a short spelling can't strand a long one", () => {
+    const spellings = brandSpellings("YSL");
+    expect(spellings[0]).toBe("SAINT LAURENT PARIS");
+    expect(spellings.indexOf("YVES SAINT LAURENT")).toBeLessThan(
+      spellings.indexOf("SAINT LAURENT")
+    );
+    expect(spellings.at(-1)).toBe("YSL");
+  });
+
+  it("returns the brand itself when no alias applies", () => {
+    expect(brandSpellings("Prada")).toEqual(["PRADA"]);
+  });
+
+  it("is safe on empty / non-string input", () => {
+    expect(brandSpellings("")).toEqual([]);
+    expect(brandSpellings(null)).toEqual([]);
+  });
+});
+
 // canonicalBrand made the alias table a WRITE-path concern, which couples it to
 // the /designers directory: those links are `/feed?brand=<BRANDS entry>` and
 // resolve through `.ilike("brand", "%entry%")`, which PostgreSQL evaluates
@@ -214,6 +309,14 @@ const DIRECTORY_UNREACHABLE_ALIASES = new Set([
   "BELLEVILLE SASSOON",
   "FAYCAL AMOR",
   "GIANFRANCO FERRE",
+  // Same pre-existing class, new alias keys pointing at the same two dead
+  // canonicals: neither "Gianfranco Ferré" nor "Fayçal Amor" is a BRANDS entry,
+  // so those rows are already directory-unreachable today. The aliases only
+  // collapse the stored-label split (FERRE/FERRÉ → one label); reachability is
+  // docs/plan-uniform-brand-labels.md's separate job.
+  "FERRE",
+  "FERRÉ",
+  "FAYCAL",
 ]);
 
 describe("canonical labels stay reachable from /designers", () => {
