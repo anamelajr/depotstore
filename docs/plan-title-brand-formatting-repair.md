@@ -88,6 +88,23 @@ Extract post-parse validation (lines ~89-121) into exported `validateCleanTitleR
    word-bounded write blocker — catches `Gucci By FW96 …` under TOM FORD, `Ysl Logo` under
    SAINT LAURENT). Reject → null → retryable, same economics as existing guards.
 
+### A4b. Shared choke-point gate (Codex adversarial-review finding — accepted)
+
+A4 alone is bypassable: `cleanTitle` null (including a guard *reject*) triggers the handle
+fallback (`route.js:157-197`), which strips only the handle brand's spellings — a foreign-brand
+leak (`Gucci …` under a `tom-ford-*` handle) survives and the COALESCE write makes it permanent.
+The production trailing-By rows (`2000s Gucci Black Leather Pants By`) are this bypass having
+already fired; without this gate, B3's re-enrich would regenerate them and Phase C would never
+converge for that class.
+
+Fix: at the shared choke point (`route.js` ~211, next to `canonicalBrand`/`normalizeSeasonCodes`),
+run `titleLeaksAllowedBrandStrict(newTitle)` against **both producers'** output. On failure, skip
+the write (treat like the existing word-count bail: row retries, then exhausts → hidden/null).
+Do NOT instead split `cleanTitle`'s null into reject-vs-transient — CLAUDE.md pins that null as
+uniformly retryable. Known cost: a few genuine collab-era rows exhaust to null/hidden instead of
+getting a title — consistent with the "hidden beats junk" stance; they're in the manual-review
+list anyway.
+
 ### A5. Tests
 
 - Extend `app/lib/__tests__/brand.test.js`: `canonicalBrand("YSL"/"Yves Saint Laurent") === "SAINT LAURENT"`,
@@ -100,6 +117,9 @@ Extract post-parse validation (lines ~89-121) into exported `validateCleanTitleR
 - New `app/lib/__tests__/cleanTitle.test.js` for `validateCleanTitleResult`: trailing-By strip,
   YSL reject, `Gucci By FW96 …` reject, `Silk Camisole` accept (ami false-positive pin), echo reject.
 - `seasonCodes.test.js` untouched and green.
+- A4b regression (route-level): raw name `2000s Gucci Black Leather Pants By Tom Ford` with handle
+  `tom-ford-…` and a null model result → fallback title is **blocked** by the choke-point gate
+  (nothing written); i.e. a title the model guard rejects cannot re-enter via handle fallback.
 
 ## Phase B — One-time data repair (AFTER Phase A deploys; SQL via Supabase SQL Editor — MCP is read-only; snapshot `products` first)
 
