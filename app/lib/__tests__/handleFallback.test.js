@@ -3,6 +3,11 @@ import {
   toTitleCase,
   sanitizeFallbackTitle,
   nameWithoutBrand,
+  stripAllBrandSpellings,
+  stripSubLinePrefix,
+  collapseDanglingDash,
+  seasonToFront,
+  buildFallbackTitle,
 } from "../handleFallback.js";
 import { brandFromHandle } from "../brand.js";
 import { normalizeSeasonCodes } from "../seasonCodes.js";
@@ -15,9 +20,7 @@ import { normalizeSeasonCodes } from "../seasonCodes.js";
 function recoverFromHandleFallback(name, handle) {
   const handleBrand = brandFromHandle(handle);
   if (!handleBrand) return null;
-  const fallbackTitle = sanitizeFallbackTitle(
-    toTitleCase(nameWithoutBrand(sanitizeFallbackTitle(name), handleBrand))
-  );
+  const fallbackTitle = buildFallbackTitle(name, handleBrand);
   const titleWords = fallbackTitle.split(/\s+/).filter(Boolean).length;
   if (titleWords < 1 || titleWords > 7) return null;
   return {
@@ -99,6 +102,102 @@ describe("sanitizeFallbackTitle — collection-marker strip", () => {
   });
 });
 
+describe("toTitleCase — slash segments", () => {
+  it("title-cases each side of a slash", () => {
+    expect(toTitleCase("WOOL/silk BLAZER")).toBe("Wool/Silk Blazer");
+    expect(toTitleCase("black/white striped tee")).toBe("Black/White Striped Tee");
+  });
+  it("leaves season codes to the guards above it", () => {
+    expect(toTitleCase("fw02/03 wool coat")).toBe("FW02/03 Wool Coat");
+    expect(toTitleCase("s/s 2004 vest")).toBe("S/S 2004 Vest");
+  });
+  it("tolerates an empty segment", () => {
+    expect(toTitleCase("wool/ silk")).toBe("Wool/ Silk");
+  });
+});
+
+describe("stripAllBrandSpellings", () => {
+  it("removes the alias spelling as well as the canonical one", () => {
+    expect(
+      stripAllBrandSpellings("YSL RECTANGULAR GLASSES", "Yves Saint Laurent"),
+    ).toBe("RECTANGULAR GLASSES");
+    expect(
+      stripAllBrandSpellings("YVES SAINT LAURENT SILK BLOUSE", "YSL"),
+    ).toBe("SILK BLOUSE");
+  });
+  it("does not strand a fragment of a longer spelling", () => {
+    // Stripping "SAINT LAURENT" before "YVES SAINT LAURENT" would leave "YVES".
+    expect(stripAllBrandSpellings("YVES SAINT LAURENT BAG", "Saint Laurent"))
+      .toBe("BAG");
+  });
+  it("is a no-op when the name carries no spelling of the brand", () => {
+    expect(stripAllBrandSpellings("WOOL BLAZER", "Fendi")).toBe("WOOL BLAZER");
+  });
+});
+
+describe("stripSubLinePrefix", () => {
+  it("strips a leading sub-line marker followed by a dash", () => {
+    expect(stripSubLinePrefix("DRKSHDW - COTTON TANK TOP", "Rick Owens"))
+      .toBe("COTTON TANK TOP");
+    expect(stripSubLinePrefix("BLACK - FW2014 WOOL SKIRT", "COMME DES GARCONS"))
+      .toBe("FW2014 WOOL SKIRT");
+    expect(stripSubLinePrefix("BLANCHE - Silk Dress", "Ann Demeulemeester"))
+      .toBe("Silk Dress");
+  });
+  it("prefers the longest matching marker", () => {
+    expect(stripSubLinePrefix("HOMME PLUS - Wool Coat", "Comme des Garçons"))
+      .toBe("Wool Coat");
+  });
+  it("leaves a genuine leading descriptor alone (no dash separator)", () => {
+    expect(stripSubLinePrefix("Black Wool Coat", "Comme des Garçons"))
+      .toBe("Black Wool Coat");
+    expect(stripSubLinePrefix("Shirt Blue Abstract Face Shirt", "Comme des Garçons"))
+      .toBe("Shirt Blue Abstract Face Shirt");
+  });
+  it("only matches at the start", () => {
+    expect(stripSubLinePrefix("Wool Coat BLACK - Trim", "Comme des Garçons"))
+      .toBe("Wool Coat BLACK - Trim");
+  });
+  it("is a no-op for brands with no sub-line table", () => {
+    expect(stripSubLinePrefix("BLACK - Wool Coat", "Prada"))
+      .toBe("BLACK - Wool Coat");
+  });
+});
+
+describe("collapseDanglingDash", () => {
+  it("removes leading and trailing dash artifacts", () => {
+    expect(collapseDanglingDash("- Wool Coat")).toBe("Wool Coat");
+    expect(collapseDanglingDash("Top - ")).toBe("Top");
+    expect(collapseDanglingDash(" - Shorts - ")).toBe("Shorts");
+  });
+  it("collapses an orphaned double dash", () => {
+    expect(collapseDanglingDash("Top - - FW10")).toBe("Top - FW10");
+  });
+  it("keeps a meaningful interior dash", () => {
+    expect(collapseDanglingDash("Button-up Shirt")).toBe("Button-up Shirt");
+    expect(collapseDanglingDash("Top - FW10")).toBe("Top - FW10");
+  });
+});
+
+describe("seasonToFront", () => {
+  it("moves a lone trailing season code to the front", () => {
+    expect(seasonToFront("Top - FW10")).toBe("FW10 Top");
+    expect(seasonToFront("Silk Dress - SS07")).toBe("SS07 Silk Dress");
+    expect(seasonToFront("Heavy Wool Skirt FW2014")).toBe("FW2014 Heavy Wool Skirt");
+  });
+  it("no-ops when the season code is already first", () => {
+    expect(seasonToFront("FW10 Top")).toBe("FW10 Top");
+    expect(seasonToFront("FW02/03 Printed Tee")).toBe("FW02/03 Printed Tee");
+  });
+  it("no-ops when there are two season tokens (editorial call)", () => {
+    expect(seasonToFront("Top FW10 SS11")).toBe("Top FW10 SS11");
+  });
+  it("no-ops on titles with no season token", () => {
+    expect(seasonToFront("Wool Blazer")).toBe("Wool Blazer");
+    expect(seasonToFront("")).toBe("");
+  });
+});
+
 describe("handle-fallback gate — integrated", () => {
   it("recovers McQueen FW1998 «JOAN» mini skirt (the production canary)", () => {
     const result = recoverFromHandleFallback(
@@ -148,6 +247,39 @@ describe("handle-fallback gate — integrated", () => {
     );
     expect(result).toEqual({ brand: "FENDI", title: "Vintage Jacket" });
   });
+  // The chezsnowbunny flood class: the vendor name carries an alias spelling
+  // of the brand the handle resolved to, so the single-phrase strip left it in
+  // and toTitleCase produced "Ysl …".
+  it("strips an alias spelling of the resolved brand (the Ysl class)", () => {
+    const result = recoverFromHandleFallback(
+      "YSL RECTANGULAR METAL LOGO TEMPLES GLASSES",
+      "ysl-rectangular-metal-logo-temples-glasses",
+    );
+    expect(result.title).toBe("Rectangular Metal Logo Temples Glasses");
+    expect(result.title).not.toMatch(/ysl/i);
+  });
+
+  it("strips a sub-line prefix left behind by the brand strip", () => {
+    expect(
+      recoverFromHandleFallback(
+        "RICK OWENS DRKSHDW - COTTON TANK TOP",
+        "rick-owens-drkshdw-cotton-tank-top",
+      ),
+    ).toEqual({ brand: "RICK OWENS", title: "Cotton Tank Top" });
+  });
+
+  it("strips a CDG sub-line and moves the season code to the front", () => {
+    expect(
+      recoverFromHandleFallback(
+        "COMME DES GARÇONS BLACK - FW2014 HEAVY WOOL SUSPENDER SKIRT",
+        "comme-des-garcons-black-fw2014-heavy-wool-suspender-skirt",
+      ),
+    ).toEqual({
+      brand: "COMME DES GARÇONS",
+      title: "FW14 Heavy Wool Suspender Skirt",
+    });
+  });
+
   it("recovers the Undercover wallet — leading parenthetical stripped before brand removal (id 5139850)", () => {
     // Regression for the ordering bug: nameWithoutBrand used to delete the
     // opening "(" before sanitizeFallbackTitle could strip the balanced

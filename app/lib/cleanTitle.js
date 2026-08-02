@@ -1,3 +1,65 @@
+import { titleLeaksAllowedBrandStrict } from "./brand.js";
+
+// Brand tokens shorter than the generic 4-char floor that must still block a
+// write. Guard 2 skips short tokens because they collide with common words
+// ("des"/"van" in multi-word brands, "a"/"p"/"c" from A.P.C.) — but that floor
+// is exactly how "YSL" walked into 100+ titles under a SAINT LAURENT chip.
+// Explicit membership, not a length tweak, so the collision class stays closed.
+const SHORT_BRAND_TOKENS = new Set(["ysl", "mm6", "cdg"]);
+
+// Accent-safe normalizer — matches normalizeBrand() style in stores.js
+const normalize = (s) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/**
+ * Post-parse validation for the model's {brand, title} object.
+ *
+ * Returns the trimmed, repaired pair, or null to reject. Null is RETRYABLE by
+ * contract (CLAUDE.md): the caller cannot distinguish a reject here from a
+ * transient OpenAI failure, and must not try to.
+ *
+ * Exported so the guards can be unit-tested without an HTTP round trip.
+ */
+export function validateCleanTitleResult(parsed, rawTitle) {
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const brandValid =
+    typeof parsed.brand === "string" && parsed.brand.trim().length > 0;
+  // Repair, don't reject: the model occasionally emits a dangling attribution
+  // ("… Leather Pants By") after dropping the era-designer that followed it.
+  const title =
+    typeof parsed.title === "string"
+      ? parsed.title.trim().replace(/\s+by$/i, "").trim()
+      : "";
+  const titleWords = title ? title.split(/\s+/).length : 0;
+  const titleValid = title.length > 0 && titleWords <= 7;
+  if (!brandValid || !titleValid) return null;
+
+  // Guard 1: reject if the model echoed the raw name back unchanged.
+  if (normalize(title) === normalize(rawTitle ?? "")) return null;
+
+  // Guard 2: reject if a distinctive brand token appears in the title —
+  // catches leaks like brand "DIOR HOMME" with title "Dior Wool Coat".
+  const titleTokens = new Set(normalize(title).split(" ").filter(Boolean));
+  const brandTokens = normalize(parsed.brand)
+    .split(" ")
+    .filter((t) => t.length >= 4 || SHORT_BRAND_TOKENS.has(t));
+  if (brandTokens.some((t) => titleTokens.has(t))) return null;
+
+  // Guard 3: reject a leak of ANY allowlisted brand, not just the extracted
+  // one — the era-designer / collaborator class ("Gucci By FW96 …" stored
+  // under TOM FORD) that guard 2 structurally cannot see. Word-bounded so
+  // "Silk Camisole" isn't refused for containing "ami".
+  if (titleLeaksAllowedBrandStrict(title)) return null;
+
+  return { brand: parsed.brand.trim(), title };
+}
+
 export async function cleanTitle(product) {
   const rawTitle = product?.name;
   if (!rawTitle) return null;
@@ -86,39 +148,7 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
       try {
         const jsonText = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
         const parsed = JSON.parse(jsonText);
-        const titleWords = parsed.title ? parsed.title.trim().split(/\s+/).length : 0;
-        const brandValid = parsed.brand && parsed.brand.trim().length > 0;
-        const titleValid = parsed.title && parsed.title.trim().length > 0 && titleWords <= 7;
-
-        // Accent-safe normalizer — matches normalizeBrand() style in stores.js
-        const normalize = (s) =>
-          s
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, " ")
-            .trim();
-
-        // Guard 1: reject if Haiku echoed the raw name back unchanged.
-        const echoedInput =
-          titleValid && normalize(parsed.title) === normalize(rawTitle);
-
-        // Guard 2: reject if a distinctive (≥4 char) brand token appears in
-        // the title — catches leaks like brand "DIOR HOMME" with title
-        // "Dior Wool Coat". Short tokens are skipped because they collide
-        // with common words ("des"/"van" in multi-word brands, or "a"/"p"/"c"
-        // from A.P.C.).
-        const titleTokens = titleValid
-          ? new Set(normalize(parsed.title).split(" ").filter(Boolean))
-          : new Set();
-        const brandTokens = brandValid
-          ? normalize(parsed.brand).split(" ").filter((t) => t.length >= 4)
-          : [];
-        const brandInTitle = brandTokens.some((t) => titleTokens.has(t));
-
-        if (brandValid && titleValid && !echoedInput && !brandInTitle) {
-          return { brand: parsed.brand.trim(), title: parsed.title.trim() };
-        }
+        return validateCleanTitleResult(parsed, rawTitle);
       } catch {
         // JSON parse failed
       }

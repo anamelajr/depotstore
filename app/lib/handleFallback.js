@@ -3,6 +3,8 @@
 // re-exporting from a Next App Router route module — `route.js` named exports
 // are reserved for HTTP method handlers and route segment config.
 
+import { brandSpellings, canonicalBrand, normalizeBrand } from "./brand.js";
+
 // Token-aware title case. Preserves canonical casing for season codes
 // (FW1998, SS99, AW2000) and decade markers (2000s, 1990s) per
 // cleanTitle's prompt examples. Other tokens get standard title case
@@ -25,7 +27,16 @@ export function toTitleCase(s) {
       // Bare "S/S" — the year is the next token ("S/S 2004").
       if (/^[FSA]\/[WS]$/i.test(token)) return token.toUpperCase();
       if (/^\d{4}s$/i.test(token)) return token.toLowerCase();
-      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+      // Title-case each `/`-separated segment: "wool/silk" → "Wool/Silk". The
+      // generic branch below only uppercases the token's first character, which
+      // left "Wool/silk" in production titles. Every season-code shape returns
+      // above, so this can't touch "F/W02" or "FW02/03".
+      return token
+        .split("/")
+        .map((seg) =>
+          seg ? seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase() : seg
+        )
+        .join("/");
     })
     .join(" ");
 }
@@ -69,4 +80,106 @@ export function nameWithoutBrand(name, brand) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+}
+
+// nameWithoutBrand removes exactly the one phrase it is handed. A vendor name
+// carrying a DIFFERENT spelling of the same designer than the one we resolved
+// ("YSL RECTANGULAR METAL …" under brand "Yves Saint Laurent") therefore kept
+// its alias token, and toTitleCase turned it into "Ysl …" — the production
+// class this repair exists for. Strip every spelling of the family, longest
+// first (brandSpellings is already sorted that way), so no shorter spelling can
+// strand a fragment of a longer one.
+export function stripAllBrandSpellings(name, brand) {
+  let out = name;
+  for (const spelling of brandSpellings(brand)) {
+    out = nameWithoutBrand(out, spelling);
+  }
+  return out;
+}
+
+// Diffusion / sub-line words that vendors put between the house brand and the
+// garment ("COMME DES GARÇONS BLACK - FW2014 …", "RICK OWENS DRKSHDW - COTTON
+// TANK TOP"). They are NOT brand aliases — aliasing them would put "black" and
+// "girl" into BRAND_HANDLE_SLUGS and let any handle containing those words
+// resolve to a brand — so they get a conservative, per-brand, leading-position-
+// only table here. Keyed by normalized canonical brand.
+const SUB_LINE_PREFIXES = {
+  "rick owens": ["DRKSHDW", "LILIES"],
+  "comme des garcons": ["HOMME PLUS", "HOMME", "BLACK", "GIRL", "SHIRT", "PLAY", "TAO"],
+  "ann demeulemeester": ["BLANCHE"],
+  "maison margiela": ["MM6"],
+};
+
+// Removes a leading sub-line marker left behind after the brand strip. Matches
+// ONLY at the start and only when followed by a dash separator, so a genuine
+// descriptor ("Black Wool Coat", "Shirt Blue Abstract Face Shirt") survives —
+// the dash is what marks the vendor's brand/description boundary.
+export function stripSubLinePrefix(title, brand) {
+  const key = normalizeBrand(canonicalBrand(brand));
+  const prefixes = SUB_LINE_PREFIXES[key];
+  if (!prefixes || !title) return title;
+  for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) {
+    const re = new RegExp(`^\\s*${prefix.replace(/\s+/g, "\\s+")}\\s*-\\s*`, "i");
+    if (re.test(title)) return title.replace(re, "");
+  }
+  return title;
+}
+
+// Removes dash artifacts left by the brand / sub-line strips: a leading or
+// trailing " - ", and orphaned runs where both sides collapsed away.
+export function collapseDanglingDash(title) {
+  if (typeof title !== "string") return title;
+  return title
+    .replace(/\s*-\s*-\s*/g, " - ")
+    .replace(/^[\s-]+/, "")
+    .replace(/[\s-]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const SEASON_TOKEN = /\b(?:FW|SS|AW)\d{2,4}(?:\s?[/-]\s?\d{2,4})?\b/gi;
+
+// "Top - FW10" → "FW10 Top". The house convention puts the season first
+// (docs/plan-season-code-standardization.md), but normalizeSeasonCodes is
+// position-preserving by contract and its zero-write backfill tests depend on
+// that, so the reordering lives HERE — fallback path and the one-time title
+// backfill only, never in seasonCodes.js.
+//
+// Gated on exactly one season token: with two, which one leads is an editorial
+// call, not a deterministic one, and those rows go to manual review instead.
+export function seasonToFront(title) {
+  if (typeof title !== "string" || !title) return title;
+  const matches = title.match(SEASON_TOKEN);
+  if (!matches || matches.length !== 1) return title;
+  const token = matches[0];
+  const idx = title.indexOf(token);
+  if (idx === 0) return title;
+  const rest = (title.slice(0, idx) + title.slice(idx + token.length))
+    .replace(/\s*-\s*/g, " - ");
+  const cleaned = collapseDanglingDash(rest);
+  return cleaned ? `${token} ${cleaned}` : token;
+}
+
+// The whole deterministic fallback pipeline, in the one order that works:
+//   1. sanitize the RAW name first, so a leading "(New Arrival)" is removed
+//      while its parentheses are still balanced (production id 5139850);
+//   2. strip every spelling of the resolved brand;
+//   3. drop a leading sub-line marker, then any dash the strips orphaned;
+//   4. move a lone season code to the front;
+//   5. title-case, then sanitize again for markers the strips exposed.
+// Exported as one function so route.js and the title backfill share a single
+// composition rather than two drifting copies.
+export function buildFallbackTitle(name, brand) {
+  return sanitizeFallbackTitle(
+    toTitleCase(
+      seasonToFront(
+        collapseDanglingDash(
+          stripSubLinePrefix(
+            stripAllBrandSpellings(sanitizeFallbackTitle(name), brand),
+            brand
+          )
+        )
+      )
+    )
+  );
 }

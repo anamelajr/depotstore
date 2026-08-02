@@ -28,6 +28,21 @@ export const BRAND_ALIASES = {
   "JUST CAVALLI": "ROBERTO CAVALLI",
   "CAVALLI CLASS": "ROBERTO CAVALLI",
   "BIKKEMBERGS": "DIRK BIKKEMBERGS",
+  // Split brand families collapsed by docs/plan-title-brand-formatting-repair.md.
+  // "SAINT LAURENT" is the user-chosen house label for the whole YSL family.
+  "YVES SAINT LAURENT": "SAINT LAURENT",
+  "YSL": "SAINT LAURENT",
+  "SAINT LAURENT PARIS": "SAINT LAURENT",
+  "COMME DES GARCONS": "COMME DES GARÇONS",
+  "COMME DES GARCONS HOMME PLUS": "COMME DES GARÇONS HOMME PLUS",
+  "FERRE": "GIANFRANCO FERRÉ",
+  "FERRÉ": "GIANFRANCO FERRÉ",
+  "MCQUEEN": "ALEXANDER MCQUEEN",
+  "FAYCAL": "FAYÇAL AMOR",
+  // Deliberately NOT aliased: sub-line words (BLACK, GIRL, DRKSHDW, BLANCHE).
+  // They would enter BRAND_HANDLE_SLUGS and let any handle containing "black"
+  // resolve to a brand. Sub-lines are handled by stripSubLinePrefix in
+  // app/lib/handleFallback.js instead.
 };
 
 // Token-normalizes a brand/title string WITHOUT alias resolution: strips
@@ -65,6 +80,26 @@ export function canonicalBrand(value) {
   if (!value || typeof value !== "string") return value;
   const upper = value.trim().toUpperCase();
   return BRAND_ALIASES[upper] ?? value.trim();
+}
+
+// Every uppercase spelling that resolves to the same designer as `brand`:
+// the canonical label, the caller's own spelling, and every BRAND_ALIASES key
+// pointing at that canonical. Sorted longest-first so a caller stripping them
+// in order removes "YVES SAINT LAURENT" before the shorter "SAINT LAURENT"
+// (stripping the short one first would strand a dangling "YVES").
+//
+// The enrich handle-fallback is the consumer: nameWithoutBrand only removes the
+// one phrase it is handed, so a name carrying an alias spelling ("YSL
+// RECTANGULAR …" under a resolved "Yves Saint Laurent") kept leaking the alias
+// into the written title.
+export function brandSpellings(brand) {
+  if (!brand || typeof brand !== "string") return [];
+  const canonicalUpper = canonicalBrand(brand).toUpperCase();
+  const spellings = new Set([canonicalUpper, brand.trim().toUpperCase()]);
+  for (const [alias, target] of Object.entries(BRAND_ALIASES)) {
+    if (target.toUpperCase() === canonicalUpper) spellings.add(alias);
+  }
+  return [...spellings].filter(Boolean).sort((a, b) => b.length - a.length);
 }
 
 // Raw alias spellings, normalized but NOT canonicalized — "margiela",

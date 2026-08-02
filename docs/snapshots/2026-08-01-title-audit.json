@@ -1,0 +1,753 @@
+{
+ "brand_word_in_title": {
+  "count": 36,
+  "examples": [
+   {
+    "id": 196847,
+    "brand": "DIOR",
+    "title": "John Galliano Leather Clutch",
+    "store": "yourgarmentz.com",
+    "tag": "brand_word_in_title:galliano"
+   },
+   {
+    "id": 831252,
+    "brand": "MAISON MARGIELA",
+    "title": "MM6 Velvet Distressed Pants",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:mm6"
+   },
+   {
+    "id": 833406,
+    "brand": "MAISON MARGIELA",
+    "title": "MM6 Timer Brut Necklace",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:mm6"
+   },
+   {
+    "id": 13346293,
+    "brand": "TOM FORD",
+    "title": "Gucci By FW96 Pinstripe Wool Suit",
+    "store": "lesarchivesparis.com",
+    "tag": "brand_word_in_title:gucci"
+   },
+   {
+    "id": 13971162,
+    "brand": "MARGIELA",
+    "title": "Hermes By Martin 1990s Silk Cardigan Top",
+    "store": "lesarchivesparis.com",
+    "tag": "brand_word_in_title:hermes"
+   },
+   {
+    "id": 13993204,
+    "brand": "JOHN GALLIANO",
+    "title": "Dior By FW02 Printed Wrap Top",
+    "store": "lesarchivesparis.com",
+    "tag": "brand_word_in_title:dior"
+   },
+   {
+    "id": 14020121,
+    "brand": "TOM FORD",
+    "title": "2000s Gucci Blue Sky Corduroy Pants By",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:gucci"
+   },
+   {
+    "id": 14174538,
+    "brand": "SAINT LAURENT",
+    "title": "Khaki Canvas Ysl Logo Messenger Bag",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14372804,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Leopard Pony Hair Ysl Impact Logo Bracelet",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14534806,
+    "brand": "RICK OWENS",
+    "title": "Drkshdw - Cotton Tank Top",
+    "store": "lobscur.com",
+    "tag": "brand_word_in_title:drkshdw"
+   },
+   {
+    "id": 14940924,
+    "brand": "DIOR",
+    "title": "By Galliano Nude Lace Details Dress",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:galliano"
+   },
+   {
+    "id": 14940972,
+    "brand": "DIOR",
+    "title": "Dior Dice Mules By Galliano T.37",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:dior"
+   },
+   {
+    "id": 14941022,
+    "brand": "GUCCI",
+    "title": "Tom Ford Khaki Mid Skirt",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:tom ford"
+   },
+   {
+    "id": 14941257,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Transparent Silver Temple Bayonettas Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941258,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Silver Stainless Steel Bayonettas Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941259,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Tortoiseshell Silver Temple Bayonettas Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941262,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Green Blue Bayonettas Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941264,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Dark Blue Bayonettas Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941265,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Silver Navy Blue Temple Bayonettas Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941266,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Rectangular Metal Ysl Logo Temples Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941267,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Black Metal Half-rim Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941270,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Matte Black Rectangular Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941271,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Transparent Blue/grey Rectangular Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:ysl"
+   },
+   {
+    "id": 14941964,
+    "brand": "MARGIELA",
+    "title": "Mm6 Brown Washed Joggers",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:mm6"
+   },
+   {
+    "id": 14941965,
+    "brand": "MARGIELA",
+    "title": "Mm6 Suit Grey Fitted Pant",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:mm6"
+   },
+   {
+    "id": 14942261,
+    "brand": "JOHN GALLIANO",
+    "title": "Dior By 2003 Heels",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:dior"
+   },
+   {
+    "id": 14943013,
+    "brand": "DIOR",
+    "title": "Silk Dress By Galliano",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:galliano"
+   },
+   {
+    "id": 14943586,
+    "brand": "GUCCI",
+    "title": "Tom Ford Black Top",
+    "store": "chezsnowbunny.fr",
+    "tag": "brand_word_in_title:tom ford"
+   },
+   {
+    "id": 14948244,
+    "brand": "ROBERTO CAVALLI",
+    "title": "2000s Cavalli Black Nylon Quilted Puffer Jacket",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:cavalli"
+   },
+   {
+    "id": 15462611,
+    "brand": "TOM FORD",
+    "title": "SS01 Gucci Dragon Black High Sneakers By",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:gucci"
+   },
+   {
+    "id": 15897474,
+    "brand": "DOLCE & GABBANA",
+    "title": "2000s Grey Steve Mcqueen Hoodie",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:mcqueen"
+   },
+   {
+    "id": 15898105,
+    "brand": "1017 ALYX 9SM",
+    "title": "Dior - B23",
+    "store": "seyswardrobe.fr",
+    "tag": "brand_word_in_title:dior"
+   },
+   {
+    "id": 15960225,
+    "brand": "TOM FORD",
+    "title": "1990s Gucci Navy Cashmere Long Coat By",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:gucci"
+   },
+   {
+    "id": 15987259,
+    "brand": "DOLCE & GABBANA",
+    "title": "2000s Steve Mcqueen Grey Hoodie",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:mcqueen"
+   },
+   {
+    "id": 15987261,
+    "brand": "RICK OWENS",
+    "title": "SS15 Drkshdw Dust Berling Drawstrings Sweatpants",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:drkshdw"
+   },
+   {
+    "id": 16231010,
+    "brand": "TOM FORD",
+    "title": "2000s Gucci Black Leather Pants By",
+    "store": "dolcevitahub.com",
+    "tag": "brand_word_in_title:gucci"
+   }
+  ]
+ },
+ "null_or_empty_title": {
+  "count": 27,
+  "examples": [
+   {
+    "id": 14880787,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880792,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880794,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880795,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880796,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880802,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880804,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880805,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880807,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880808,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880809,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880811,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880812,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880813,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880814,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880816,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880817,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880818,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880819,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880820,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880821,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880825,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880827,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880828,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880834,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880836,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   },
+   {
+    "id": 14880837,
+    "brand": null,
+    "title": null,
+    "store": "treviseparis.com",
+    "tag": "null_or_empty_title"
+   }
+  ]
+ },
+ "season_not_first": {
+  "count": 16,
+  "examples": [
+   {
+    "id": 1,
+    "brand": "Y'S",
+    "title": "Pink White Sleeveless Knit SS20",
+    "store": "atdawnparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 5858170,
+    "brand": "DIOR",
+    "title": "Christian SS02 Monogram Nylon Pants",
+    "store": "graindesell.shop",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 12744021,
+    "brand": "PRADA",
+    "title": "Skirt - FW10",
+    "store": "nuovo-paris.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 12744022,
+    "brand": "PRADA",
+    "title": "Top - FW10",
+    "store": "nuovo-paris.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 12744025,
+    "brand": "PRADA",
+    "title": "Silk Dress - SS07",
+    "store": "nuovo-paris.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 13346293,
+    "brand": "TOM FORD",
+    "title": "Gucci By FW96 Pinstripe Wool Suit",
+    "store": "lesarchivesparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 13993204,
+    "brand": "JOHN GALLIANO",
+    "title": "Dior By FW02 Printed Wrap Top",
+    "store": "lesarchivesparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 14880839,
+    "brand": "JOHN GALLIANO",
+    "title": "London SS87 Charcoal Fine-knit Turtleneck Bodysuit",
+    "store": "treviseparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 14880893,
+    "brand": "MARGIELA",
+    "title": "Martin SS98 Flat Deconstructed Blazer",
+    "store": "treviseparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 14881061,
+    "brand": "COMME DES GARÇONS",
+    "title": "Tao FW07 Cable Knit Asymmetric Dress",
+    "store": "treviseparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 14937632,
+    "brand": "VALENTINO",
+    "title": "Boutique FW96 Beaded Black Evening Ensemble",
+    "store": "treviseparis.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 14940970,
+    "brand": "ROBERTO CAVALLI",
+    "title": "Long Silk Dress SS03",
+    "store": "chezsnowbunny.fr",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 15239796,
+    "brand": "YOHJI YAMAMOTO",
+    "title": "Y’s FW11 Black Hooded Shirt",
+    "store": "numero13vintage.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 15481896,
+    "brand": "COMME DES GARÇONS",
+    "title": "Tao SS09 Black Sheer Midi Skirt",
+    "store": "numero13vintage.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 15982547,
+    "brand": "COMME DES GARÇONS",
+    "title": "Black - FW14 Heavy Wool Suspender Skirt",
+    "store": "lobscur.com",
+    "tag": "season_not_first"
+   },
+   {
+    "id": 15982548,
+    "brand": "COMME DES GARÇONS",
+    "title": "Black - FW12 Poly Cotton Rider Cape",
+    "store": "lobscur.com",
+    "tag": "season_not_first"
+   }
+  ]
+ },
+ "dash_in_title": {
+  "count": 10,
+  "examples": [
+   {
+    "id": 12744021,
+    "brand": "PRADA",
+    "title": "Skirt - FW10",
+    "store": "nuovo-paris.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 12744022,
+    "brand": "PRADA",
+    "title": "Top - FW10",
+    "store": "nuovo-paris.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 12744024,
+    "brand": "VALENTINO",
+    "title": "Shorts - Red",
+    "store": "nuovo-paris.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 12744025,
+    "brand": "PRADA",
+    "title": "Silk Dress - SS07",
+    "store": "nuovo-paris.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 14534806,
+    "brand": "RICK OWENS",
+    "title": "Drkshdw - Cotton Tank Top",
+    "store": "lobscur.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 15898105,
+    "brand": "1017 ALYX 9SM",
+    "title": "Dior - B23",
+    "store": "seyswardrobe.fr",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 15982546,
+    "brand": "COMME DES GARÇONS",
+    "title": "Girl - Wool Dress With Front Bows",
+    "store": "lobscur.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 15982547,
+    "brand": "COMME DES GARÇONS",
+    "title": "Black - FW14 Heavy Wool Suspender Skirt",
+    "store": "lobscur.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 15982548,
+    "brand": "COMME DES GARÇONS",
+    "title": "Black - FW12 Poly Cotton Rider Cape",
+    "store": "lobscur.com",
+    "tag": "dash_in_title"
+   },
+   {
+    "id": 16459500,
+    "brand": "ANN DEMEULEMEESTER",
+    "title": "Blanche - Painted High Top Sneakers",
+    "store": "lobscur.com",
+    "tag": "dash_in_title"
+   }
+  ]
+ },
+ "lowercase_after_slash": {
+  "count": 9,
+  "examples": [
+   {
+    "id": 14880999,
+    "brand": "ALEXANDER MCQUEEN",
+    "title": "SS99 Iridescent Grey Wool/silk Suit",
+    "store": "treviseparis.com",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14941232,
+    "brand": "GUCCI",
+    "title": "Grey/blue Transparent Rectangular Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14941271,
+    "brand": "YVES SAINT LAURENT",
+    "title": "Ysl Transparent Blue/grey Rectangular Glasses",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14942020,
+    "brand": "DOLCE & GABBANA",
+    "title": "Purple/brown Stripe Long Sleeve",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14942050,
+    "brand": "ROBERTO CAVALLI",
+    "title": "Blue/red Satin Effect Pearl Details Top",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14942213,
+    "brand": "GUCCI",
+    "title": "Black/grey Canvas Monogramme Mule T.39",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14942354,
+    "brand": "DOLCE & GABBANA",
+    "title": "Black/gold High Heel",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14943530,
+    "brand": "JEAN PAUL GAULTIER",
+    "title": "Blue/white Print Dress",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   },
+   {
+    "id": 14943584,
+    "brand": "ROBERTO CAVALLI",
+    "title": "Pink/blue Top",
+    "store": "chezsnowbunny.fr",
+    "tag": "lowercase_after_slash"
+   }
+  ]
+ },
+ "trailing_by": {
+  "count": 5,
+  "examples": [
+   {
+    "id": 14020121,
+    "brand": "TOM FORD",
+    "title": "2000s Gucci Blue Sky Corduroy Pants By",
+    "store": "dolcevitahub.com",
+    "tag": "trailing_by"
+   },
+   {
+    "id": 14953917,
+    "brand": "RAF SIMONS",
+    "title": "Calvin Klein 205w39nyc Cow-boy Leather Boots By",
+    "store": "dolcevitahub.com",
+    "tag": "trailing_by"
+   },
+   {
+    "id": 15462611,
+    "brand": "TOM FORD",
+    "title": "SS01 Gucci Dragon Black High Sneakers By",
+    "store": "dolcevitahub.com",
+    "tag": "trailing_by"
+   },
+   {
+    "id": 15960225,
+    "brand": "TOM FORD",
+    "title": "1990s Gucci Navy Cashmere Long Coat By",
+    "store": "dolcevitahub.com",
+    "tag": "trailing_by"
+   },
+   {
+    "id": 16231010,
+    "brand": "TOM FORD",
+    "title": "2000s Gucci Black Leather Pants By",
+    "store": "dolcevitahub.com",
+    "tag": "trailing_by"
+   }
+  ]
+ }
+}

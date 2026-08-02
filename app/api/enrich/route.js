@@ -11,11 +11,8 @@ import {
   isSelfBranded,
   brandFromHandle,
 } from "../../lib/stores.js";
-import {
-  toTitleCase,
-  sanitizeFallbackTitle,
-  nameWithoutBrand,
-} from "../../lib/handleFallback.js";
+import { buildFallbackTitle } from "../../lib/handleFallback.js";
+import { titleLeaksAllowedBrandStrict } from "../../lib/brand.js";
 import { normalizeSeasonCodes } from "../../lib/seasonCodes.js";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +79,7 @@ export async function POST(request) {
   let failed = 0;
   let rejected = 0; // Dolce Vita allowlist rejections
   let attemptIncrementFailures = 0;
+  let brandLeakBlocked = 0; // A4b choke-point gate: title leaked a brand name
 
   // Logging counters for enrich_runs
   let fastPathCount = 0;
@@ -177,11 +175,11 @@ export async function POST(request) {
           // brand strip ran first it could delete the opening "(" mid-name,
           // leaving an orphaned ")" and the prefix text that the balanced
           // /\([^)]*\)/ strip can no longer match (production id 5139850).
-          const fallbackTitle = sanitizeFallbackTitle(
-            toTitleCase(
-              nameWithoutBrand(sanitizeFallbackTitle(row.name), handleBrand)
-            )
-          );
+          // buildFallbackTitle owns the whole strip/reorder/case pipeline —
+          // every spelling of the brand family, a leading sub-line marker
+          // ("RICK OWENS DRKSHDW - …"), orphaned dashes, and a trailing season
+          // code moved to the front. See app/lib/handleFallback.js.
+          const fallbackTitle = buildFallbackTitle(row.name, handleBrand);
           const titleWords = fallbackTitle.split(/\s+/).filter(Boolean).length;
           if (titleWords >= 1 && titleWords <= 7) {
             result = {
@@ -195,22 +193,48 @@ export async function POST(request) {
           }
         }
       }
+      // Shared brand-leak gate. cleanTitle's own guard only sees the model
+      // path: when it REJECTS a title it returns null, which drops the row into
+      // the handle fallback, and that fallback strips only the handle brand's
+      // spellings — so a foreign-brand leak ("2000s Gucci … By" under a
+      // `tom-ford-*` handle) walked straight past it into a COALESCE write that
+      // is permanent. Gating both producers here, at the same choke point as
+      // canonicalBrand/normalizeSeasonCodes, is the only place that closes it.
+      //
+      // Blocked rows fall through to the null branch: attempts increments, the
+      // row retries, and on exhaustion the existing terminal-hide logic applies
+      // — the same economics as the word-count bail. Deliberately NOT done by
+      // splitting cleanTitle's null into reject-vs-transient; CLAUDE.md pins
+      // that null as uniformly retryable.
+      //
+      // Both producers of a brand label converge on `result`: cleanTitle's
+      // model output and brandFromHandle's slug hit. Canonicalizing here —
+      // before the allowlist gate, isSelfBranded, assignCategory and the RPC
+      // write — is what makes one designer land under one stored label
+      // ("Just Cavalli" → "ROBERTO CAVALLI"). Non-aliased brands pass through
+      // unchanged. Titles get the same treatment: both producers can emit a
+      // season code in whatever shape their source used ("SS2004", "S/S 2004",
+      // "Fw02/03"), and the RPC write is COALESCE-guarded, so a non-canonical
+      // title that lands here is permanent.
+      if (result) {
+        const canonical = {
+          brand: canonicalBrand(result.brand),
+          title: normalizeSeasonCodes(result.title),
+        };
+        if (titleLeaksAllowedBrandStrict(canonical.title)) {
+          brandLeakBlocked++;
+          console.log(
+            `[enrich] brand-leak gate blocked ${row.store_domain}/${row.handle} → ${JSON.stringify(canonical.title)}`
+          );
+          result = null;
+        } else {
+          result = canonical;
+        }
+      }
+
       if (result) {
         if (!isHandleFallback) openaiSucceeded++;
-        // Both producers of a brand label converge on `result`: cleanTitle's
-        // model output and brandFromHandle's slug hit. Canonicalizing here —
-        // before the allowlist gate, isSelfBranded, assignCategory and the RPC
-        // write — is what makes one designer land under one stored label
-        // ("Just Cavalli" → "ROBERTO CAVALLI"). Non-aliased brands pass
-        // through unchanged.
-        // Titles get the same treatment one line down: both producers can emit
-        // a season code in whatever shape their source used ("SS2004",
-        // "S/S 2004", "Fw02/03"), and the RPC write is COALESCE-guarded, so a
-        // non-canonical title that lands here is permanent. Normalizing at the
-        // shared choke point is what keeps one season under one stored form.
-        const { brand: rawBrand, title: rawTitle } = result;
-        const newBrand = canonicalBrand(rawBrand);
-        const newTitle = normalizeSeasonCodes(rawTitle);
+        const { brand: newBrand, title: newTitle } = result;
         // Allowlist gate for filtered stores. Hide the row instead of
         // deleting it. A delete would be re-created on the next sync
         // (Shopify still sells the item), then re-enriched, re-rejected,
@@ -386,6 +410,7 @@ export async function POST(request) {
     succeeded,
     failed,
     rejected,
+    brandLeakBlocked,
     attemptIncrementFailures,
     remaining: remaining ?? 0,
     depth,
