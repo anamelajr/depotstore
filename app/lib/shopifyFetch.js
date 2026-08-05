@@ -155,7 +155,45 @@ export function dedupeByHandle(products) {
   return [...byHandle.values(), ...noHandle];
 }
 
-export async function fetchStoreProducts(store) {
+// Pages are fetched with a hard timeout and one retry on transient failures
+// (5xx, network error, timeout). After the retry fails we still THROW, never
+// return partial data: returning truncated data would let the cron's
+// per-fulfilled-store stale delete wipe rows on pages beyond the failure.
+// Rejecting the per-store promise routes it through the same skip-cleanup
+// path as a URL-length SELECT failure.
+const FETCH_TIMEOUT_MS = 10_000;
+// Inter-page politeness delay. These are public /products.json endpoints;
+// observed 503s are origin flakiness (now retried), not throttling.
+const PAGE_SLEEP_MS = 150;
+
+export async function fetchPageWithRetry(url, { domain, page }) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const lastAttempt = attempt === 1;
+    let res;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    } catch (e) {
+      // Network error or timeout — transient, retry once.
+      if (lastAttempt) {
+        throw new Error(
+          `Shopify fetch failed for ${domain} page ${page}: ${e?.message ?? e}`
+        );
+      }
+      await sleep(PAGE_SLEEP_MS);
+      continue;
+    }
+    if (res.ok) return res;
+    // Retry only server-side flakiness; a 4xx won't improve on retry.
+    if (lastAttempt || res.status < 500) {
+      throw new Error(
+        `Shopify fetch failed for ${domain} page ${page}: ${res.status} ${res.statusText}`
+      );
+    }
+    await sleep(PAGE_SLEEP_MS);
+  }
+}
+
+export async function fetchStoreProducts(store, { deadline } = {}) {
   const base =
     store.domain === "www.dotcomme.net"
       ? "https://www.dotcomme.net/collections/paris/products.json"
@@ -164,18 +202,15 @@ export async function fetchStoreProducts(store) {
   const allProducts = [];
   let page = 1;
   while (true) {
-    const url = `${base}?limit=250&page=${page}&country=FR`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      // Throw rather than break: returning truncated data would let the
-      // cron's per-fulfilled-store stale delete wipe rows on pages beyond
-      // the failure. Reject the per-store promise instead so allSettled
-      // routes this through the same skip-cleanup path as a URL-length
-      // SELECT failure.
+    // Cooperative sync deadline (see /api/cron): abandoning the store here
+    // throws, so it rejects and is excluded from the scoped stale delete.
+    if (deadline && Date.now() > deadline) {
       throw new Error(
-        `Shopify fetch failed for ${store.domain} page ${page}: ${res.status} ${res.statusText}`
+        `Sync deadline exceeded for ${store.domain} (fetch page ${page})`
       );
     }
+    const url = `${base}?limit=250&page=${page}&country=FR`;
+    const res = await fetchPageWithRetry(url, { domain: store.domain, page });
     const data = await res.json();
     // A missing or non-array `products` field on a 200 response (e.g. a
     // Shopify maintenance payload) must throw, not silently break. Silently
@@ -191,7 +226,7 @@ export async function fetchStoreProducts(store) {
     allProducts.push(...batch);
     if (batch.length < 250) break;
     page++;
-    await sleep(500);
+    await sleep(PAGE_SLEEP_MS);
   }
 
   // Dedupe before the curation filter: if a duplicated product changed

@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { dedupeByHandle, passesBrandFilter } from "../shopifyFetch.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import {
+  dedupeByHandle,
+  passesBrandFilter,
+  fetchPageWithRetry,
+  fetchStoreProducts,
+} from "../shopifyFetch.js";
 
 // Regression suite for the sync-time curation gate. The 2026-07-26 incident:
 // a non-allowlisted vendor ("CHEZ SNOW BUNNY" on all 4,795 rows — Shopify
@@ -83,5 +88,118 @@ describe("dedupeByHandle", () => {
 
   it("returns an empty array for empty input", () => {
     expect(dedupeByHandle([])).toEqual([]);
+  });
+});
+
+// Transient Shopify 503s (origin flakiness, seen in production store_errors)
+// must get exactly one retry; exhausted retries must still THROW, never
+// return partial data — the cron's scoped stale delete depends on it.
+
+const okResponse = { ok: true, status: 200 };
+const res503 = { ok: false, status: 503, statusText: "Service Unavailable" };
+const res404 = { ok: false, status: 404, statusText: "Not Found" };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("fetchPageWithRetry", () => {
+  it("returns the response on first success", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", { domain: "x", page: 1 })
+    ).resolves.toBe(okResponse);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries once on a 5xx then succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(res503)
+      .mockResolvedValueOnce(okResponse);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", { domain: "x", page: 2 })
+    ).resolves.toBe(okResponse);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws after the retry also 5xxs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res503);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", { domain: "x", page: 3 })
+    ).rejects.toThrow("Shopify fetch failed for x page 3: 503");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a 4xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res404);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", { domain: "x", page: 1 })
+    ).rejects.toThrow("404");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries once on a network error then succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("socket hang up"))
+      .mockResolvedValueOnce(okResponse);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", { domain: "x", page: 1 })
+    ).resolves.toBe(okResponse);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws after network errors exhaust the retry", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("socket hang up"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", { domain: "x", page: 1 })
+    ).rejects.toThrow("Shopify fetch failed for x page 1: socket hang up");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("fetchStoreProducts deadline", () => {
+  it("throws before fetching when the sync deadline has passed", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchStoreProducts(
+        { domain: "example.com", storeName: "Example" },
+        { deadline: Date.now() - 1 }
+      )
+    ).rejects.toThrow("Sync deadline exceeded for example.com (fetch page 1)");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("throws mid-pagination when the deadline passes between pages", async () => {
+    // Full page of 250 → loop continues to page 2, where the deadline
+    // (already breached after the ~150ms inter-page sleep) must throw.
+    const fullPage = {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        products: Array.from({ length: 250 }, (_, i) => ({
+          id: i,
+          handle: `h${i}`,
+          title: `T${i}`,
+        })),
+      }),
+    };
+    const fetchMock = vi.fn().mockResolvedValue(fullPage);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchStoreProducts(
+        { domain: "example.com", storeName: "Example" },
+        { deadline: Date.now() + 50 }
+      )
+    ).rejects.toThrow("Sync deadline exceeded for example.com (fetch page 2)");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
