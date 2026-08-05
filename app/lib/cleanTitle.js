@@ -72,8 +72,8 @@ export async function cleanTitle(product) {
   // can run for the full Vercel maxDuration (300 s), eating the entire
   // batch budget and breaking the enrich chain by killing the function
   // before it can dispatch the next hop. 8 s is generous vs typical
-  // gpt-5.4-mini latency (~1–2 s) and short enough that pathological
-  // calls don't dominate batch wall time.
+  // gpt-5.6-terra latency at reasoning_effort "low" (~2 s) and short
+  // enough that pathological calls don't dominate batch wall time.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
@@ -86,7 +86,12 @@ export async function cleanTitle(product) {
       signal: controller.signal,
       body: JSON.stringify({
         model: "gpt-5.6-terra",
-        max_completion_tokens: 60,
+        // GPT-5.6 spends reasoning tokens out of max_completion_tokens
+        // before writing any output; a cap of 60 returns finish_reason
+        // "length" with EMPTY content on every call. Keep the cap well
+        // above the ~40 reasoning tokens "low" effort uses.
+        reasoning_effort: "low",
+        max_completion_tokens: 200,
         messages: [
           {
             role: "user",

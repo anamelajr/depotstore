@@ -17,7 +17,10 @@ export async function generateDescription(product) {
       },
       body: JSON.stringify({
         model: "gpt-5.6-sol",
-        max_completion_tokens: 150,
+        // GPT-5.6 spends reasoning tokens out of max_completion_tokens
+        // before writing any output; too small a cap yields empty content.
+        reasoning_effort: "low",
+        max_completion_tokens: 500,
         messages: [
           {
             role: "user",
