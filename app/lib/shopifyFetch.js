@@ -138,6 +138,23 @@ export function passesBrandFilter(p, existing) {
   return titleContainsAllowedBrand(p.name);
 }
 
+// Shopify offset pagination over a mutating catalog can return the same
+// product on two pages. A repeated (handle, store_domain) inside one upsert
+// batch makes Postgres reject the whole batch ("ON CONFLICT DO UPDATE command
+// cannot affect row a second time"), skipping the store's entire sync — so
+// collapse to one row per handle before returning. Last occurrence wins
+// (freshest snapshot); null handles never conflict on the unique constraint
+// and pass through untouched.
+export function dedupeByHandle(products) {
+  const byHandle = new Map();
+  const noHandle = [];
+  for (const p of products) {
+    if (p.handle == null) noHandle.push(p);
+    else byHandle.set(p.handle, p);
+  }
+  return [...byHandle.values(), ...noHandle];
+}
+
 export async function fetchStoreProducts(store) {
   const base =
     store.domain === "www.dotcomme.net"
@@ -203,5 +220,5 @@ export async function fetchStoreProducts(store) {
     })
     .filter(Boolean);
 
-  return cleaned;
+  return dedupeByHandle(cleaned);
 }
