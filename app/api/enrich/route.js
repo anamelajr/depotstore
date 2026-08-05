@@ -53,7 +53,9 @@ async function incrementAttempts(row) {
 
 export async function POST(request) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Require a configured secret: with CRON_SECRET unset the template would
+  // equal the literal "Bearer undefined", which any caller could send.
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -90,6 +92,13 @@ export async function POST(request) {
   let categoryAssigned = 0;
   let categoryFailed = 0;
   const perStoreOpenaiCalls = {};
+  // Failure-mode decomposition of openai_returned_null. cleanTitle mutates
+  // this object (httpError / emptyContent / parseError / validationReject /
+  // timeoutOrNetwork / lastHttpStatus) — telemetry only, never branched on.
+  const cleanTitleTelemetry = {};
+  let brandLeakBlockedModel = 0; // gate fired on a truthy cleanTitle result
+  let brandLeakBlockedFallback = 0; // gate fired on a handle-fallback result
+  let rowErrors = 0; // rows that threw out of the per-row try
 
   async function tally(row) {
     const ok = await incrementAttempts(row);
@@ -146,10 +155,13 @@ export async function POST(request) {
       openaiCalls++;
       perStoreOpenaiCalls[row.store_domain] =
         (perStoreOpenaiCalls[row.store_domain] ?? 0) + 1;
-      const cleanTitleResult = await cleanTitle({
-        name: row.name,
-        rawDescription: row.description,
-      });
+      const cleanTitleResult = await cleanTitle(
+        {
+          name: row.name,
+          rawDescription: row.description,
+        },
+        cleanTitleTelemetry
+      );
       let result = cleanTitleResult;
       let isHandleFallback = false;
       if (!cleanTitleResult) {
@@ -223,6 +235,11 @@ export async function POST(request) {
         };
         if (titleLeaksAllowedBrandStrict(canonical.title)) {
           brandLeakBlocked++;
+          // Model-path blocks are the only case where a completed OpenAI call
+          // incremented neither openaiSucceeded nor openaiReturnedNull —
+          // persisted separately so the openai_calls identity closes.
+          if (cleanTitleResult) brandLeakBlockedModel++;
+          else brandLeakBlockedFallback++;
           console.log(
             `[enrich] brand-leak gate blocked ${row.store_domain}/${row.handle} → ${JSON.stringify(canonical.title)}`
           );
@@ -350,6 +367,7 @@ export async function POST(request) {
         }
       }
     } catch {
+      rowErrors++;
       failed++;
       await tally(row);
     }
@@ -393,6 +411,15 @@ export async function POST(request) {
       openai_succeeded: openaiSucceeded,
       openai_returned_null: openaiReturnedNull,
       openai_no_call: openaiNoCall,
+      openai_http_error: cleanTitleTelemetry.httpError ?? 0,
+      openai_empty_content: cleanTitleTelemetry.emptyContent ?? 0,
+      openai_parse_error: cleanTitleTelemetry.parseError ?? 0,
+      openai_validation_reject: cleanTitleTelemetry.validationReject ?? 0,
+      openai_timeout_network: cleanTitleTelemetry.timeoutOrNetwork ?? 0,
+      openai_last_http_status: cleanTitleTelemetry.lastHttpStatus ?? null,
+      brand_leak_blocked_model: brandLeakBlockedModel,
+      brand_leak_blocked_fallback: brandLeakBlockedFallback,
+      row_errors: rowErrors,
       category_assigned: categoryAssigned,
       category_failed: categoryFailed,
       allowlist_rejected: rejected,

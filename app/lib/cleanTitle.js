@@ -21,7 +21,9 @@ const normalize = (s) =>
  *
  * Returns the trimmed, repaired pair, or null to reject. Null is RETRYABLE by
  * contract (CLAUDE.md): the caller cannot distinguish a reject here from a
- * transient OpenAI failure, and must not try to.
+ * transient OpenAI failure, and must not try to. The optional telemetry param
+ * on cleanTitle() records WHICH null site fired for counters only — no caller
+ * behavior may branch on it.
  *
  * Exported so the guards can be unit-tested without an HTTP round trip.
  */
@@ -60,9 +62,19 @@ export function validateCleanTitleResult(parsed, rawTitle) {
   return { brand: parsed.brand.trim(), title };
 }
 
-export async function cleanTitle(product) {
+// telemetry (optional): caller-owned mutable object; each null site below
+// increments one counter on it. Pure measurement — the return value stays
+// object|null and no behavior may branch on which counter fired (CLAUDE.md
+// pins null as uniformly retryable).
+export async function cleanTitle(product, telemetry) {
+  const bump = (key) => {
+    if (telemetry) telemetry[key] = (telemetry[key] ?? 0) + 1;
+  };
   const rawTitle = product?.name;
-  if (!rawTitle) return null;
+  if (!rawTitle) {
+    bump("noName");
+    return null;
+  }
 
   const vendor = product?.vendor ?? null;
   const tags = Array.isArray(product?.tags) ? product.tags.join(", ") : "";
@@ -145,7 +157,11 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
       }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      bump("httpError");
+      if (telemetry) telemetry.lastHttpStatus = res.status;
+      return null;
+    }
     const data = await res.json();
     const cleaned = data?.choices?.[0]?.message?.content?.trim();
 
@@ -153,16 +169,25 @@ Description from store: ${description ? description.slice(0, 400) : "none"}`,
       try {
         const jsonText = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
         const parsed = JSON.parse(jsonText);
-        return validateCleanTitleResult(parsed, rawTitle);
+        const validated = validateCleanTitleResult(parsed, rawTitle);
+        if (validated === null) bump("validationReject");
+        return validated;
       } catch {
-        // JSON parse failed
+        bump("parseError");
       }
+    } else {
+      // 200 with empty content — the reasoning-token-starvation signature
+      // (see max_completion_tokens comment above).
+      bump("emptyContent");
     }
 
     return null;
   } catch {
     // AbortError from the timeout lands here too, returning null so
     // the row counts as a normal failure and increments enrich_attempts.
+    // res.json() throwing on a malformed body also lands here, not in
+    // parseError.
+    bump("timeoutOrNetwork");
     return null;
   } finally {
     clearTimeout(timeoutId);

@@ -32,13 +32,28 @@ OpenAI calls. After 24 hours of data we decide what (if anything) to optimize.
   numbers don't reconcile against the OpenAI dashboard).
 - No per-row tracking (which specific product consumed which call).
 - No cleanup of the 165 stuck rows (separate concern).
-- No separate `openai_errored` counter for exceptions thrown from
+- ~~No separate `openai_errored` counter for exceptions thrown from
   `cleanTitle` to the row loop. Codex flagged this as a concern, but
   `cleanTitle.js` has an internal catch-all that converts every failure
   mode (abort, network, JSON parse, malformed response) to a `null`
   return. No exception path reaches the outer catch under the current
   design. The call-start counter placement (see section 2.B) is enough
-  to keep reconciliation accurate even if that contract is later weakened.
+  to keep reconciliation accurate even if that contract is later weakened.~~
+
+  **Superseded 2026-08-05.** From 2026-07-14 to 2026-08-05 every enrich
+  batch recorded `openai_succeeded = 0` (~95 runs) and nobody noticed:
+  lumping all null causes together made a silent total outage (a non-OK
+  HTTP status, empty completions from reasoning-token starvation)
+  indistinguishable from ordinary quality-gate churn. Per-mode counters
+  were added (`openai_http_error`, `openai_empty_content`,
+  `openai_parse_error`, `openai_validation_reject`,
+  `openai_timeout_network`, `openai_last_http_status`, plus
+  `brand_leak_blocked_model`/`_fallback` and `row_errors`) via
+  `scripts/sql/2026-08-05-enrich-runs-failure-detail.sql`. The original
+  rationale — no exception escapes `cleanTitle` — remains true; what
+  changed is the need to decompose the null itself. cleanTitle's `null`
+  stays uniformly retryable: the detail is telemetry-only and no
+  behavior branches on it (CLAUDE.md pin).
 
 ---
 
@@ -82,7 +97,19 @@ CREATE TABLE enrich_runs (
   attempts_increment_failures INT,    -- supabase RPC failures on increment_enrich_attempts
   per_store_openai_calls      JSONB,  -- { "escoparis.com": 7, "lobscur.com": 3, ... }
   remaining_after             INT,    -- count after batch — drives chain decision
-  chained                     BOOL    -- true if this batch triggered the next hop
+  chained                     BOOL,   -- true if this batch triggered the next hop
+
+  -- run_type = 'enrich' failure detail (added 2026-08-05,
+  -- scripts/sql/2026-08-05-enrich-runs-failure-detail.sql)
+  openai_http_error           INT,    -- cleanTitle: !res.ok
+  openai_empty_content        INT,    -- 200 with empty content (reasoning-token starvation)
+  openai_parse_error          INT,    -- content present but JSON.parse failed
+  openai_validation_reject    INT,    -- parsed OK, validateCleanTitleResult returned null
+  openai_timeout_network      INT,    -- outer catch: 8s abort, network, res.json() throw
+  openai_last_http_status     INT,    -- last non-OK status seen this batch (not a counter)
+  brand_leak_blocked_model    INT,    -- brand-leak gate fired on a truthy cleanTitle result
+  brand_leak_blocked_fallback INT,    -- brand-leak gate fired on a handle-fallback result
+  row_errors                  INT     -- rows that threw out of the per-row try
 );
 
 CREATE INDEX idx_enrich_runs_created ON enrich_runs (created_at DESC);
@@ -120,9 +147,29 @@ CREATE INDEX idx_enrich_runs_type_created ON enrich_runs (run_type, created_at D
   and returns null, so the difference vs counting on return is nil — but
   the call-start placement is cheap insurance against future regressions.
 - `openai_succeeded` vs `openai_returned_null` — productive vs wasted
-  attempted calls. `openai_returned_null` lumps together: non-200 responses,
-  abort/timeout (8s cap), JSON parse failures, model returning empty, and
-  quality-gate rejections. All of these consumed at least some tokens.
+  attempted calls. All returned-null modes consumed at least some tokens.
+  Since 2026-08-05, `openai_returned_null` is exactly decomposed by the
+  failure-detail counters:
+  `openai_returned_null == openai_http_error + openai_empty_content +
+  openai_parse_error + openai_validation_reject + openai_timeout_network`.
+  A batch dominated by `openai_http_error`/`openai_empty_content` is an
+  outage (check `openai_last_http_status`); one dominated by
+  `openai_validation_reject` is quality-gate churn.
+- `openai_last_http_status` — the last non-OK HTTP status cleanTitle saw in
+  the batch (e.g. 404 = model access revoked, 429 = rate limit). NULL when
+  every call returned 200.
+- `brand_leak_blocked_model` / `brand_leak_blocked_fallback` — the route's
+  choke-point brand-leak gate, split by producer. Model-path blocks are the
+  one case where a completed OpenAI call increments neither
+  `openai_succeeded` nor `openai_returned_null`; fallback-path blocks are
+  already inside `openai_returned_null`. Their sum equals the response
+  JSON's `brandLeakBlocked`.
+- `row_errors` — rows that threw out of the per-row try to the outer catch.
+  Supersedes the "stays as-is, no counter" note in section 2.B: the catch
+  still only keeps the loop running, but the count is now persisted.
+  `openai_calls ≈ openai_succeeded + openai_returned_null +
+  brand_leak_blocked_model + row_errors` (approximate only because a row
+  exception can fire after a success/null counter already incremented).
 - `openai_no_call` — short-circuited before any API request was attempted.
   Currently only fires when `row.name` is empty/null. This row consumed
   zero OpenAI tokens. Kept separate from `openai_returned_null` so the
@@ -282,6 +329,25 @@ const perStoreOpenaiCalls = {};
 ```
 queue_size ≈ fast_path_count + openai_calls + openai_no_call + allowlist_rejected
 ```
+
+**Failure-detail identities (added 2026-08-05):**
+
+```
+openai_returned_null == openai_http_error + openai_empty_content
+                      + openai_parse_error + openai_validation_reject
+                      + openai_timeout_network            (exact)
+
+openai_calls ≈ openai_succeeded + openai_returned_null
+             + brand_leak_blocked_model + row_errors      (approximate)
+
+brandLeakBlocked (response JSON) == brand_leak_blocked_model
+                                  + brand_leak_blocked_fallback
+```
+
+The first is exact — those five counters partition cleanTitle's internal
+null sites (`noName` is excluded: the route pre-screens empty names into
+`openai_no_call`). The second is approximate because a row exception can
+fire after a success/null counter already incremented.
 
 (Within rounding for rare exceptions — e.g. if the outer catch fires
 before either path's counter increment, that row is unattributed. With
@@ -444,6 +510,13 @@ ORDER BY hour DESC;
    - If `category_failed` is huge → expand the category keyword map.
    - If neither → it's genuine new-inventory churn; the lever is fix G
      (skip OpenAI for clean titles via a deterministic brand-prefix match).
+
+**2026-08-05 amendment rollout:** apply
+`scripts/sql/2026-08-05-enrich-runs-failure-detail.sql` by hand in the
+Supabase SQL Editor before merging the failure-detail code (nullable adds
+are backward-compatible). The identity checks live as comments in that
+file; `/api/health/enrich` + `.github/workflows/enrich-health.yml` alarm
+on the zero-success condition afterwards.
 
 ---
 
