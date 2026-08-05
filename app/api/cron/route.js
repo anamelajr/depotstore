@@ -84,14 +84,20 @@ export async function GET(request) {
       let upserted = 0;
       let storeResetsByName = 0;
       let storeResetsByDesc = 0;
-      for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
-        // Cooperative sync deadline — see SYNC_DEADLINE_MS. Checked between
-        // batches so no store write starts after the breach.
+      // Cooperative sync deadline — see SYNC_DEADLINE_MS. Checked between
+      // batches AND between the sequential DB phases inside a batch: each
+      // phase is bounded by the 8s statement_timeout, so phase boundaries
+      // are the only places a slow batch can be cut off before it stacks
+      // multiple near-timeout round-trips past the cutoff.
+      const throwIfPastDeadline = (where) => {
         if (Date.now() > deadline) {
           throw new Error(
-            `Sync deadline exceeded for ${store.domain} (batch at row ${i})`
+            `Sync deadline exceeded for ${store.domain} (${where})`
           );
         }
+      };
+      for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
+        throwIfPastDeadline(`batch at row ${i}`);
         const batch = syncRows.slice(i, i + BATCH_SIZE);
         const handles = batch.map((r) => r.handle);
 
@@ -126,6 +132,7 @@ export async function GET(request) {
         );
 
         // Step 1: Always upsert sync fields
+        throwIfPastDeadline(`sync upsert at row ${i}`);
         const { error } = await supabaseAdmin
           .from("products")
           .upsert(batch, { onConflict: "handle,store_domain" });
@@ -158,7 +165,11 @@ export async function GET(request) {
         storeResetsByDesc += resetHandlesByDesc.length;
 
         if (resetHandles.length > 0) {
-          await Promise.all(
+          throwIfPastDeadline(`enrich-attempts resets at row ${i}`);
+          // allSettled, not all: an early rejection would let the cron move
+          // on to the tail while sibling reset writes are still in flight.
+          // Drain every chunk first, then surface the first failure.
+          const resetResults = await Promise.allSettled(
             chunkArray(resetHandles, HANDLE_CHUNK).map(async (handleChunk) => {
               const { error: resetError } = await supabaseAdmin
                 .from("products")
@@ -173,8 +184,11 @@ export async function GET(request) {
               }
             })
           );
+          const failedReset = resetResults.find((r) => r.status === "rejected");
+          if (failedReset) throw failedReset.reason;
         }
 
+        throwIfPastDeadline(`editorial fetch at row ${i}`);
         // Step 2: Editorial fields — only write where currently NULL in DB.
         // Chunked for the same URL-length reason as the pre-upsert SELECT.
         // The original block destructured only `data` and silently swallowed
@@ -226,6 +240,7 @@ export async function GET(request) {
         }
 
         if (editorialRows.length > 0) {
+          throwIfPastDeadline(`editorial upsert at row ${i}`);
           const { error: editError } = await supabaseAdmin
             .from("products")
             .upsert(editorialRows, { onConflict: "handle,store_domain" });
