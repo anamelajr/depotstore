@@ -63,6 +63,10 @@ CREATE TABLE enrich_runs (
   per_store_resets   JSONB,         -- { "escoparis.com": 12, "lobscur.com": 0, ... }
   store_errors       TEXT[],        -- errors from individual store syncs
   stale_deleted      INT,           -- rows removed by stale cleanup
+  step_timings       JSONB,         -- { sync_total_ms, per_store_ms: {domain: ms},
+                                    --   stale_delete_ms, snapshot_ms, alias_drift_ms,
+                                    --   deadline_hit: [domain, ...] }
+                                    -- added 2026-08-05 (scripts/sql/2026-08-05-enrich-runs-step-timings.sql)
 
   -- run_type = 'enrich' columns
   depth                       INT,    -- chain hop number (0 = first call from cron)

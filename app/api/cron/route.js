@@ -9,6 +9,14 @@ import { captureInventorySnapshot } from "../../lib/captureInventorySnapshot.js"
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Soft deadline for the sync phase. Stores still in flight at the deadline
+// throw (cooperatively — no orphaned in-flight writes), reject, and are
+// excluded from the scoped stale delete, so the tail (stale-delete →
+// snapshot → enrich dispatch → enrich_runs log) always runs before the
+// platform kills the function at maxDuration. 240s, not 270s: the once-daily
+// snapshot capture needs up to ~60s of headroom.
+const SYNC_DEADLINE_MS = 240_000;
+
 export async function GET(request) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -27,12 +35,16 @@ export async function GET(request) {
     );
   }
 
+  const deadline = syncStartMs + SYNC_DEADLINE_MS;
   const results = await Promise.allSettled(
     STORES.map(async (store) => {
-      const products = await fetchStoreProducts(store);
+      const storeStartMs = Date.now();
+      const products = await fetchStoreProducts(store, { deadline });
 
       // Sync-only rows — editorial fields (brand, title, category) are
       // handled separately so the cron never overwrites backfilled data.
+      // (fetchStoreProducts dedupes by handle, so a batch can't hit the
+      // same (handle, store_domain) twice in one upsert.)
       const syncRows = products.map((p) => ({
         shopify_id: p.shopifyId,
         handle: p.handle,
@@ -56,7 +68,7 @@ export async function GET(request) {
       }));
 
       if (syncRows.length === 0) {
-        return { store: store.domain, count: 0 };
+        return { store: store.domain, count: 0, ms: Date.now() - storeStartMs };
       }
 
       // Build a lookup from handle → original product for editorial data
@@ -72,7 +84,20 @@ export async function GET(request) {
       let upserted = 0;
       let storeResetsByName = 0;
       let storeResetsByDesc = 0;
+      // Cooperative sync deadline — see SYNC_DEADLINE_MS. Checked between
+      // batches AND between the sequential DB phases inside a batch: each
+      // phase is bounded by the 8s statement_timeout, so phase boundaries
+      // are the only places a slow batch can be cut off before it stacks
+      // multiple near-timeout round-trips past the cutoff.
+      const throwIfPastDeadline = (where) => {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `Sync deadline exceeded for ${store.domain} (${where})`
+          );
+        }
+      };
       for (let i = 0; i < syncRows.length; i += BATCH_SIZE) {
+        throwIfPastDeadline(`batch at row ${i}`);
         const batch = syncRows.slice(i, i + BATCH_SIZE);
         const handles = batch.map((r) => r.handle);
 
@@ -80,28 +105,34 @@ export async function GET(request) {
         // before the upsert overwrites them, so we can spot rows whose Shopify
         // listing changed since the last sync and reset their enrich budget.
         // Chunked so the URL stays under PostgREST's length limit on stores
-        // with long handles (lobscur averages 76 chars/handle).
-        const preUpsert = [];
-        for (const handleChunk of chunkArray(handles, HANDLE_CHUNK)) {
-          const { data, error: preError } = await supabaseAdmin
-            .from("products")
-            .select("handle, name, description")
-            .eq("store_domain", store.domain)
-            .in("handle", handleChunk);
+        // with long handles (lobscur averages 76 chars/handle); chunks run
+        // concurrently — each is ≤100 handles, far under the 8s
+        // statement_timeout, and any failure still rejects the store promise.
+        const preUpsert = (
+          await Promise.all(
+            chunkArray(handles, HANDLE_CHUNK).map(async (handleChunk) => {
+              const { data, error: preError } = await supabaseAdmin
+                .from("products")
+                .select("handle, name, description")
+                .eq("store_domain", store.domain)
+                .in("handle", handleChunk);
 
-          if (preError) {
-            throw new Error(
-              `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
-            );
-          }
-          if (data) preUpsert.push(...data);
-        }
+              if (preError) {
+                throw new Error(
+                  `Pre-upsert state fetch failed for ${store.domain}: ${preError.message}`
+                );
+              }
+              return data ?? [];
+            })
+          )
+        ).flat();
 
         const preMap = Object.fromEntries(
           preUpsert.map((r) => [r.handle, r])
         );
 
         // Step 1: Always upsert sync fields
+        throwIfPastDeadline(`sync upsert at row ${i}`);
         const { error } = await supabaseAdmin
           .from("products")
           .upsert(batch, { onConflict: "handle,store_domain" });
@@ -134,41 +165,53 @@ export async function GET(request) {
         storeResetsByDesc += resetHandlesByDesc.length;
 
         if (resetHandles.length > 0) {
-          for (const handleChunk of chunkArray(resetHandles, HANDLE_CHUNK)) {
-            const { error: resetError } = await supabaseAdmin
-              .from("products")
-              .update({ enrich_attempts: 0 })
-              .eq("store_domain", store.domain)
-              .in("handle", handleChunk);
+          throwIfPastDeadline(`enrich-attempts resets at row ${i}`);
+          // allSettled, not all: an early rejection would let the cron move
+          // on to the tail while sibling reset writes are still in flight.
+          // Drain every chunk first, then surface the first failure.
+          const resetResults = await Promise.allSettled(
+            chunkArray(resetHandles, HANDLE_CHUNK).map(async (handleChunk) => {
+              const { error: resetError } = await supabaseAdmin
+                .from("products")
+                .update({ enrich_attempts: 0 })
+                .eq("store_domain", store.domain)
+                .in("handle", handleChunk);
 
-            if (resetError) {
-              throw new Error(
-                `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
-              );
-            }
-          }
+              if (resetError) {
+                throw new Error(
+                  `Enrich-attempts reset failed for ${store.domain}: ${resetError.message}`
+                );
+              }
+            })
+          );
+          const failedReset = resetResults.find((r) => r.status === "rejected");
+          if (failedReset) throw failedReset.reason;
         }
 
+        throwIfPastDeadline(`editorial fetch at row ${i}`);
         // Step 2: Editorial fields — only write where currently NULL in DB.
         // Chunked for the same URL-length reason as the pre-upsert SELECT.
         // The original block destructured only `data` and silently swallowed
         // any error; we now surface it so a future regression can't quietly
         // produce an empty editMap and re-classify curated rows as NULL.
-        const existing = [];
-        for (const handleChunk of chunkArray(handles, HANDLE_CHUNK)) {
-          const { data, error: existError } = await supabaseAdmin
-            .from("products")
-            .select("handle, brand, title, category")
-            .eq("store_domain", store.domain)
-            .in("handle", handleChunk);
+        const existing = (
+          await Promise.all(
+            chunkArray(handles, HANDLE_CHUNK).map(async (handleChunk) => {
+              const { data, error: existError } = await supabaseAdmin
+                .from("products")
+                .select("handle, brand, title, category")
+                .eq("store_domain", store.domain)
+                .in("handle", handleChunk);
 
-          if (existError) {
-            throw new Error(
-              `Editorial state fetch failed for ${store.domain}: ${existError.message}`
-            );
-          }
-          if (data) existing.push(...data);
-        }
+              if (existError) {
+                throw new Error(
+                  `Editorial state fetch failed for ${store.domain}: ${existError.message}`
+                );
+              }
+              return data ?? [];
+            })
+          )
+        ).flat();
 
         const editMap = Object.fromEntries(
           existing.map((r) => [r.handle, r])
@@ -197,6 +240,7 @@ export async function GET(request) {
         }
 
         if (editorialRows.length > 0) {
+          throwIfPastDeadline(`editorial upsert at row ${i}`);
           const { error: editError } = await supabaseAdmin
             .from("products")
             .upsert(editorialRows, { onConflict: "handle,store_domain" });
@@ -216,11 +260,15 @@ export async function GET(request) {
         count: upserted,
         resetsByName: storeResetsByName,
         resetsByDesc: storeResetsByDesc,
+        ms: Date.now() - storeStartMs,
       };
     })
   );
+  const syncTotalMs = Date.now() - syncStartMs;
 
   const successfulDomains = [];
+  const perStoreMs = {};
+  const deadlineHit = [];
   const perStoreResets = {};
   let totalResetsByName = 0;
   let totalResetsByDesc = 0;
@@ -236,9 +284,12 @@ export async function GET(request) {
       // A count of 0 means the store returned empty — treat it as failed
       // so we don't delete its last-known-good inventory.
       if (r.value.count > 0) successfulDomains.push(r.value.store);
+      perStoreMs[r.value.store] = r.value.ms ?? null;
     } else {
       const msg = r.reason?.message ?? String(r.reason);
       summary.errors.push(msg);
+      const deadlineMatch = msg.match(/^Sync deadline exceeded for (\S+)/);
+      if (deadlineMatch) deadlineHit.push(deadlineMatch[1]);
       console.error("Sync error:", msg);
     }
   }
@@ -248,6 +299,7 @@ export async function GET(request) {
   // so a global delete would wipe its last-known-good inventory based on
   // the previous run. This was the second half of the 2026-05-05 incident
   // that lost lobscur.com and dolcevitahub.com (15,751 rows).
+  const staleDeleteStartMs = Date.now();
   if (successfulDomains.length === 0) {
     summary.deleted = 0;
     summary.errors.push(
@@ -273,7 +325,11 @@ export async function GET(request) {
   // snapshot failure can never affect the sync response. Awaited adds latency
   // only on the ~once/day run that actually captures; the other ~23 runs hit the
   // cheap daily gate and return immediately, well within maxDuration = 300.
+  const staleDeleteMs = Date.now() - staleDeleteStartMs;
+
+  const snapshotStartMs = Date.now();
   await captureInventorySnapshot(syncStart, summary);
+  const snapshotMs = Date.now() - snapshotStartMs;
 
   const enrichUrl = `${new URL(request.url).origin}/api/enrich?depth=0`;
   const enrichHeaders = {
@@ -305,24 +361,16 @@ export async function GET(request) {
       ),
   );
 
-  try {
-    await supabaseAdmin.from("enrich_runs").insert({
-      run_type: "cron",
-      duration_ms: Date.now() - syncStartMs,
-      total_synced: summary.totalUpserted,
-      reset_count: totalResetsByName + totalResetsByDesc,
-      reset_by_name: totalResetsByName,
-      reset_by_desc: totalResetsByDesc,
-      per_store_synced: summary.stores,
-      per_store_resets: perStoreResets,
-      store_errors: summary.errors,
-      stale_deleted: summary.deleted ?? 0,
-    });
-  } catch (e) {
-    console.error("enrich_runs cron log failed:", e?.message ?? e);
-  }
-
+  // Alias-drift probe stays awaited on the response path: the design spec
+  // (docs/superpowers/specs/2026-05-27-cdg-search-alias-design.md) names
+  // summary.aliasDrift.cdg as one of two drift surfaces — the GitHub Actions
+  // cron runner cats the JSON response into its run log. Cost is bounded by
+  // PostgREST's 8s statement_timeout and covered by the SYNC_DEADLINE_MS
+  // headroom; it runs before the enrich_runs insert so its cost is visible
+  // in step_timings and duration_ms.
+  const aliasDriftStartMs = Date.now();
   const aliasDrift = await checkCdgAliasDrift(supabaseAdmin);
+  const aliasDriftMs = Date.now() - aliasDriftStartMs;
   if (aliasDrift.error) {
     console.error("alias drift probe failed:", aliasDrift.error.message ?? aliasDrift.error);
   } else if (aliasDrift.count > 0) {
@@ -336,6 +384,31 @@ export async function GET(request) {
     );
   }
   summary.aliasDrift = { cdg: aliasDrift.error ? null : aliasDrift.count };
+
+  try {
+    await supabaseAdmin.from("enrich_runs").insert({
+      run_type: "cron",
+      duration_ms: Date.now() - syncStartMs,
+      total_synced: summary.totalUpserted,
+      reset_count: totalResetsByName + totalResetsByDesc,
+      reset_by_name: totalResetsByName,
+      reset_by_desc: totalResetsByDesc,
+      per_store_synced: summary.stores,
+      per_store_resets: perStoreResets,
+      store_errors: summary.errors,
+      stale_deleted: summary.deleted ?? 0,
+      step_timings: {
+        sync_total_ms: syncTotalMs,
+        per_store_ms: perStoreMs,
+        stale_delete_ms: staleDeleteMs,
+        snapshot_ms: snapshotMs,
+        alias_drift_ms: aliasDriftMs,
+        deadline_hit: deadlineHit,
+      },
+    });
+  } catch (e) {
+    console.error("enrich_runs cron log failed:", e?.message ?? e);
+  }
 
   return Response.json(summary);
 }
