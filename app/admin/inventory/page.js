@@ -114,10 +114,22 @@ export default async function InventoryInsightsPage({ searchParams }) {
 
       {/* KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 28 }}>
-        <Kpi label="Active now" value={kpis.activeNow.toLocaleString()} />
-        <Kpi label={`Sold / left · ${rangeKey === "all" ? "all" : rangeKey + "d"}`} value={kpis.exitedPeriod.toLocaleString()} />
-        <Kpi label="Median days-to-sell" value={kpis.medianDaysToSell == null ? "—" : `${kpis.medianDaysToSell} d`} />
-        <Kpi label={`New arrivals · ${rangeKey === "all" ? "all" : rangeKey + "d"}`} value={kpis.arrivalsPeriod.toLocaleString()} />
+        <Kpi label="Active now" value={kpis.activeNow.toLocaleString()} note="Listed and still available right now." />
+        <Kpi
+          label={`Sold / left · ${rangeKey === "all" ? "all" : rangeKey + "d"}`}
+          value={kpis.exitedPeriod.toLocaleString()}
+          note="Sold or removed — stores don't always distinguish."
+        />
+        <Kpi
+          label="Median days-to-sell"
+          value={kpis.medianDaysToSell == null ? "—" : `${kpis.medianDaysToSell} d`}
+          note="Only items listed after tracking began."
+        />
+        <Kpi
+          label={`New arrivals · ${rangeKey === "all" ? "all" : rangeKey + "d"}`}
+          value={kpis.arrivalsPeriod.toLocaleString()}
+          note="First listed in this window; pre-tracking backlog excluded."
+        />
       </div>
 
       {/* Charts (client / Recharts) */}
@@ -127,10 +139,15 @@ export default async function InventoryInsightsPage({ searchParams }) {
         categoryTurnover={categoryTurnover}
         flow={flow}
         flowIsGlobal={Boolean(store)}
+        sellableExits={meta.sellableExits}
+        exitedPeriod={kpis.exitedPeriod}
       />
 
       {/* Per-store breakdown (server-rendered table) */}
-      <h2 style={{ fontSize: 14, fontWeight: 500, margin: "28px 0 10px" }}>Per-store breakdown</h2>
+      <h2 style={{ fontSize: 14, fontWeight: 500, margin: "28px 0 4px" }}>Per-store breakdown</h2>
+      <p style={{ ...muted, fontSize: 11, margin: "0 0 10px" }}>
+        Follows the filters above. &quot;Exited&quot; means sold or removed.
+      </p>
       <div style={card}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
@@ -157,11 +174,12 @@ export default async function InventoryInsightsPage({ searchParams }) {
   );
 }
 
-function Kpi({ label, value }) {
+function Kpi({ label, value, note }) {
   return (
     <div style={card}>
       <div style={{ fontSize: 11, color: "#8a8a80", textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
       <div style={{ fontSize: 26, fontWeight: 500, marginTop: 6 }}>{value}</div>
+      {note && <div style={{ fontSize: 11, color: "#8a8a80", marginTop: 6, lineHeight: 1.4 }}>{note}</div>}
     </div>
   );
 }

@@ -142,13 +142,91 @@ describe("rankTurnover", () => {
     lc({ brand: "Rick Owens", current_status: "active", days_to_sell: null, first_seen_censored: false }),
     lc({ brand: null, current_status: "active", days_to_sell: null }), // null brand dropped
   ];
-  it("ranks by exited desc with avg-days-to-sell over uncensored items", () => {
-    const out = rankTurnover(rows, "brand");
-    expect(out[0]).toMatchObject({ name: "Margiela", total: 3, active: 0, exited: 3 });
-    expect(out[0].avgDaysToSell).toBeCloseTo(6.7, 1);
-    expect(out[0].turnoverRate).toBeCloseTo(1, 3);
+  it("aggregates per group with avg-days-to-sell over uncensored items", () => {
+    const out = rankTurnover(rows, "brand", { minSample: 1 });
+    const margiela = out.find((b) => b.name === "Margiela");
+    expect(margiela).toMatchObject({ total: 3, active: 0, exited: 3 });
+    expect(margiela.avgDaysToSell).toBeCloseTo(6.7, 1);
+    expect(margiela.turnoverRate).toBeCloseTo(1, 3);
     expect(out.find((b) => b.name === "Rick Owens")).toMatchObject({ exited: 0, avgDaysToSell: null });
     expect(out.some((b) => b.name === null)).toBe(false);
+  });
+
+  // Build `n` rows of a brand where `exits` of them have left.
+  function brandRows(brand, n, exits) {
+    return Array.from({ length: n }, (_, i) =>
+      lc({
+        brand,
+        handle: `${brand}-${i}`,
+        current_status: i < exits ? "departed" : "active",
+        days_to_sell: i < exits ? 5 : null,
+        first_seen_censored: false,
+      }),
+    );
+  }
+
+  it("sorts by turnover rate desc, not by raw exit volume", () => {
+    // Big brand: 100 tracked, 20 left (20%). Small brand: 25 tracked, 15 left (60%).
+    const out = rankTurnover(
+      [...brandRows("BigStoreBrand", 100, 20), ...brandRows("FastBrand", 25, 15)],
+      "brand",
+    );
+    expect(out.map((b) => b.name)).toEqual(["FastBrand", "BigStoreBrand"]);
+    expect(out[0].exited).toBeLessThan(out[1].exited); // volume ranking would flip this
+  });
+
+  it("drops groups below the 20-item sample floor", () => {
+    const out = rankTurnover(
+      [...brandRows("Tiny", 3, 3), ...brandRows("Real", 20, 4)],
+      "brand",
+    );
+    expect(out.map((b) => b.name)).toEqual(["Real"]); // a fake 100% rate is excluded
+  });
+
+  it("tie-breaks equal rates by exited count desc", () => {
+    const out = rankTurnover(
+      [...brandRows("Small", 20, 10), ...brandRows("Large", 60, 30)],
+      "brand",
+    );
+    expect(out.map((b) => b.name)).toEqual(["Large", "Small"]); // both 50%
+  });
+
+  it("exposes turnoverPct as a 0–100 value alongside the 0–1 rate", () => {
+    const [g] = rankTurnover(brandRows("B", 50, 31), "brand");
+    expect(g.turnoverRate).toBeCloseTo(0.62, 3);
+    expect(g.turnoverPct).toBe(62);
+    const [h] = rankTurnover(brandRows("C", 200, 125), "brand");
+    expect(h.turnoverRate).toBeCloseTo(0.625, 3);
+    expect(h.turnoverPct).toBe(62.5);
+  });
+
+  it("counts non-sale removals ('departed') as exits — the field is 'left', not 'sold'", () => {
+    const removals = brandRows("Removed", 20, 20).map((r) => ({ ...r, current_status: "departed" }));
+    const [g] = rankTurnover(removals, "brand");
+    expect(g.exited).toBe(20);
+    expect(g.turnoverPct).toBe(100);
+  });
+
+  it("denominator = stock at window start + arrivals (pre-window exits excluded)", () => {
+    const since = "2026-06-01";
+    const rowsIn = [
+      // present at window start, exits in-window -> numerator AND denominator
+      ...brandRows("B", 10, 10).map((r) => ({
+        ...r, handle: `start-${r.handle}`, first_seen: "2026-05-01", departed_at: "2026-06-05",
+      })),
+      // arrived mid-window, still active -> denominator only
+      ...brandRows("B", 10, 0).map((r) => ({
+        ...r, handle: `new-${r.handle}`, first_seen: "2026-06-10", departed_at: null,
+      })),
+      // exited before the window -> neither
+      ...brandRows("B", 5, 5).map((r) => ({
+        ...r, handle: `old-${r.handle}`, first_seen: "2026-04-01", departed_at: "2026-05-02",
+      })),
+    ];
+    const [g] = rankTurnover(filterLifecycle(rowsIn, { since }), "brand");
+    expect(g.total).toBe(20); // 10 start stock + 10 arrivals; the 5 old exits are gone
+    expect(g.exited).toBe(10);
+    expect(g.turnoverPct).toBe(50);
   });
 });
 
@@ -227,6 +305,19 @@ describe("getInventoryInsights (integration, empty-safe)", () => {
     expect(out.meta.gapExits).toBe(1);
     expect(out.storeBreakdown[0]).toMatchObject({ store: "s1", total: 1 });
     expect(out.kpis.exitedPeriod).toBe(1); // only the observed departure, never the gap exit
+    expect(out.meta.sellableExits).toBe(1); // uncensored, dated -> reaches the velocity panel
+  });
+  it("windows the per-store breakdown with every other panel (old exits excluded)", async () => {
+    const recent = lc({ handle: "recent", current_status: "active", departed_at: null, days_to_sell: null });
+    const old = lc({
+      handle: "old", current_status: "departed",
+      first_seen: "2024-01-01", departed_at: "2024-01-10", last_seen: "2024-01-09",
+    });
+    const { client } = makeFakeSupabase({ pages: [[recent, old]], flow: [] });
+    const out = await getInventoryInsights({ sinceDays: 30, db: client });
+    expect(out.meta.totalTracked).toBe(2);          // meta still counts all observed rows
+    expect(out.storeBreakdown).toHaveLength(1);
+    expect(out.storeBreakdown[0]).toMatchObject({ store: "s1", total: 1, active: 1, exited: 0 });
   });
   it("pushes the date window into the flow query and re-sorts the DESC read ascending", async () => {
     const flow = [

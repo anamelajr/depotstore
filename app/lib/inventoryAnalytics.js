@@ -115,8 +115,31 @@ function avg(nums) {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 }
 
-/** Rank a dimension (brand|category) by exited count; demand proxy. */
-export function rankTurnover(rows, key) {
+// Rate ranking off 2–3 items is noise (a single exit reads as a 50–100% rate and
+// outranks every real brand). Groups below this many tracked items are dropped
+// from the ranking entirely rather than shown with a fake rate.
+export const MIN_TURNOVER_SAMPLE = 20;
+
+/**
+ * Rank a dimension (brand|category) by the share of tracked items that LEFT.
+ *
+ * "Left" = sold OR plainly removed (`isExited` covers both; stores don't reliably
+ * distinguish), so every caller-facing label must say "left", never "sold".
+ *
+ * Denominator: with a date window active, the rows reaching here are
+ * (active now) + (exited in window) per group — identically
+ * (stock present at window start) + (arrivals during the window), the standard
+ * simple sell-through denominator. It is NOT exposure-weighted: a day-29 arrival
+ * counts as fully exposed. That limitation is stated in the UI caption.
+ *
+ * Units: `turnoverRate` is a 0–1 fraction; `turnoverPct` is the same value as
+ * 0–100 with one decimal. The chart plots `turnoverPct` exclusively.
+ *
+ * @param {object[]} rows
+ * @param {string} key 'brand' | 'category'
+ * @param {object} opts {minSample?: number}
+ */
+export function rankTurnover(rows, key, { minSample = MIN_TURNOVER_SAMPLE } = {}) {
   const groups = new Map();
   for (const r of rows) {
     const name = r[key];
@@ -126,18 +149,23 @@ export function rankTurnover(rows, key) {
   }
   const out = [];
   for (const [name, rs] of groups) {
+    if (rs.length < minSample) continue;
     const exited = rs.filter(isExited).length;
     const a = avg(rs.filter(isSellable).map((r) => r.days_to_sell));
+    const turnoverRate = rs.length ? Math.round((exited / rs.length) * 1000) / 1000 : 0;
     out.push({
       name,
       total: rs.length,
       active: rs.filter((r) => r.current_status === "active").length,
       exited,
       avgDaysToSell: a == null ? null : Math.round(a * 10) / 10,
-      turnoverRate: rs.length ? Math.round((exited / rs.length) * 1000) / 1000 : 0,
+      turnoverRate,
+      // 0–100, one decimal — the single field the axis, label and tooltip share,
+      // so none of them can scale independently.
+      turnoverPct: Math.round(turnoverRate * 1000) / 10,
     });
   }
-  return out.sort((x, y) => y.exited - x.exited);
+  return out.sort((x, y) => y.turnoverRate - x.turnoverRate || y.exited - x.exited);
 }
 
 /** Per-store rollup with a human label for the store's dominant sold signal. */
@@ -261,12 +289,18 @@ export async function getInventoryInsights({
     velocity: buildVelocityBuckets(rows),
     brandTurnover: rankTurnover(rows, "brand").slice(0, TOP_N),
     categoryTurnover: rankTurnover(rows, "category").slice(0, TOP_N),
-    storeBreakdown: storeSummary(observed), // breakdown is always all-time, all-store
+    // Follows the filters, like every other panel — `rows` is store-filtered (in
+    // SQL) and date-windowed. The page captions the table "Follows the filters
+    // above."; a store filter naturally collapses it to one row.
+    storeBreakdown: storeSummary(rows),
     flow,
     meta: {
       store, sinceDays,
       totalTracked: observed.length,
       gapExits: allRows.length - observed.length,
+      // Exits that actually reach the velocity panel (uncensored, dated) — the
+      // page captions "based on N of M exits", M = kpis.exitedPeriod.
+      sellableExits: rows.filter(isSellable).length,
     },
   };
 }
