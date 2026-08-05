@@ -12,7 +12,9 @@ const LOOKBACK_HOURS = 72;
 // that in production); auth mirrors /api/cron's bearer check.
 export async function GET(request) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Require a configured secret: with CRON_SECRET unset the template would
+  // equal the literal "Bearer undefined", which any caller could send.
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
