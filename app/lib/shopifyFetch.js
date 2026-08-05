@@ -194,9 +194,13 @@ export async function fetchStoreProducts(store) {
     await sleep(500);
   }
 
-  const normalized = allProducts
-    .map((p) => normalizeProduct(p, store))
-    .filter(Boolean);
+  // Dedupe before the curation filter: if a duplicated product changed
+  // between page snapshots, the freshest occurrence must be the one the
+  // brand filter judges — filtering first would let a stale, still-passing
+  // earlier snapshot survive the dedupe.
+  const normalized = dedupeByHandle(
+    allProducts.map((p) => normalizeProduct(p, store)).filter(Boolean)
+  );
 
   const existingByHandle = FILTER_BY_BRAND.has(store.domain)
     ? await fetchExistingEditorialByHandle(store.domain)
@@ -220,5 +224,5 @@ export async function fetchStoreProducts(store) {
     })
     .filter(Boolean);
 
-  return dedupeByHandle(cleaned);
+  return cleaned;
 }
