@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { validateCleanTitleResult } from "../cleanTitle.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { cleanTitle, validateCleanTitleResult } from "../cleanTitle.js";
 import { buildFallbackTitle } from "../handleFallback.js";
 import { brandFromHandle, titleLeaksAllowedBrandStrict } from "../brand.js";
 import { normalizeSeasonCodes } from "../seasonCodes.js";
@@ -138,5 +138,95 @@ describe("A4b choke-point gate — fallback cannot re-admit a rejected title", (
     );
     expect(written).toBe("Vintage Jacket");
     expect(titleLeaksAllowedBrandStrict(written)).toBe(false);
+  });
+});
+
+// Failure-detail telemetry (2026-08-05). The return value stays object|null in
+// every case — the optional telemetry param only records WHICH null site fired.
+// No behavior may branch on it (CLAUDE.md pins null as uniformly retryable).
+describe("cleanTitle — telemetry param", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const okResponse = (content) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ choices: [{ message: { content } }] }),
+  });
+
+  it("counts a non-OK HTTP status and records it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) })),
+    );
+    const telemetry = {};
+    expect(await cleanTitle({ name: "RAW NAME" }, telemetry)).toBe(null);
+    expect(telemetry).toEqual({ httpError: 1, lastHttpStatus: 404 });
+  });
+
+  it("counts a 200 with empty content", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse("")));
+    const telemetry = {};
+    expect(await cleanTitle({ name: "RAW NAME" }, telemetry)).toBe(null);
+    expect(telemetry).toEqual({ emptyContent: 1 });
+  });
+
+  it("counts a JSON parse failure", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse("not json at all")));
+    const telemetry = {};
+    expect(await cleanTitle({ name: "RAW NAME" }, telemetry)).toBe(null);
+    expect(telemetry).toEqual({ parseError: 1 });
+  });
+
+  it("counts a validation reject", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => okResponse('{"brand": "", "title": ""}')),
+    );
+    const telemetry = {};
+    expect(await cleanTitle({ name: "RAW NAME" }, telemetry)).toBe(null);
+    expect(telemetry).toEqual({ validationReject: 1 });
+  });
+
+  it("counts a network failure", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("ECONNRESET");
+    }));
+    const telemetry = {};
+    expect(await cleanTitle({ name: "RAW NAME" }, telemetry)).toBe(null);
+    expect(telemetry).toEqual({ timeoutOrNetwork: 1 });
+  });
+
+  it("counts a missing name without calling fetch", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const telemetry = {};
+    expect(await cleanTitle({}, telemetry)).toBe(null);
+    expect(telemetry).toEqual({ noName: 1 });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("leaves telemetry untouched on success, and accumulates across calls", async () => {
+    const telemetry = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => okResponse('{"brand": "PRADA", "title": "Wool Coat"}')),
+    );
+    expect(await cleanTitle({ name: "PRADA WOOL COAT ARCHIVE" }, telemetry)).toEqual({
+      brand: "PRADA",
+      title: "Wool Coat",
+    });
+    expect(telemetry).toEqual({});
+
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse("")));
+    await cleanTitle({ name: "RAW" }, telemetry);
+    await cleanTitle({ name: "RAW" }, telemetry);
+    expect(telemetry).toEqual({ emptyContent: 2 });
+  });
+
+  it("works without a telemetry object", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse("")));
+    expect(await cleanTitle({ name: "RAW NAME" })).toBe(null);
   });
 });
