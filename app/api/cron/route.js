@@ -346,6 +346,30 @@ export async function GET(request) {
       ),
   );
 
+  // Alias-drift probe stays awaited on the response path: the design spec
+  // (docs/superpowers/specs/2026-05-27-cdg-search-alias-design.md) names
+  // summary.aliasDrift.cdg as one of two drift surfaces — the GitHub Actions
+  // cron runner cats the JSON response into its run log. Cost is bounded by
+  // PostgREST's 8s statement_timeout and covered by the SYNC_DEADLINE_MS
+  // headroom; it runs before the enrich_runs insert so its cost is visible
+  // in step_timings and duration_ms.
+  const aliasDriftStartMs = Date.now();
+  const aliasDrift = await checkCdgAliasDrift(supabaseAdmin);
+  const aliasDriftMs = Date.now() - aliasDriftStartMs;
+  if (aliasDrift.error) {
+    console.error("alias drift probe failed:", aliasDrift.error.message ?? aliasDrift.error);
+  } else if (aliasDrift.count > 0) {
+    console.warn(
+      JSON.stringify({
+        event: "search_alias_drift",
+        alias: "cdg",
+        count: aliasDrift.count,
+        samples: aliasDrift.samples,
+      }),
+    );
+  }
+  summary.aliasDrift = { cdg: aliasDrift.error ? null : aliasDrift.count };
+
   try {
     await supabaseAdmin.from("enrich_runs").insert({
       run_type: "cron",
@@ -363,39 +387,13 @@ export async function GET(request) {
         per_store_ms: perStoreMs,
         stale_delete_ms: staleDeleteMs,
         snapshot_ms: snapshotMs,
+        alias_drift_ms: aliasDriftMs,
         deadline_hit: deadlineHit,
       },
     });
   } catch (e) {
     console.error("enrich_runs cron log failed:", e?.message ?? e);
   }
-
-  // Alias-drift probe is logging-only (a full-table ILIKE scan) — keep it off
-  // the response path so it can never delay the cron response or eat into
-  // maxDuration headroom.
-  waitUntil(
-    checkCdgAliasDrift(supabaseAdmin)
-      .then((aliasDrift) => {
-        if (aliasDrift.error) {
-          console.error(
-            "alias drift probe failed:",
-            aliasDrift.error.message ?? aliasDrift.error
-          );
-        } else if (aliasDrift.count > 0) {
-          console.warn(
-            JSON.stringify({
-              event: "search_alias_drift",
-              alias: "cdg",
-              count: aliasDrift.count,
-              samples: aliasDrift.samples,
-            }),
-          );
-        }
-      })
-      .catch((e) =>
-        console.error("alias drift probe failed:", e?.message ?? e)
-      )
-  );
 
   return Response.json(summary);
 }

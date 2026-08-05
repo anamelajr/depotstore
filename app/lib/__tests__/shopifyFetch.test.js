@@ -163,6 +163,59 @@ describe("fetchPageWithRetry", () => {
     ).rejects.toThrow("Shopify fetch failed for x page 1: socket hang up");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("refuses to start an attempt past the deadline", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", {
+        domain: "x",
+        page: 4,
+        deadline: Date.now() - 1,
+      })
+    ).rejects.toThrow("Sync deadline exceeded for x (fetch page 4, attempt 1)");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("skips the retry when the deadline passes during the first attempt", async () => {
+    // First attempt consumes the remaining budget (~50ms) via a slow network
+    // failure; the retry must then throw the deadline error, not re-fetch.
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("socket hang up")), 60)
+        )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPageWithRetry("https://x/products.json", {
+        domain: "x",
+        page: 5,
+        deadline: Date.now() + 50,
+      })
+    ).rejects.toThrow("Sync deadline exceeded for x (fetch page 5, attempt 2)");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps the abort timeout at the remaining deadline budget", async () => {
+    // A hung fetch must be aborted at the remaining budget (~100ms), not
+    // FETCH_TIMEOUT_MS (10s) — the whole call resolves well under a second.
+    const fetchMock = vi.fn().mockImplementation((url, { signal }) =>
+      new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason));
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const start = Date.now();
+    await expect(
+      fetchPageWithRetry("https://x/products.json", {
+        domain: "x",
+        page: 6,
+        deadline: Date.now() + 100,
+      })
+    ).rejects.toThrow("Sync deadline exceeded for x (fetch page 6, attempt 2)");
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
 });
 
 describe("fetchStoreProducts deadline", () => {

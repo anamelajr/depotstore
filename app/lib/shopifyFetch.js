@@ -12,11 +12,20 @@ export const FILTER_BY_BRAND = new Set([
   "chezsnowbunny.fr",
 ]);
 
-async function fetchExistingEditorialByHandle(storeDomain) {
+async function fetchExistingEditorialByHandle(storeDomain, { deadline } = {}) {
   const map = {};
   const PAGE = 1000;
   let from = 0;
   while (true) {
+    // Deadline breach must THROW (rejecting the store), never return a
+    // partial map: a missing existing-brand row would let the brand filter
+    // drop a curated product, which then misses its synced_at refresh and
+    // gets wiped by the scoped stale delete.
+    if (deadline && Date.now() > deadline) {
+      throw new Error(
+        `Sync deadline exceeded for ${storeDomain} (editorial lookup at offset ${from})`
+      );
+    }
     const { data, error } = await supabaseAdmin
       .from("products")
       .select("handle, brand, title, category")
@@ -166,12 +175,24 @@ const FETCH_TIMEOUT_MS = 10_000;
 // observed 503s are origin flakiness (now retried), not throttling.
 const PAGE_SLEEP_MS = 150;
 
-export async function fetchPageWithRetry(url, { domain, page }) {
+export async function fetchPageWithRetry(url, { domain, page, deadline }) {
   for (let attempt = 0; attempt < 2; attempt++) {
+    // The sync deadline bounds in-flight work too: cap the abort timeout at
+    // the remaining budget and refuse to start an attempt past the deadline,
+    // so a page fetch that begins at T-1s can't ride its 10s timeout + retry
+    // ~20s past the cutoff and eat the tail's reserved headroom.
+    const remainingMs = deadline ? deadline - Date.now() : Infinity;
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Sync deadline exceeded for ${domain} (fetch page ${page}, attempt ${attempt + 1})`
+      );
+    }
     const lastAttempt = attempt === 1;
     let res;
     try {
-      res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      res = await fetch(url, {
+        signal: AbortSignal.timeout(Math.min(FETCH_TIMEOUT_MS, remainingMs)),
+      });
     } catch (e) {
       // Network error or timeout — transient, retry once.
       if (lastAttempt) {
@@ -210,7 +231,11 @@ export async function fetchStoreProducts(store, { deadline } = {}) {
       );
     }
     const url = `${base}?limit=250&page=${page}&country=FR`;
-    const res = await fetchPageWithRetry(url, { domain: store.domain, page });
+    const res = await fetchPageWithRetry(url, {
+      domain: store.domain,
+      page,
+      deadline,
+    });
     const data = await res.json();
     // A missing or non-array `products` field on a 200 response (e.g. a
     // Shopify maintenance payload) must throw, not silently break. Silently
@@ -238,7 +263,7 @@ export async function fetchStoreProducts(store, { deadline } = {}) {
   );
 
   const existingByHandle = FILTER_BY_BRAND.has(store.domain)
-    ? await fetchExistingEditorialByHandle(store.domain)
+    ? await fetchExistingEditorialByHandle(store.domain, { deadline })
     : {};
 
   const cleaned = normalized

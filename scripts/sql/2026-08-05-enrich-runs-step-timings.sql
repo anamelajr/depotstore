@@ -8,6 +8,7 @@
 --     "per_store_ms":    {domain: int}, -- fulfilled stores only
 --     "stale_delete_ms": int,
 --     "snapshot_ms":     int,           -- ~0 except the once-daily capture
+--     "alias_drift_ms":  int,           -- cdg alias-drift probe (8s cap)
 --     "deadline_hit":    [domain, ...]  -- stores abandoned at SYNC_DEADLINE_MS
 --   }
 ALTER TABLE enrich_runs ADD COLUMN IF NOT EXISTS step_timings jsonb;
