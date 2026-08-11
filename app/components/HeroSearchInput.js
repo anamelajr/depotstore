@@ -6,7 +6,10 @@ import { useLanguage } from "./LanguageProvider";
 // string attribute and can't take a <T> node, so the field itself reads the
 // active language via context and swaps live on toggle, like <T>. The wrapping
 // <form action="/feed"> stays server-rendered.
-export default function HeroSearchInput() {
+export default function HeroSearchInput({
+  placeholderKey = "home.searchPlaceholder",
+  className = "w-full rounded-none border-b border-zinc-300 bg-transparent py-4 font-mono text-lg text-zinc-950 placeholder:text-zinc-400 outline-none focus:border-zinc-800",
+}) {
   const { t } = useLanguage();
   return (
     <>
@@ -17,8 +20,8 @@ export default function HeroSearchInput() {
         id="hero-search"
         name="search"
         type="search"
-        placeholder={t("home.searchPlaceholder")}
-        className="w-full rounded-none border-b border-zinc-300 bg-transparent py-4 font-mono text-lg text-zinc-950 placeholder:text-zinc-400 outline-none focus:border-zinc-800"
+        placeholder={t(placeholderKey)}
+        className={className}
       />
     </>
   );

@@ -1,0 +1,113 @@
+<h2>Option 1, Alaïa-style — logo + MENU left, search right</h2>
+<p class="subtitle">Refined per your note: the left cluster is DÉPÔT with MENU beside it; SEARCH and language sit on the right. Compare against the inline link bar one more time, then click your pick.</p>
+
+<style>
+  .depot-mock { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; /* impeccable-disable overused-font: throwaway wireframe stand-in for the site's Satoshi/General Sans */ background: #f5f2ed; color: #111; border: 1px solid #ddd6ca; }
+  .depot-bar { display: flex; align-items: center; padding: 16px 22px; background: #fff; border-bottom: 1px solid #e8e2d6; }
+  .depot-logo { font-weight: 700; font-size: 17px; letter-spacing: 0.14em; }
+  .bar-left { display: flex; align-items: center; gap: 34px; }
+  .bar-right { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 10.5px; letter-spacing: 0.14em; color: #333; }
+  .bar-link { font-size: 10.5px; letter-spacing: 0.16em; cursor: default; }
+  .depot-hero { display: grid; grid-template-columns: 1fr 1.1fr; min-height: 190px; }
+  .depot-hero-copy { padding: 28px 22px; }
+  .depot-hero-copy h1 { font-size: 30px; line-height: 1.05; font-weight: 500; margin: 0 0 10px; letter-spacing: -0.01em; }
+  .depot-hero-copy p { font-size: 11px; color: #666; max-width: 210px; line-height: 1.5; margin: 0 0 14px; }
+  .depot-hero-copy .cta { font-size: 10px; letter-spacing: 0.14em; border-bottom: 1px solid #111; padding-bottom: 2px; display: inline-block; }
+  .depot-hero-img { background: linear-gradient(145deg, #e7e1d5, #d8d0c0); display: flex; align-items: flex-end; justify-content: flex-end; padding: 12px; }
+  .depot-hero-img small { font-size: 9px; letter-spacing: 0.12em; color: #776f60; text-align: right; }
+  .menu-overlay { display: grid; grid-template-columns: 130px 1fr; background: #fff; border-top: 1px solid #e8e2d6; font-size: 10.5px; }
+  .menu-col1 { border-right: 1px solid #eee8dc; padding: 14px 16px; }
+  .menu-col1 .grp { margin-bottom: 12px; }
+  .menu-col1 .lbl { font-size: 8.5px; letter-spacing: 0.16em; color: #999; margin-bottom: 5px; }
+  .menu-col1 div.item { padding: 2px 0; letter-spacing: 0.06em; }
+  .menu-col2 { padding: 14px 16px; color: #888; font-size: 10px; }
+  .hl { background: #111; color: #f5f2ed; padding: 1px 5px; display: inline-block; }
+  .depot-links { display: flex; gap: 20px; font-size: 10.5px; letter-spacing: 0.14em; }
+  .depot-links .new { background: #111; color: #f5f2ed; padding: 2px 6px; }
+</style>
+
+<div class="cards" style="grid-template-columns: 1fr;">
+
+  <div class="card" data-choice="option-1b-alaia-style" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 14px; background: #eceadf; height: auto;">
+      <div class="depot-mock">
+        <div class="depot-bar">
+          <div class="bar-left">
+            <div class="depot-logo">DÉPÔT</div>
+            <span class="bar-link">MENU</span>
+          </div>
+          <div class="bar-right">
+            <span>SEARCH ⌕</span>
+            <span>EN</span>
+          </div>
+        </div>
+        <div class="depot-hero">
+          <div class="depot-hero-copy">
+            <h1>Paris.<br>Archive.<br>One feed.</h1>
+            <p>A curated archive of fashion history — rare pieces, forward-thinking design, timeless craft.</p>
+            <span class="cta">EXPLORE ARCHIVES →</span>
+          </div>
+          <div class="depot-hero-img"><small>A.F. VANDERVORST<br>SS 2001</small></div>
+        </div>
+        <div class="menu-overlay">
+          <div class="menu-col1">
+            <div class="grp">
+              <div class="lbl">CATEGORIES</div>
+              <div class="item">Tops</div><div class="item">Jackets &amp; Coats</div><div class="item">Bags</div><div class="item">…</div>
+            </div>
+            <div class="grp">
+              <div class="lbl">BROWSE</div>
+              <div class="item"><span class="hl">Archives</span> ← new</div>
+              <div class="item">Designers</div><div class="item">Stores</div><div class="item">Editorial</div>
+            </div>
+            <div class="grp">
+              <div class="lbl">DÉPÔT</div>
+              <div class="item">About</div><div class="item">Contact</div>
+            </div>
+          </div>
+          <div class="menu-col2">MENU opens the existing full-screen panel; Archives joins the Browse group, and this pane lists the collections (Martin Margiela 1988–2009, Hedi Slimane…) on hover.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Option 1B — menu-panel nav, Alaïa arrangement</h3>
+      <p>DÉPÔT and MENU anchor the left; SEARCH and language sit right. Same minimal-bar model as today — all navigation lives in the panel, Archives added to Browse.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="option-2-inline-link-bar" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 14px; background: #eceadf; height: auto;">
+      <div class="depot-mock">
+        <div class="depot-bar">
+          <div class="bar-left">
+            <div class="depot-logo">DÉPÔT</div>
+          </div>
+          <div style="margin: 0 auto;" class="depot-links">
+            <span class="new">ARCHIVES</span>
+            <span>DESIGNERS</span>
+            <span>STORES</span>
+            <span>STORIES</span>
+            <span>ABOUT</span>
+          </div>
+          <div class="bar-right">
+            <span>SEARCH ⌕</span>
+            <span>EN</span>
+          </div>
+        </div>
+        <div class="depot-hero">
+          <div class="depot-hero-copy">
+            <h1>Paris.<br>Archive.<br>One feed.</h1>
+            <p>A curated archive of fashion history — rare pieces, forward-thinking design, timeless craft.</p>
+            <span class="cta">EXPLORE ARCHIVES →</span>
+          </div>
+          <div class="depot-hero-img"><small>A.F. VANDERVORST<br>SS 2001</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Option 2 — inline link bar (for comparison)</h3>
+      <p>Top-level links spelled out; categories move into the feed's filters and the landing page's browse-by row.</p>
+    </div>
+  </div>
+
+</div>
