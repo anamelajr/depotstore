@@ -11,6 +11,7 @@ function makeFakeClient(rowsByCall) {
       const builder = {
         select(cols) { state.cols = cols; return builder; },
         eq(col, val) { state.filters.push(["eq", col, val]); return builder; },
+        or(expr) { state.filters.push(["or", expr, true]); return builder; },
         ilike(col, val) { state.filters.push(["ilike", col, val]); return builder; },
         in(col, val) { state.filters.push(["in", col, val]); return builder; },
         order(col, opts) { state.order.push([col, opts]); return builder; },

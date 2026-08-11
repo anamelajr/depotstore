@@ -151,41 +151,63 @@ describe("mapProductRow", () => {
   });
 });
 
+// Self-returning builder stub covering the .eq()/.or() chain both helpers use.
+function makeQuery() {
+  const query = { eq: vi.fn(), or: vi.fn() };
+  query.eq.mockReturnValue(query);
+  query.or.mockReturnValue(query);
+  return query;
+}
+
+// The zero-price exclusion both helpers append. The value is double-quoted
+// per the PostgREST escaping rule (it contains dots); NULL price stays visible.
+const ZERO_PRICE_OR = 'price.is.null,price.neq."€0.00"';
+
 describe("withVisibility", () => {
   it("applies available=true and hidden=false to the passed query", () => {
-    const eq = vi.fn();
-    const query = { eq };
-    eq.mockReturnValue(query);
+    const query = makeQuery();
     const result = withVisibility(query);
-    expect(eq).toHaveBeenNthCalledWith(1, "available", true);
-    expect(eq).toHaveBeenNthCalledWith(2, "hidden", false);
+    expect(query.eq).toHaveBeenNthCalledWith(1, "available", true);
+    expect(query.eq).toHaveBeenNthCalledWith(2, "hidden", false);
     expect(result).toBe(query);
+  });
+
+  it("excludes the €0.00 'not for sale' literal while keeping NULL price", () => {
+    const query = makeQuery();
+    withVisibility(query);
+    expect(query.or).toHaveBeenCalledTimes(1);
+    expect(query.or).toHaveBeenCalledWith(ZERO_PRICE_OR);
   });
 
   it("returns the chained builder so callers can keep composing", () => {
     const final = { sentinel: true };
-    const chain = { eq: vi.fn() };
-    chain.eq.mockReturnValueOnce(chain).mockReturnValueOnce(final);
+    const chain = makeQuery();
+    chain.or.mockReturnValue(final);
     expect(withVisibility(chain)).toBe(final);
   });
 });
 
 describe("withCuratedVisibility", () => {
   it("applies hidden=false but does NOT touch available (sold-inclusive)", () => {
-    const eq = vi.fn();
-    const query = { eq };
-    eq.mockReturnValue(query);
+    const query = makeQuery();
     const result = withCuratedVisibility(query);
-    expect(eq).toHaveBeenCalledTimes(1);
-    expect(eq).toHaveBeenCalledWith("hidden", false);
-    expect(eq).not.toHaveBeenCalledWith("available", true);
+    expect(query.eq).toHaveBeenCalledTimes(1);
+    expect(query.eq).toHaveBeenCalledWith("hidden", false);
+    expect(query.eq).not.toHaveBeenCalledWith("available", true);
     expect(result).toBe(query);
+  });
+
+  it("excludes the €0.00 'not for sale' literal while keeping NULL price", () => {
+    const query = makeQuery();
+    withCuratedVisibility(query);
+    expect(query.or).toHaveBeenCalledTimes(1);
+    expect(query.or).toHaveBeenCalledWith(ZERO_PRICE_OR);
   });
 
   it("returns the chained builder so callers can keep composing", () => {
     const final = { sentinel: true };
-    const chain = { eq: vi.fn() };
-    chain.eq.mockReturnValue(final);
+    const chain = makeQuery();
+    chain.or.mockReturnValue(final);
     expect(withCuratedVisibility(chain)).toBe(final);
   });
 });
