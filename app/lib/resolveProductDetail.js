@@ -155,6 +155,14 @@ export async function resolveProductDetail({ handle, storeDomain }) {
   }, null);
   const price = minPrice !== null ? `€${minPrice.toFixed(2)}` : null;
 
+  // Zero-priced pieces are the stores' "not for sale" / rental archive; the
+  // feed excludes them, so a direct link must 404 rather than render a €0
+  // product page. Keyed off the live Shopify price (the value that would be
+  // displayed), so it stays correct even if the DB row is stale between
+  // hourly syncs. Placed before generateDescription so no OpenAI spend goes
+  // to a page that will never render.
+  if (minPrice === 0) return null;
+
   const sizes = resolveSizes(dbRow, product);
   // Source product-level availability from the cron-maintained
   // `products.available` column, not from the Shopify single-product fetch.

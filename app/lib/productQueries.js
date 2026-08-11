@@ -14,7 +14,20 @@ async function getDefaultClient() {
 // read. Caller passes any PostgREST query builder mid-chain; the .eq() calls
 // compose cleanly with .from().select(), .order(), .range(), .in(), etc.
 export function withVisibility(query) {
-  return query.eq("available", true).eq("hidden", false);
+  return excludeZeroPrice(query.eq("available", true).eq("hidden", false));
+}
+
+// Some stores publish "NOT FOR SALE" / rental archive pieces at 0.00, which
+// sync faithfully into `price` as '€0.00'. Those must not surface anywhere.
+// NULL price stays visible — null means unknown, not unsellable. The mapper
+// in shopifyFetch.js always formats `€${n.toFixed(2)}`, so the exact-match
+// exclusion is safe. The .or() value is double-quoted per the PostgREST
+// escaping rule (it contains dots); chained .or() calls are ANDed, so this
+// composes with the existing category/search .or()s.
+const ZERO_PRICE = "€0.00";
+
+function excludeZeroPrice(query) {
+  return query.or(`price.is.null,price.neq."${ZERO_PRICE}"`);
 }
 
 // Editorial curated artifacts intentionally include SOLD pieces (available=false)
@@ -22,7 +35,7 @@ export function withVisibility(query) {
 // self-branded) are still excluded. DO NOT use outside curated editorial reads:
 // every other product read MUST use withVisibility (available=true + hidden=false).
 export function withCuratedVisibility(query) {
-  return query.eq("hidden", false);
+  return excludeZeroPrice(query.eq("hidden", false));
 }
 
 // Canonical SELECT for direct `.from("products").select(...)` reads. Every

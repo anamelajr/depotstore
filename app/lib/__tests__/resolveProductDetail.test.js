@@ -1,8 +1,37 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const generateDescription = vi.fn(async () => "generated");
+
+vi.mock("../generateDescription", () => ({
+  generateDescription: (...args) => generateDescription(...args),
+}));
+
+// Minimal PostgREST stub: every builder method chains, and the terminal
+// `maybeSingle()` resolves to whatever the current test queued per table.
+const tableRows = { stores: null, products: null };
+
+function makeFrom() {
+  return (table) => {
+    const builder = {
+      select: () => builder,
+      eq: () => builder,
+      update: async () => ({ error: null }),
+      maybeSingle: async () => ({ data: tableRows[table] ?? null }),
+    };
+    return builder;
+  };
+}
+
+vi.mock("../supabase.js", () => ({
+  supabase: { from: (t) => makeFrom()(t) },
+  supabaseAdmin: { from: (t) => makeFrom()(t) },
+}));
+
 import {
   stripHtml,
   nonEmpty,
   resolveSizes,
+  resolveProductDetail,
 } from "../resolveProductDetail.js";
 
 describe("stripHtml", () => {
@@ -226,5 +255,71 @@ describe("resolveSizes", () => {
         },
       ),
     ).toBe(null);
+  });
+});
+
+// Zero-priced pieces are the stores' "NOT FOR SALE" / rental archive. The
+// feed excludes them, so a direct link must resolve to null (the PDP renders
+// "Product not found."), and no description generation should be spent on it.
+describe("resolveProductDetail zero-price gate", () => {
+  const shopifyProduct = (variantPrices) => ({
+    title: "Miu Miu FW1999 Leather Long Coat",
+    vendor: "Miu Miu",
+    body_html: "<p>NOT FOR SALE</p>",
+    tags: [],
+    images: [{ src: "https://cdn/1.jpg" }],
+    variants: variantPrices.map((price) => ({ price, title: "M" })),
+  });
+
+  beforeEach(() => {
+    generateDescription.mockClear();
+    tableRows.stores = { store_name: "grain de sell", display_name: "GRAIN DE SELL", location: "Paris" };
+    tableRows.products = { brand: "Miu Miu", title: null, editorial_description: null, available: true, size: ["M"], category: "Jackets & Coats" };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubShopify(product) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ product }) }))
+    );
+  }
+
+  it("returns null when every variant is priced 0.00", async () => {
+    stubShopify(shopifyProduct(["0.00", "0.00"]));
+    const result = await resolveProductDetail({
+      handle: "miu-miu-fw1999-leather-long-coat",
+      storeDomain: "graindesell.shop",
+    });
+    expect(result).toBe(null);
+    expect(generateDescription).not.toHaveBeenCalled();
+  });
+
+  it("still resolves a normally priced product", async () => {
+    stubShopify(shopifyProduct(["450.00"]));
+    const result = await resolveProductDetail({
+      handle: "some-coat",
+      storeDomain: "graindesell.shop",
+    });
+    expect(result?.price).toBe("€450.00");
+  });
+
+  it("keeps a product whose min price is 0.00 out even when a variant is priced", async () => {
+    stubShopify(shopifyProduct(["0.00", "450.00"]));
+    expect(
+      await resolveProductDetail({ handle: "mixed", storeDomain: "graindesell.shop" })
+    ).toBe(null);
+  });
+
+  it("does not gate a product with no parseable variant price (null, not zero)", async () => {
+    stubShopify(shopifyProduct([]));
+    const result = await resolveProductDetail({
+      handle: "no-variants",
+      storeDomain: "graindesell.shop",
+    });
+    expect(result?.price).toBe(null);
   });
 });
