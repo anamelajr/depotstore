@@ -22,7 +22,7 @@ export default function SearchBrowseRow() {
       style={{ backgroundColor: GROUND, borderColor: HAIRLINE }}
     >
       <div
-        className={`${CONTAINER} flex flex-col gap-6 py-8 md:h-[90px] md:flex-row md:items-center md:gap-10 md:py-0`}
+        className={`${CONTAINER} flex flex-col gap-5 py-6 md:h-[90px] md:flex-row md:items-center md:gap-10 md:py-0`}
       >
         {/* Underline-only field; GET submit lands on /feed?search=… */}
         <form action="/feed" method="GET" className="relative w-full md:w-[52%]">
@@ -42,8 +42,11 @@ export default function SearchBrowseRow() {
           </button>
         </form>
 
-        <div className="flex flex-wrap items-center gap-x-7 gap-y-3 md:ml-auto md:flex-nowrap">
-          <span className={`${UTILITY_CAPS_MUTED} whitespace-nowrap`}>
+        {/* Mobile drops the BROWSE BY label: measured with the real General Sans
+            face, label + items overflow one line at 375px in both languages,
+            while the three items alone fit even at 320px. */}
+        <div className="flex flex-nowrap items-center gap-x-2.5 gap-y-3 md:ml-auto md:gap-x-7">
+          <span className={`${UTILITY_CAPS_MUTED} hidden whitespace-nowrap md:block`}>
             <T k="home.browseBy" />
           </span>
           <span
@@ -57,7 +60,7 @@ export default function SearchBrowseRow() {
           </Link>
           <span
             aria-hidden="true"
-            className="hidden h-3.5 w-px md:block"
+            className="h-3.5 w-px"
             style={{ backgroundColor: HAIRLINE }}
           />
           {/* Inert: no era browsing exists yet (deferred archives phase). */}
@@ -67,7 +70,7 @@ export default function SearchBrowseRow() {
           </span>
           <span
             aria-hidden="true"
-            className="hidden h-3.5 w-px md:block"
+            className="h-3.5 w-px"
             style={{ backgroundColor: HAIRLINE }}
           />
           <Link href="/feed" className={`${ITEM} transition-opacity hover:opacity-60`}>

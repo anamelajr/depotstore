@@ -20,14 +20,50 @@ export default function FeaturedArchives() {
       className="w-full border-b"
       style={{ backgroundColor: GROUND, borderColor: HAIRLINE }}
     >
+      {/* Mobile/tablet: label + VIEW ALL on one header row, entries in a
+          horizontal swipe row that peeks at the screen edge. Dual blocks follow
+          ProductCard's convention — the two DOMs diverge structurally. */}
+      <div className={`${CONTAINER} py-7 lg:hidden`}>
+        <div className="flex items-baseline justify-between gap-x-6">
+          <span className={BAND_LABEL}>
+            <T k="home.featured" />
+          </span>
+          {/* Inert for now — becomes a link with the real archives phase. */}
+          <span className={`${UTILITY_CAPS} shrink-0 cursor-default`}>
+            <T k="home.viewAll" />
+          </span>
+        </div>
+
+        <div className="-mx-6 mt-5 overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max">
+            {ENTRIES.map((entry, i) => (
+              <div
+                key={entry.name}
+                className={`flex shrink-0 cursor-default flex-col items-center justify-center gap-1.5 px-5 py-4 text-center ${
+                  i === 0 ? "" : "border-l"
+                }`}
+                style={i === 0 ? undefined : { borderColor: HAIRLINE }}
+              >
+                <span className="whitespace-nowrap font-mono text-[10px] font-medium uppercase leading-none tracking-[0.15em] text-zinc-950">
+                  {entry.name}
+                </span>
+                <span className="whitespace-nowrap text-[9px] leading-none tracking-[0.06em] text-zinc-500">
+                  {entry.years}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div
-        className={`${CONTAINER} flex flex-col gap-6 py-8 lg:h-[90px] lg:flex-row lg:items-center lg:gap-0 lg:py-0`}
+        className={`${CONTAINER} hidden flex-col gap-6 py-8 lg:flex lg:h-[90px] lg:flex-row lg:items-center lg:gap-0 lg:py-0`}
       >
         <span className={`${BAND_LABEL} shrink-0 lg:w-[17%]`}>
           <T k="home.featured" />
         </span>
 
-        <div className="grid grid-cols-2 gap-y-5 sm:grid-cols-3 lg:flex lg:flex-1 lg:gap-y-0">
+        <div className="flex flex-1">
           {ENTRIES.map((entry, i) => (
             <div
               key={entry.name}

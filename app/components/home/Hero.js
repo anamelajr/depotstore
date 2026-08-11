@@ -14,7 +14,7 @@ export default function Hero() {
     >
       <div className="grid grid-cols-1 md:min-h-[600px] md:grid-cols-[46fr_54fr]">
         {/* Copy */}
-        <div className="flex flex-col justify-center px-6 py-16 md:py-24 md:pl-[8.2vw] md:pr-14">
+        <div className="flex flex-col justify-center px-6 py-12 md:py-24 md:pl-[8.2vw] md:pr-14">
           <h1
             className="text-[clamp(40px,4.4vw,64px)] font-normal leading-[1.05] tracking-[-0.02em] text-zinc-950"
             style={{ fontFamily: "var(--font-satoshi), sans-serif" }}
@@ -26,7 +26,7 @@ export default function Hero() {
             <T k="home.heroLine3" />
           </h1>
 
-          <p className="mt-6 max-w-[260px] text-[14px] leading-[1.6] text-zinc-600">
+          <p className="mt-6 max-w-[320px] text-[14px] leading-[1.6] text-zinc-600 md:max-w-[260px]">
             <T k="home.heroDescription" />
           </p>
 

@@ -73,9 +73,9 @@ try {
       <FeaturedArchives />
 
       {/* Curated Selection — presentation only; the data flow above is unchanged. */}
-      <section className="border-b py-16" style={{ borderColor: HAIRLINE }}>
+      <section className="border-b py-10 md:py-16" style={{ borderColor: HAIRLINE }}>
         <div className={CONTAINER}>
-          <div className="mb-10 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
+          <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3 md:mb-10">
             <h2 className={`${SECTION_LABEL}`}>
               <T k="home.todaysCuration" />
             </h2>
@@ -87,21 +87,26 @@ try {
               <T k="home.viewAll" />
             </Link>
           </div>
-          <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
+          {/* One DOM for both breakpoints — a horizontal swipe row on mobile,
+              the untouched grid from md up. Dual blocks would double-render
+              eight ProductCards and their images. */}
+          <div className="-mx-6 flex gap-4 overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-3 md:gap-6 md:overflow-visible md:px-0 lg:grid-cols-4">
             {recentProducts.map((p) => (
-              <ProductCard
+              <div
                 key={`${p.productUrl ?? "unknown"}-${p.name}`}
-                product={p}
-              />
+                className="w-[45vw] max-w-[220px] shrink-0 md:w-auto md:max-w-none"
+              >
+                <ProductCard product={p} />
+              </div>
             ))}
           </div>
         </div>
       </section>
 
       {/* Across Paris */}
-      <section className="py-16">
+      <section className="py-10 md:py-16">
         <div className={CONTAINER}>
-          <h2 className={`${SECTION_LABEL} mb-10`}>
+          <h2 className={`${SECTION_LABEL} mb-6 md:mb-10`}>
             <T k="home.acrossParis" />
           </h2>
           <ParisMap stores={stores} />

@@ -16,7 +16,7 @@ export const BAND_LABEL =
 
 /** Section heading: CURATED SELECTION / ACROSS PARIS. */
 export const SECTION_LABEL =
-  "text-[18px] font-medium uppercase tracking-[0.15em] text-zinc-950";
+  "text-[15px] md:text-[18px] font-medium uppercase tracking-[0.15em] text-zinc-950";
 
 /** Small tracked-out utility caps: browse-by items, VIEW ALL, the hero CTA. */
 export const UTILITY_CAPS =
