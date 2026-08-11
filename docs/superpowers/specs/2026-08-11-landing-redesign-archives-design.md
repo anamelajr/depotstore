@@ -44,6 +44,7 @@ Directory: `docs/superpowers/specs/assets/2026-08-11-landing-redesign/`
   5. HELMUT LANG — 1996–2005
   Entries are **not clickable**: no `href`, no hover state, `cursor: default`. "VIEW ALL →" is likewise inert or omitted for now.
 - **Spacing/visual feel** must follow `reference-landing.png`; the user reviews screenshots and expects iteration until it feels right.
+- **Desktop only.** The reference and every measurement in this spec are desktop; no mobile design decisions have been made. Mobile gets a minimal, unbroken fallback (see §Mobile scope) — do not invent a mobile art direction; a tailored mobile redesign is a separate later phase the user will brainstorm.
 
 ## Implementation
 
@@ -73,6 +74,18 @@ Reference frame is 1449px wide; percentages below are of viewport width. Treat t
 
 The user will iterate on this by looking at preview screenshots — treat the numbers as the starting point and their feedback as the tiebreaker.
 
+### 3b. Mobile scope — minimal fallback only
+
+This phase designs desktop. On small screens the only requirement is *unbroken and legible*, achieved by plain stacking with default responsive utilities — spend no effort art-directing it:
+
+- Hero: copy block above, image below (or image hidden if stacking looks bad), full-width.
+- Search + browse-by: search input full-width; the BROWSE BY items may wrap below it or be omitted on the smallest widths.
+- Featured Archives: entries as a simple stacked list or two-column wrap — no horizontal scroll work.
+- Curated Selection / map: keep the existing mobile grid and map behavior.
+- Mobile nav (`MobileNavMenu.js`, `h-[50px]` bar) stays functionally and visually unchanged.
+
+A tailored mobile redesign (its own reference, its own decisions) is a later phase; do not pre-build for it.
+
 ### 4. i18n
 
 All new user-facing strings (hero description, EXPLORE ARCHIVES, search placeholder, BROWSE BY / DESIGNER / YEAR / CATEGORY, FEATURED ARCHIVES, VIEW ALL, CURATED SELECTION) go into [app/lib/i18n/messages.js](../../../app/lib/i18n/messages.js) with en + fr parity — the parity test (`app/lib/i18n/__tests__/messages.test.js`) enforces matching keys, but **not** that consumers thread the language: accessors default to `"en"` silently, so pass the active language explicitly everywhere. Designer names and year strings stay literal.
@@ -81,11 +94,13 @@ All new user-facing strings (hero description, EXPLORE ARCHIVES, search placehol
 
 Era columns + deterministic `parseEra` from name/title (~69% of live products carry an era signal — verified in prod), backfill script, cron sync write, `app/lib/archives.js` config, `/archives` + `/archives/[slug]` feed-style pages, Archives entry in the nav menu. When that lands, the placeholder entries become links and the Year browse item goes live.
 
+Also deferred: the **tailored mobile redesign** of this landing page (see §Mobile scope).
+
 ## Verification
 
 - `npm test` — i18n parity passes with the new keys.
 - Preview server (`npm run dev` via launch config — never a raw background shell):
-  - Homepage section order and spacing vs `reference-landing.png`, desktop and mobile widths.
+  - Homepage section order and spacing vs `reference-landing.png` at desktop width (~1440). Mobile width is checked only against §Mobile scope: everything stacks, nothing overflows or breaks — no pixel-matching there.
   - Top bar: DÉPÔT + MENU left / SEARCH + language right on desktop; mobile bar unchanged in height; menu panel still opens and works.
   - Search submits to `/feed?search=…`.
   - Featured Archives renders the five entries with the exact year formats above and nothing is clickable (no cursor change, no navigation).
