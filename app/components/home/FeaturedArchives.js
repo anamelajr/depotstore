@@ -36,7 +36,8 @@ export default function FeaturedArchives() {
               }`}
               style={i === 0 ? undefined : { borderColor: HAIRLINE }}
             >
-              <span className="whitespace-nowrap text-[10px] uppercase leading-none tracking-[0.1em] text-zinc-950">
+              {/* Same face as ProductCard's brand line, at this band's 10px size. */}
+              <span className="whitespace-nowrap font-mono text-[10px] font-medium uppercase leading-none tracking-[0.15em] text-zinc-950">
                 {entry.name}
               </span>
               <span className="whitespace-nowrap text-[9px] leading-none tracking-[0.06em] text-zinc-500">
