@@ -6,7 +6,7 @@ PR #106 revamped the **desktop** landing page (hero, search/browse band, Feature
 
 **Approved design decisions:**
 1. **Hero** — refined stack (copy above, photo below). No overlay, no side-by-side, no garment caption, no carousel.
-2. **Search + Browse-by band** — search full-width; below it, `BROWSE BY | DESIGNER | YEAR | CATEGORY` on **one row** with thin vertical hairline dividers (desktop band compressed). No boxes.
+2. **Search + Browse-by band** — search full-width; below it, `DESIGNER | YEAR | CATEGORY` on **one row** with thin vertical hairline dividers (desktop band compressed). No boxes. **The "BROWSE BY" label is dropped on mobile** (desktop unchanged): measured with the real General Sans face, label + items cannot fit one line at 375px in either language (EN 344px / FR 386px vs 327px available — Codex adversarial-review finding, confirmed), while items alone fit both languages even at 320px (FR 265px vs 272px available).
 3. **Featured Archives** — header row (`FEATURED` label left, `VIEW ALL` right), then a **horizontal swipe row** of the five entries with vertical hairline dividers between them only — no horizontal rules around the row. Scroll hint is "peek only" (next entry cut off at screen edge); no progress bars, hidden scrollbar. Entries stay inert (no archives routes yet). Section-level `border-b` stays (matches desktop's band edge).
 4. **Curated Selection ("Today's Curation")** — on mobile, the 8 products become a **single horizontal swipe row** (page too long as a 4-row grid); desktop grid unchanged.
 5. **Light polish** on lower sections: mobile-appropriate section-heading size and vertical rhythm for Curated Selection and Across Paris. Map itself untouched.
@@ -29,8 +29,9 @@ All changes are Tailwind-class/JSX-structure only — no data flow, no API, no D
 
 ### 3. `app/components/home/SearchBrowseRow.js`
 - Band container: `py-8 gap-6` → `py-6 gap-5` on mobile (`md:` values unchanged).
-- Browse row: make the three dividers visible on mobile (drop `hidden md:` from the `w-px` spans), prevent wrapping into a mess: `flex-wrap … gap-x-7` → `flex-nowrap gap-x-3 sm:gap-x-4 md:gap-x-7` (keep `gap-y-3` harmless). Chevron gap `gap-2` → `gap-1.5 md:gap-2` inside `ITEM` if needed to fit 375px.
-- Must fit one line at 375px; at 320px slight tightness is acceptable but must not overflow the page horizontally (verify — fall back to `gap-x-2.5` or `text-[9px] md:text-[10px]` on `ITEM` if needed).
+- "BROWSE BY" `<span>` and its trailing divider: `hidden md:flex` / stay desktop-only. The three items and their two separating dividers show on both breakpoints.
+- Browse row: dividers between items visible on mobile (drop `hidden md:` from those `w-px` spans), `flex-wrap … gap-x-7` → `flex-nowrap gap-x-2.5 md:gap-x-7`.
+- Measured budget (real font, canvas): items row EN 250px / FR 257–265px vs 272px available at 320px and 327px at 375px — fits one line in both languages with margin; verify `scrollWidth <= clientWidth` in EN and FR during browser check.
 
 ### 4. `app/components/home/FeaturedArchives.js` (structural — dual blocks, ProductCard convention)
 Desktop block (`hidden lg:flex …`) keeps today's markup exactly. New mobile block (`lg:hidden`):
@@ -58,7 +59,7 @@ Desktop block (`hidden lg:flex …`) keeps today's markup exactly. New mobile bl
 2. `resize_window` to mobile (375×812): screenshot each band. Check — hero stack rhythm; browse row fits on one line with dividers, no page horizontal scroll; Featured Archives swipe row peeks and scrolls, no scrollbar, no top/bottom rules; Curated row swipes with ~2.2 cards visible; section headings at 15px; tightened paddings.
 3. Also check 320px width for overflow (page must not scroll horizontally).
 4. `resize_window` desktop (1280×800): confirm desktop is visually unchanged (hero, 90px bands, 4-col grid).
-5. Toggle language (FR) to confirm browse row still fits one line with French strings (`DESIGNER`→? check actual fr strings — if longer, tighten mobile gap further).
+5. Toggle language to FR (`CRÉATEUR | ANNÉE | CATÉGORIE`) and confirm the browse row's `scrollWidth <= clientWidth` at 375px and 320px (pre-measured to fit, but confirm on the rendered row).
 6. `npm test` (i18n parity test) — should pass untouched.
 7. Read browser console for errors.
 
