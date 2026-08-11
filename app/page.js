@@ -8,7 +8,6 @@ import FeaturedArchives from "./components/home/FeaturedArchives";
 import {
   CONTAINER,
   GROUND,
-  HAIRLINE,
   SECTION_LABEL,
   UTILITY_CAPS,
 } from "./components/home/tokens";
@@ -73,7 +72,9 @@ try {
       <FeaturedArchives />
 
       {/* Curated Selection — presentation only; the data flow above is unchanged. */}
-      <section className="border-b py-10 md:py-16" style={{ borderColor: HAIRLINE }}>
+      {/* No hairline below — the Curated/Across Paris seam reads through
+          spacing alone; Across Paris' tightened top keeps the gap balanced. */}
+      <section className="py-10 md:py-16">
         <div className={CONTAINER}>
           <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3 md:mb-10">
             <h2 className={`${SECTION_LABEL}`}>
@@ -104,7 +105,7 @@ try {
       </section>
 
       {/* Across Paris */}
-      <section className="py-10 md:py-16">
+      <section className="pb-10 pt-2 md:pb-16 md:pt-4">
         <div className={CONTAINER}>
           <h2 className={`${SECTION_LABEL} mb-6 md:mb-10`}>
             <T k="home.acrossParis" />

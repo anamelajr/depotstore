@@ -6,7 +6,7 @@ const CONTACT_EMAIL = "hello@depot.paris";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-zinc-200 bg-white text-zinc-950 px-6 py-16 sm:px-10 sm:py-20">
+    <footer className="bg-white text-zinc-950 px-6 py-16 sm:px-10 sm:py-20">
       <div className="mx-auto max-w-4xl">
         <p className="text-[clamp(28px,5vw,40px)] font-bold uppercase leading-none tracking-tight">
           DÉPÔT
