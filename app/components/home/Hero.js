@@ -7,11 +7,11 @@ import { HERO_GROUND, UTILITY_CAPS } from "./tokens";
 // rotation, no dots (user-confirmed). The image is a placeholder — swapping
 // public/home/hero.jpg changes nothing about the layout.
 export default function Hero() {
+  // bg literals mirror GROUND / HERO_GROUND in tokens.js — a dynamic
+  // bg-[${GROUND}] never reaches Tailwind's JIT scanner. Mobile sits on the
+  // page ground so the masked photo dissolves into one continuous cream.
   return (
-    <section
-      className="relative w-full overflow-x-clip"
-      style={{ backgroundColor: HERO_GROUND }}
-    >
+    <section className="relative w-full overflow-x-clip bg-[#faf9f7] md:bg-[#eceae4]">
       <div className="grid grid-cols-1 md:min-h-[600px] md:grid-cols-[46fr_54fr]">
         {/* Copy */}
         <div className="flex flex-col justify-center px-6 py-12 md:py-24 md:pl-[8.2vw] md:pr-14">
@@ -43,7 +43,12 @@ export default function Hero() {
         </div>
 
         {/* Image — full-bleed to the top, right and bottom of the section. */}
-        <div className="relative min-h-[320px] md:min-h-full">
+        {/* Mobile: vertical mask fades the photo into the section ground at top
+            and bottom, so there is no seam against the copy block above or the
+            search row below. Reset at md: — any prefixed twin added here must
+            ship its own md: reset in the same edit, or the fade leaks onto
+            desktop Safari. */}
+        <div className="relative min-h-[320px] [mask-image:linear-gradient(to_bottom,transparent_0%,rgba(0,0,0,0.16)_6%,rgba(0,0,0,0.5)_12%,rgba(0,0,0,0.84)_18%,black_24%,black_76%,rgba(0,0,0,0.84)_82%,rgba(0,0,0,0.5)_88%,rgba(0,0,0,0.16)_94%,transparent_100%)] md:min-h-full md:[mask-image:none]">
           <Image
             src="/home/hero.jpg"
             alt=""
