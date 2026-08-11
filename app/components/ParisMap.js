@@ -122,10 +122,18 @@ export default function ParisMap({ stores = [] }) {
     };
   }, []);
 
+  // isolation traps Leaflet's internal z-indexes (panes 200–700, control
+  // corners 1000) in their own stacking context — without it they paint over
+  // the mobile nav (sticky z-50) while the map scrolls beneath it.
   return (
     <div
       ref={mapRef}
-      style={{ height: "480px", width: "100%", background: "#f4f4f5" }}
+      style={{
+        height: "480px",
+        width: "100%",
+        background: "#f4f4f5",
+        isolation: "isolate",
+      }}
     />
   );
 }
