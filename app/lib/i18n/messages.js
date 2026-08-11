@@ -111,7 +111,7 @@ export const MESSAGES = {
     "home.browseYear": "Year",
     "home.browseCategory": "Category",
     "home.featuredArchives": "Featured Archives",
-    "home.curatedSelection": "Curated Selection",
+    "home.todaysCuration": "Today's Curation",
     // Editorial index
     "editorial.label": "Editorial",
     "editorial.tagline": "Short, opinionated pieces on the designers and houses that shape archive fashion.",
@@ -256,7 +256,7 @@ export const MESSAGES = {
     "home.browseYear": "Année",
     "home.browseCategory": "Catégorie",
     "home.featuredArchives": "Archives à la une",
-    "home.curatedSelection": "Sélection",
+    "home.todaysCuration": "La Curation du Jour",
     // Editorial index
     "editorial.label": "Éditorial",
     "editorial.tagline": "Des textes courts et affirmés sur les créateurs et maisons qui façonnent la mode archive.",

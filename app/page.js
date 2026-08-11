@@ -77,7 +77,7 @@ try {
         <div className={CONTAINER}>
           <div className="mb-10 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
             <h2 className={`${SECTION_LABEL}`}>
-              <T k="home.curatedSelection" />
+              <T k="home.todaysCuration" />
             </h2>
             <Link
               href="/feed"
