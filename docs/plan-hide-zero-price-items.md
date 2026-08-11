@@ -117,23 +117,38 @@ resolves to `null` (and that `generateDescription` is not called for it).
 ## Verification
 
 1. `npm test` (vitest) — productQueries + resolveProductDetail tests pass.
-2. After the SQL is applied, read-only MCP checks over the **whole** RPC result set, not just
-   page 0 (the RPC returns `price` directly, so no join is needed):
+2. After the SQL is applied, read-only MCP checks. **Use named arguments only** — the get
+   RPC's positional order is `(p_store, p_category, p_search, p_brand, p_limit, p_offset,
+   p_subcategory)` (`p_subcategory` was appended after the paging params in the 05-28
+   migration), so positional calls silently misroute the limit/offset and can return an
+   empty set, making the checks pass vacuously. The RPC returns `price` directly, so no
+   join is needed.
 
    ```sql
-   -- a) no zero-priced row anywhere in the get RPC
-   SELECT count(*) FROM get_interleaved_products(null,null,null,null,null,20000,0)
-   WHERE price = '€0.00';                                    -- expect 0
+   -- a) independent whole-population check straight off the table: rows the new
+   --    predicate should expose (the RPC output can never exceed this set)
+   SELECT count(*) FROM products
+   WHERE available = true AND hidden = false
+     AND (price IS NULL OR price <> '€0.00');                -- expected feed size N
 
-   -- b) get/count parity
-   SELECT (SELECT count(*) FROM get_interleaved_products(null,null,null,null,null,20000,0))
-        = (SELECT count_interleaved_products(null,null,null,null,null)) AS parity;  -- expect true
+   -- b) get RPC: full-set fetch (p_limit above N), no zero-priced row, and
+   --    cardinality matches both the count RPC and the independent count (a)
+   WITH g AS (
+     SELECT * FROM get_interleaved_products(p_limit => 50000, p_offset => 0)
+   )
+   SELECT
+     (SELECT count(*) FROM g WHERE price = '€0.00')  AS zero_rows,     -- expect 0
+     (SELECT count(*) FROM g)                        AS get_total,     -- expect N
+     count_interleaved_products()                    AS count_total;   -- expect N
 
    -- c) filtered paths, incl. the worst-offender store
-   SELECT count(*) FROM get_interleaved_products('graindesell.shop',null,null,null,null,20000,0)
+   SELECT count(*) FROM get_interleaved_products(
+     p_store => 'graindesell.shop', p_limit => 50000, p_offset => 0)
    WHERE price = '€0.00';                                    -- expect 0
    ```
-   Repeat (c) with a category and a search term to exercise the other filter branches.
+   Repeat (c) with `p_category` and `p_search` to exercise the other filter branches.
+   Sanity-check that (b)'s `get_total` is below the `p_limit` used — if it ever equals the
+   limit, raise the limit; a truncated fetch proves nothing.
 3. `npm run dev`, then via the preview browser: search "miu miu" and filter to GRAIN DE SELL —
    the FW99 Leather Long Coat no longer appears; price-sort ascending no longer starts with €0
    cards; the homepage editorial rows show no €0 items.
