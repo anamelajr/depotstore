@@ -36,7 +36,7 @@ export default function FeaturedArchives() {
               }`}
               style={i === 0 ? undefined : { borderColor: HAIRLINE }}
             >
-              <span className="whitespace-nowrap text-[10px] font-semibold uppercase leading-none tracking-[0.1em] text-zinc-950">
+              <span className="whitespace-nowrap text-[10px] uppercase leading-none tracking-[0.1em] text-zinc-950">
                 {entry.name}
               </span>
               <span className="whitespace-nowrap text-[9px] leading-none tracking-[0.06em] text-zinc-500">
