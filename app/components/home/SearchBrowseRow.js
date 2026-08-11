@@ -1,13 +1,7 @@
 import Link from "next/link";
 import T from "../T";
 import HeroSearchInput from "../HeroSearchInput";
-import {
-  CONTAINER,
-  GROUND,
-  HAIRLINE,
-  UTILITY_CAPS,
-  UTILITY_CAPS_MUTED,
-} from "./tokens";
+import { CONTAINER, GROUND, HAIRLINE, UTILITY_CAPS_MUTED } from "./tokens";
 
 function Chevron() {
   return (
@@ -17,12 +11,14 @@ function Chevron() {
   );
 }
 
-const ITEM = `${UTILITY_CAPS} flex items-center gap-2 whitespace-nowrap`;
+// One notch below UTILITY_CAPS — sized like the muted variant but ink-dark.
+const ITEM =
+  "flex items-center gap-2 whitespace-nowrap text-[10px] uppercase tracking-[0.14em] text-zinc-950";
 
 export default function SearchBrowseRow() {
   return (
     <section
-      className="w-full border-y"
+      className="w-full border-t"
       style={{ backgroundColor: GROUND, borderColor: HAIRLINE }}
     >
       <div
