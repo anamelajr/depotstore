@@ -18,7 +18,7 @@ const ITEM =
 export default function SearchBrowseRow() {
   return (
     <section
-      className="w-full border-t"
+      className="w-full md:border-t"
       style={{ backgroundColor: GROUND, borderColor: HAIRLINE }}
     >
       <div
