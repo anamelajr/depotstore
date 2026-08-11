@@ -21,18 +21,18 @@ export default function FeaturedArchives() {
       style={{ backgroundColor: GROUND, borderColor: HAIRLINE }}
     >
       <div
-        className={`${CONTAINER} flex flex-col gap-6 py-8 md:h-[90px] md:flex-row md:items-center md:gap-0 md:py-0`}
+        className={`${CONTAINER} flex flex-col gap-6 py-8 lg:h-[90px] lg:flex-row lg:items-center lg:gap-0 lg:py-0`}
       >
-        <span className={`${BAND_LABEL} shrink-0 md:w-[17%]`}>
+        <span className={`${BAND_LABEL} shrink-0 lg:w-[17%]`}>
           <T k="home.featured" />
         </span>
 
-        <div className="grid grid-cols-2 gap-y-5 sm:grid-cols-3 md:flex md:flex-1 md:gap-y-0">
+        <div className="grid grid-cols-2 gap-y-5 sm:grid-cols-3 lg:flex lg:flex-1 lg:gap-y-0">
           {ENTRIES.map((entry, i) => (
             <div
               key={entry.name}
-              className={`flex cursor-default flex-col items-center justify-center gap-1.5 px-2 text-center md:flex-1 ${
-                i === 0 ? "" : "md:border-l"
+              className={`flex cursor-default flex-col items-center justify-center gap-1.5 px-2 text-center lg:flex-1 ${
+                i === 0 ? "" : "lg:border-l"
               }`}
               style={i === 0 ? undefined : { borderColor: HAIRLINE }}
             >
@@ -48,7 +48,7 @@ export default function FeaturedArchives() {
 
         {/* Inert for now — becomes a link with the real archives phase. */}
         <span
-          className={`${UTILITY_CAPS} shrink-0 cursor-default md:ml-7 md:border-l md:pl-7`}
+          className={`${UTILITY_CAPS} shrink-0 cursor-default lg:ml-7 lg:border-l lg:pl-7`}
           style={{ borderColor: HAIRLINE }}
         >
           <T k="home.viewAll" />
