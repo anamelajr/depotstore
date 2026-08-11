@@ -98,6 +98,20 @@ export const MESSAGES = {
     "home.viewAll": "View All →",
     "home.geographyLabel": "Geography",
     "home.acrossParis": "Across Paris",
+    // Home — landing redesign
+    "home.heroLine1": "Paris.",
+    "home.heroLine2": "Archive.",
+    "home.heroLine3": "One feed.",
+    "home.heroDescription":
+      "A curated archive of fashion history — rare pieces, forward-thinking design, timeless craft.",
+    "home.exploreArchives": "Explore archives",
+    "home.archiveSearchPlaceholder": "Search archives",
+    "home.browseBy": "Browse by",
+    "home.browseDesigner": "Designer",
+    "home.browseYear": "Year",
+    "home.browseCategory": "Category",
+    "home.featuredArchives": "Featured Archives",
+    "home.curatedSelection": "Curated Selection",
     // Editorial index
     "editorial.label": "Editorial",
     "editorial.tagline": "Short, opinionated pieces on the designers and houses that shape archive fashion.",
@@ -229,6 +243,20 @@ export const MESSAGES = {
     "home.viewAll": "Voir tout →",
     "home.geographyLabel": "Géographie",
     "home.acrossParis": "À travers Paris",
+    // Home — landing redesign
+    "home.heroLine1": "Paris.",
+    "home.heroLine2": "Archives.",
+    "home.heroLine3": "Un fil.",
+    "home.heroDescription":
+      "Une archive choisie de l'histoire de la mode — pièces rares, création d'avant-garde, savoir-faire intemporel.",
+    "home.exploreArchives": "Explorer les archives",
+    "home.archiveSearchPlaceholder": "Rechercher dans les archives",
+    "home.browseBy": "Parcourir par",
+    "home.browseDesigner": "Créateur",
+    "home.browseYear": "Année",
+    "home.browseCategory": "Catégorie",
+    "home.featuredArchives": "Archives à la une",
+    "home.curatedSelection": "Sélection",
     // Editorial index
     "editorial.label": "Éditorial",
     "editorial.tagline": "Des textes courts et affirmés sur les créateurs et maisons qui façonnent la mode archive.",

@@ -2,7 +2,16 @@ import Link from "next/link";
 import ProductCard from "./components/ProductCard";
 import ParisMap from "./components/ParisMap";
 import T from "./components/T";
-import HeroSearchInput from "./components/HeroSearchInput";
+import Hero from "./components/home/Hero";
+import SearchBrowseRow from "./components/home/SearchBrowseRow";
+import FeaturedArchives from "./components/home/FeaturedArchives";
+import {
+  CONTAINER,
+  GROUND,
+  HAIRLINE,
+  SECTION_LABEL,
+  UTILITY_CAPS,
+} from "./components/home/tokens";
 import { fetchHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
 import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 
@@ -50,60 +59,30 @@ try {
 } catch {
   // ignore
 }
-  
+
 
   return (
-    <div className="min-h-screen font-mono antialiased">
-      {/* Hero */}
-      <section className="relative flex min-h-screen flex-col bg-[#f5f2ed] text-zinc-950">
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 pt-8">
-          <div className="max-w-4xl">
-            <div className="text-[clamp(60px,10vw,132px)] font-medium uppercase leading-[0.9] tracking-tight">
-              DÉPÔT
-            </div>
-            <div className="mt-6 max-w-2xl text-sm leading-6 text-zinc-800">
-              <T k="home.tagline" />
-            </div>
-          </div>
-          <div className="mt-16 max-w-3xl">
-            <form action="/feed" method="GET" className="w-full">
-              <HeroSearchInput />
-            </form>
-          </div>
-        </div>
-        <div className="mx-auto w-full max-w-7xl px-4 pb-12">
-          <Link
-            href="/feed"
-            replace
-            className="flex w-fit items-center gap-2 font-mono text-sm text-zinc-900/80 transition-colors hover:text-zinc-900"
-          >
-            <span className="underline decoration-zinc-800 underline-offset-4">
-              <T k="home.browseAll" />
-            </span>
-            <span aria-hidden="true" className="text-lg leading-none">→</span>
-          </Link>
-        </div>
-      </section>
+    <div
+      className="min-h-screen overflow-x-clip font-mono antialiased text-zinc-950"
+      style={{ backgroundColor: GROUND }}
+    >
+      <Hero />
 
-      {/* Today's Edit */}
-      <section className="bg-white py-24 text-zinc-950">
-        <div className="mx-auto max-w-7xl px-4">
-          <div className="mb-6 flex items-end justify-between">
-            <div>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-                <T k="home.selectionLabel" />
-              </p>
-              <h2
-                className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
-                style={{ fontFamily: "var(--font-general-sans), sans-serif" }}
-              >
-                <T k="home.todaysEdit" />
-              </h2>
-            </div>
+      <SearchBrowseRow />
+
+      <FeaturedArchives />
+
+      {/* Curated Selection — presentation only; the data flow above is unchanged. */}
+      <section className="border-b py-16" style={{ borderColor: HAIRLINE }}>
+        <div className={CONTAINER}>
+          <div className="mb-10 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
+            <h2 className={`${SECTION_LABEL}`}>
+              <T k="home.curatedSelection" />
+            </h2>
             <Link
               href="/feed"
               replace
-              className="font-mono text-sm text-zinc-500 transition-colors hover:text-zinc-950"
+              className={`${UTILITY_CAPS} transition-opacity hover:opacity-60`}
             >
               <T k="home.viewAll" />
             </Link>
@@ -120,19 +99,11 @@ try {
       </section>
 
       {/* Across Paris */}
-      <section className="border-t border-zinc-200 bg-white py-24 text-zinc-950">
-        <div className="mx-auto max-w-7xl px-4">
-          <div className="mb-12">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-              <T k="home.geographyLabel" />
-            </p>
-            <h2
-              className="text-[clamp(28px,4vw,40px)] font-normal leading-tight tracking-tight"
-              style={{ fontFamily: "var(--font-general-sans), sans-serif" }}
-            >
-              <T k="home.acrossParis" />
-            </h2>
-          </div>
+      <section className="py-16">
+        <div className={CONTAINER}>
+          <h2 className={`${SECTION_LABEL} mb-10`}>
+            <T k="home.acrossParis" />
+          </h2>
           <ParisMap stores={stores} />
         </div>
       </section>

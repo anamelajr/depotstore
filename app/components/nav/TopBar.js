@@ -85,41 +85,35 @@ export default function TopBar({
     );
   }
 
+  // Option 1B (Alaïa arrangement): DÉPÔT + MENU cluster left, SEARCH +
+  // language right. Height stays 56px — coupled to --nav-height in globals.css.
   return (
-    <div className="mx-auto flex h-[56px] w-full items-center px-6">
-      <div className="flex flex-1 items-center gap-6">
+    <div className="mx-auto flex h-[56px] w-full items-center px-12">
+      <div className="flex items-center gap-8">
+        <Link href="/" className="font-mono text-[16px] tracking-[0.2em] text-zinc-950">
+          DÉPÔT
+        </Link>
         {isMenuOpen ? (
-          <>
-            <button type="button" onClick={onCloseClick} className={`${baseLink} flex items-center gap-2`}>
-              <CloseIcon /> {t("nav.close")}
-            </button>
-            <button type="button" onClick={onSearchClick} className={`${baseLink} flex items-center gap-2`}>
-              <SearchIcon /> {t("nav.searchTheArchive")}
-            </button>
-          </>
+          <button type="button" onClick={onCloseClick} className={`${baseLink} flex items-center gap-2`}>
+            <CloseIcon /> {t("nav.close")}
+          </button>
         ) : (
-          <>
-            <button type="button" onClick={onMenuClick} className={`${baseLink} flex items-center gap-2`}>
-              <MenuIcon /> {t("nav.menu")}
-            </button>
-            <button type="button" onClick={onSearchClick} className={`${baseLink} flex items-center gap-2`}>
-              <SearchIcon /> {t("nav.search")}
-            </button>
-          </>
+          <button type="button" onClick={onMenuClick} className={`${baseLink} flex items-center gap-2`}>
+            <MenuIcon /> {t("nav.menu")}
+          </button>
         )}
       </div>
 
-      <Link href="/" className="font-mono text-[13px] tracking-[0.22em] text-zinc-950">
-        DÉPÔT
-      </Link>
-
-      <div className="flex flex-1 items-center justify-end gap-6">
+      <div className="ml-auto flex items-center gap-7">
+        <button type="button" onClick={onSearchClick} className={`${baseLink} flex items-center gap-2`}>
+          {isMenuOpen ? t("nav.searchTheArchive") : t("nav.search")} <SearchIcon />
+        </button>
         {!isMenuOpen && (
           <>
-            <RegionMenu />
             <Link href="/saved" className={baseLink}>
               {t("nav.saved")}
             </Link>
+            <RegionMenu />
           </>
         )}
       </div>
