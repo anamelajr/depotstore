@@ -1,63 +1,157 @@
-# Hide zero-priced ("not for sale" / rental) items from the feed
+# Hide zero-priced ("not for sale" / rental) items everywhere on the site
 
 ## Context
 
-Grain de Sell (and Numero 13) publish archive pieces on Shopify with `price: 0.00`; their descriptions say "NOT FOR SALE" / rental. 54 such rows are currently `available = true, hidden = false`, so they render as "€0" cards in the feed (e.g. `miu-miu-fw1999-leather-long-coat`). Investigation confirmed zero price is the reliable signal (metadata markers miss 1 item; no priced item ever carries a marker). User decision: **hide these items entirely for now** — reversible later if they want them back.
+Grain de Sell (and Numero 13) publish archive pieces on Shopify with `price: 0.00`; their
+descriptions say "NOT FOR SALE" / rental. Those rows sync faithfully into `products.price`
+as `'€0.00'` and render as "€0" cards (e.g. `miu-miu-fw1999-leather-long-coat`).
 
-Approach: a **read-time visibility filter** ("available for sale" = `available AND NOT hidden AND price is not exactly €0`). No data mutation, no `hidden` writes (that column belongs to enrich), and removing the filter later restores the items instantly. The sync keeps mirroring `€0.00` faithfully.
+**Requirement:** a product priced at zero must not be visible anywhere on the site — not in
+the feed, not on editorial surfaces, and not on its own detail page via a direct link.
 
-The mapper (`shopifyFetch.js:100`) always formats as `€X.toFixed(2)`, so the zero literal is exactly `'€0.00'` — a single-value exclusion is safe.
+Approach: a **read-time exclusion**, applied at every product-read surface. No data mutation
+and no `hidden` writes (that column belongs to enrich), so removing the filter later restores
+every item instantly. The sync keeps mirroring `€0.00` faithfully.
+
+### Verified facts this plan depends on
+
+- **The zero literal is exactly `'€0.00'`.** Confirmed against production: all 408 zero rows
+  use that identical spelling; there are no `'€0'` / `'€0,00'` / blank / NULL price rows.
+  The mapper (`shopifyFetch.js:100`) always formats `€${n.toFixed(2)}`, so an exact-match
+  exclusion is safe. NULL price stays *allowed* — null means "unknown", not "not for sale".
+- **All 408 zero rows have `hidden = false`**, so `withCuratedVisibility` (hidden-only) does
+  not filter them today — editorial surfaces need the rule too.
+- **Chained `.or()` calls are ANDed by PostgREST** (documented at `fetchProductsPage.js:49`),
+  so adding a third `.or()` composes safely with the existing category and search `.or()`s.
+- **The detail page does not use `withVisibility` at all** — `resolveProductDetail` fetches by
+  handle + store_domain only, and computes price from the **live Shopify fetch**, not the DB
+  (`resolveProductDetail.js:151-156`). So the detail gate must key off that computed value.
 
 ## Changes
 
-### 1. `app/lib/productQueries.js` — `withVisibility`
+### 1. `app/lib/productQueries.js` — both visibility helpers
 
-Append a null-tolerant zero-price exclusion (PostgREST `.neq` silently drops NULL rows — the CLAUDE.md NULL-drift trap; mapper can emit null price):
+Add one shared exclusion used by both helpers, so the rule has a single definition:
 
 ```js
+const ZERO_PRICE = "€0.00";
+
+// Stores publish "not for sale" / rental archive pieces at 0.00; those must not
+// surface anywhere. NULL price stays visible — null means unknown, not unsellable.
+// The .or() value is double-quoted per the PostgREST escaping rule (contains dots).
+function excludeZeroPrice(query) {
+  return query.or(`price.is.null,price.neq."${ZERO_PRICE}"`);
+}
+
 export function withVisibility(query) {
-  return query
-    .eq("available", true)
-    .eq("hidden", false)
-    .or('price.is.null,price.neq."€0.00"'); // value double-quoted: contains dots
+  return excludeZeroPrice(query.eq("available", true).eq("hidden", false));
+}
+
+export function withCuratedVisibility(query) {
+  return excludeZeroPrice(query.eq("hidden", false));
 }
 ```
 
-This automatically covers every direct-query surface: `fetchProductsPage.js` (both branches, incl. the price-sort fetch-all), `MoreFromStore.js`, `fetchHomepagePicks.js`, admin search, enrich batch select + remaining count (both share `withVisibility`, so the batch/remaining-count parity invariant holds).
+This covers every direct-query surface at once: `fetchProductsPage.js` (both branches,
+including the fetch-all price sort), `MoreFromStore.js`, `fetchHomepagePicks.js`,
+`fetchEditorialProducts.js`, admin search, and the enrich batch select + remaining count
+(both share `withVisibility`, so the batch/remaining-count parity invariant holds).
 
-Leave `withCuratedVisibility` untouched (editorial picks are hand-curated; sold/zero pieces there are intentional).
+### 2. `app/lib/resolveProductDetail.js` — gate the detail page
 
-### 2. Interleaved RPCs (Supabase, not git) — new migration
+Immediately after `price` is computed (currently line 156), before any description
+generation or cache-back write:
 
-New file `scripts/sql/2026-08-11-exclude-zero-price.sql` re-declaring `get_interleaved_products` and `count_interleaved_products`, based on the current source of truth `scripts/sql/2026-05-28-add-image-url-2.sql`, adding to **all three** visibility WHERE sites (`store_order` CTE + `ranked` CTE in the get function, and the count function):
-
-```sql
-AND (p.price IS NULL OR p.price <> '€0.00')
+```js
+// Zero-priced pieces are the stores' "not for sale" / rental archive; the feed
+// excludes them, so a direct link must 404 rather than render a €0 product page.
+if (minPrice === 0) return null;
 ```
 
-(`store_order` uses the unaliased table — match its existing column style.)
+`ProductPage` already renders "Product not found." when `resolveProductDetail` returns null,
+so no page-level change is needed. Placing the gate before `generateDescription` also stops
+OpenAI spend on pages that will never render.
 
-Per workflow invariant, this SQL must be applied in the **Supabase SQL Editor before the code merges** (MCP is read-only). Hand the file to the user to run; verify with the read-only MCP afterwards.
+Note this keys off the live Shopify price, which is the value that would otherwise be
+displayed — so it stays correct even if the DB row is stale between hourly syncs.
 
-### 3. Tests
+### 3. Interleaved RPCs (Supabase, not git) — new migration
 
-- `app/lib/__tests__/productQueries.test.js`: extend the `withVisibility` assertions (nth-call `.eq` order test tolerates an appended call; add an assertion for the `.or` zero-price clause, including the double-quoted value).
-- Optionally add a mapper-level regression note is NOT needed — mapper behavior is unchanged by design.
+New file `scripts/sql/2026-08-11-exclude-zero-price.sql` redefining **both** RPCs. Base each
+body on its current source of truth:
 
-### 4. No other surfaces change
+- `get_interleaved_products` → `scripts/sql/2026-05-28-add-image-url-2.sql` (adds `image_url_2`)
+- `count_interleaved_products` → `scripts/sql/2026-05-21-interleaved-rpcs.sql` (never
+  redefined since; the 05-28 file states at line 15 that it deliberately leaves it untouched)
 
-- Sync/cron: untouched (still mirrors `€0.00`; `hidden` not in upsert payload).
-- Inventory snapshot/analytics: deliberately capture hidden/zero rows — untouched (snapshot test asserts zero `.eq()` calls; we add nothing there).
-- `searchAliases.js` bare `.eq("hidden", false)`: alias-expansion counting only, not a product-display surface — untouched.
+Add to **all three** visibility WHERE sites — the `store_order` CTE and the `ranked` CTE in
+the get function, plus the count function:
+
+```sql
+AND (price IS NULL OR price <> '€0.00')
+```
+
+(use `p.price` in the sites that alias the table; `store_order` references it unaliased).
+
+Preserve the existing DROP+CREATE / grant handling from the 05-28 file for the get function.
+Per the workflow invariant this SQL applies in the **Supabase SQL Editor before the code
+merges** (MCP is read-only) — hand the file over to run, then verify with read-only MCP.
+
+### 4. Tests
+
+`app/lib/__tests__/productQueries.test.js`: extend both helper tests. The existing nth-call
+`.eq` assertions tolerate an appended call, so add coverage that each helper issues the
+`.or()` with the double-quoted `"€0.00"` value and the `price.is.null` disjunct, and that
+`withCuratedVisibility` still does not touch `available`.
+
+Add a `resolveProductDetail` case asserting a product whose Shopify variants are all `0.00`
+resolves to `null` (and that `generateDescription` is not called for it).
+
+### 5. Surfaces deliberately unchanged
+
+- **Sync / cron** — still mirrors `€0.00`; `hidden` is not in the upsert payload.
+- **Inventory snapshot / analytics / archive** — intentionally capture hidden and sold rows so
+  history stays complete. The snapshot test asserts zero `.eq()` calls; add nothing there.
+- **`searchAliases.js`** — alias-expansion counting, not a display surface.
 
 ## Verification
 
-1. `npm test` (vitest) — productQueries tests pass.
-2. After the user applies the SQL in Supabase: read-only MCP check
-   `SELECT count(*) FROM get_interleaved_products(null,null,null,null,null,60,0) g JOIN products p ON p.handle=g.handle AND p.store_domain=g.store_domain WHERE p.price='€0.00';` → 0.
-3. `npm run dev`, open the feed via the preview browser: search "miu miu" / filter GRAIN DE SELL — the FW99 Leather Long Coat no longer appears; price-sort ascending no longer starts with €0 items.
-4. Confirm product-detail deep link for a zero-priced handle still resolves (detail page doesn't use withVisibility — acceptable; feed/search no longer link to it).
+1. `npm test` (vitest) — productQueries + resolveProductDetail tests pass.
+2. After the SQL is applied, read-only MCP checks over the **whole** RPC result set, not just
+   page 0 (the RPC returns `price` directly, so no join is needed):
+
+   ```sql
+   -- a) no zero-priced row anywhere in the get RPC
+   SELECT count(*) FROM get_interleaved_products(null,null,null,null,null,20000,0)
+   WHERE price = '€0.00';                                    -- expect 0
+
+   -- b) get/count parity
+   SELECT (SELECT count(*) FROM get_interleaved_products(null,null,null,null,null,20000,0))
+        = (SELECT count_interleaved_products(null,null,null,null,null)) AS parity;  -- expect true
+
+   -- c) filtered paths, incl. the worst-offender store
+   SELECT count(*) FROM get_interleaved_products('graindesell.shop',null,null,null,null,20000,0)
+   WHERE price = '€0.00';                                    -- expect 0
+   ```
+   Repeat (c) with a category and a search term to exercise the other filter branches.
+3. `npm run dev`, then via the preview browser: search "miu miu" and filter to GRAIN DE SELL —
+   the FW99 Leather Long Coat no longer appears; price-sort ascending no longer starts with €0
+   cards; the homepage editorial rows show no €0 items.
+4. Direct-link check: `/product/miu-miu-fw1999-leather-long-coat?store=graindesell.shop`
+   must render "Product not found."
+5. Sanity check that nothing over-filtered: feed total should drop by roughly the 54
+   available zero-priced rows, not by hundreds.
 
 ## Rollback
 
-Remove the `.or` clause and re-apply the previous RPC definitions (`2026-05-28-add-image-url-2.sql`). No data was mutated.
+No data was mutated, so rollback is code + SQL only:
+
+1. Remove `excludeZeroPrice` from both helpers in `productQueries.js`.
+2. Remove the `minPrice === 0` gate in `resolveProductDetail.js`.
+3. Restore **both** RPCs — they live in different files, and restoring only one leaves the
+   feed and its total count disagreeing (get would return zero-priced rows the count omits,
+   understating totals and stranding the tail of the feed beyond reachable pages):
+   - `get_interleaved_products` from `scripts/sql/2026-05-28-add-image-url-2.sql`
+   - `count_interleaved_products` from `scripts/sql/2026-05-21-interleaved-rpcs.sql`
+
+   Re-run the get/count parity check (step 2b) afterwards.
