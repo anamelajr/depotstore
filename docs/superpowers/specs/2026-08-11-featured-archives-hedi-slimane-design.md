@@ -72,13 +72,17 @@ The module FeaturedArchives.js's comment already reserves. `ARCHIVES` array in t
     // Attribution REQUIRED: 2000–07 Dior stock is dominated by Galliano womenswear.
     { brand: "DIOR", eraStart: 2000, eraEnd: 2007, attribution: ["homme", "hedi", "slimane"] },
     { brand: "SAINT LAURENT", eraStart: 2012, eraEnd: 2016 },
-    { brand: "SAINT LAURENT", attribution: ["hedi", "slimane"] }, // named but un-yeared pieces
+    // Named but UN-YEARED pieces only (e.g. "SL10H … by Hedi Slimane" sneakers with
+    // no season token). eraYearNull guards against future out-of-tenure listings whose
+    // copy merely mentions Slimane ("succeeding Hedi Slimane"): attributed rows WITH a
+    // year are covered by the range rule above or correctly excluded by it.
+    { brand: "SAINT LAURENT", eraYearNull: true, attribution: ["hedi", "slimane"] },
   ],
   include: [], exclude: [],             // [{ storeDomain, handle }] curation overrides
 }
 ```
 
-Exports `getLiveArchives()`, `getArchiveBySlug(slug)`. Name/years/description are content — English-only, not i18n messages. **Test `app/lib/__tests__/archives.test.js`**: unique live slugs; required fields on live entries; rules well-formed (uppercase brand; era pair 1960–2029 with start≤end, or non-empty lowercase attribution); override entries have storeDomain+handle; exactly five entries.
+Exports `getLiveArchives()`, `getArchiveBySlug(slug)`. Name/years/description are content — English-only, not i18n messages. **Test `app/lib/__tests__/archives.test.js`**: unique live slugs; required fields on live entries; rules well-formed (uppercase brand; era pair 1960–2029 with start≤end, `eraYearNull` boolean mutually exclusive with the era pair, or non-empty lowercase attribution); override entries have storeDomain+handle; exactly five entries.
 
 ## 5. Query — `app/lib/fetchArchiveProducts.js` (new)
 
@@ -88,11 +92,15 @@ Server-side; `fetchArchiveProducts(archive, { client })` with productQueries' dy
 let q = client.from("products").select(`${PRODUCT_ROW_SELECT}, synced_at`).eq("brand", rule.brand);
 q = withVisibility(q);                                 // available + !hidden + zero-price exclusion
 if (rule.eraStart != null) q = q.gte("era_year", rule.eraStart).lte("era_year", rule.eraEnd);
+if (rule.eraYearNull) q = q.is("era_year", null);      // un-yeared-only rules (see config §4)
 if (rule.attribution?.length) q = q.or(rule.attribution.flatMap((t) => [
   `name.ilike.${escapePostgrestValue(`%${t}%`)}`,
   `description.ilike.${escapePostgrestValue(`%${t}%`)}`,
 ]).join(","));
 ```
+
+- Attribution deliberately searches `name`/`description` only, NOT `title`: enrichment strips brand/designer tokens from titles (`titleLeaksAllowedBrandStrict` + prompt), and a full-table check confirmed zero rows carry title-only attribution — titles cannot carry a signal their source `name` lacks. (Adversarial-review finding 1 rejected on this evidence; finding 2 produced the `eraYearNull` guard above.)
+- **Membership tests** (in the `fetchArchiveProducts` stub-client test): positive — attribution-only match with NULL era_year included; negative — attributed row with out-of-range era_year (e.g. 2018) excluded.
 
 - `escapePostgrestValue` imported from [fetchProductsPage.js:24](app/lib/fetchProductsPage.js) (CLAUDE.md's pointer to `/api/products/route.js` is stale). Quote unconditionally per the `.or()` invariant.
 - Chained `.or()`s AND together (documented at productQueries.js:24–26), so visibility's zero-price `.or` composes with the attribution `.or` as intended.
