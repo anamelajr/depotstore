@@ -1,0 +1,111 @@
+<h2>Landing page structure — where does everything go?</h2>
+<p class="subtitle">Both follow your reference: hero → search &amp; browse-by → featured archives → curated selection. The difference is the Paris map. Click your pick.</p>
+
+<style>
+  .depot-mock { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; /* impeccable-disable overused-font: throwaway wireframe stand-in for the site's Satoshi/General Sans */ background: #f5f2ed; color: #111; border: 1px solid #ddd6ca; font-size: 10px; }
+  .sec { border-bottom: 1px solid #e2dccd; padding: 10px 16px; }
+  .sec .tag { font-size: 8px; letter-spacing: 0.18em; color: #a09680; display: block; margin-bottom: 4px; }
+  .bar-mini { display: flex; align-items: center; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e8e2d6; }
+  .bar-mini b { letter-spacing: 0.14em; font-size: 11px; }
+  .bar-mini span { font-size: 8px; letter-spacing: 0.14em; margin-left: 18px; color: #444; }
+  .bar-mini .right { margin-left: auto; }
+  .hero-mini { display: grid; grid-template-columns: 1fr 1.2fr; }
+  .hero-mini .copy { padding: 16px; }
+  .hero-mini .copy h1 { font-size: 17px; line-height: 1.05; margin: 0 0 6px; font-weight: 500; }
+  .hero-mini .copy p { font-size: 8.5px; color: #777; margin: 0; max-width: 150px; line-height: 1.45; }
+  .hero-mini .img { background: linear-gradient(145deg, #e7e1d5, #d5ccba); min-height: 84px; display: flex; align-items: flex-end; justify-content: flex-end; padding: 8px; }
+  .hero-mini .img small { font-size: 7px; letter-spacing: 0.1em; color: #776f60; }
+  .searchrow { display: flex; align-items: center; gap: 10px; background: #fbf9f4; }
+  .searchrow .input { flex: 1; border-bottom: 1px solid #b8ad97; color: #999; padding: 4px 2px; font-size: 9px; }
+  .searchrow .browse { font-size: 8px; letter-spacing: 0.12em; color: #555; white-space: nowrap; }
+  .arch-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .arch-card { border: 1px solid #ddd6c6; background: #fff; padding: 8px 6px; text-align: center; }
+  .arch-card b { font-size: 8px; letter-spacing: 0.1em; display: block; }
+  .arch-card i { font-size: 7.5px; color: #999; font-style: normal; }
+  .grid8 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .prod { background: #fff; border: 1px solid #e4ddcd; }
+  .prod .ph { height: 44px; background: linear-gradient(160deg, #eee9dd, #ddd5c3); }
+  .prod .nm { font-size: 7px; padding: 4px; color: #555; }
+  .map-mini { height: 60px; background: repeating-linear-gradient(45deg, #e9e4d7, #e9e4d7 6px, #efeadd 6px, #efeadd 12px); display: flex; align-items: center; justify-content: center; color: #8d8471; font-size: 9px; letter-spacing: 0.12em; }
+  .foot { padding: 8px 16px; font-size: 7.5px; color: #999; letter-spacing: 0.1em; }
+</style>
+
+<div class="split">
+
+  <div class="card" data-choice="structure-a-keep-map" onclick="toggleSelect(this)" style="cursor: pointer;">
+    <div class="card-image" style="padding: 12px; background: #eceadf; height: auto;">
+      <div class="depot-mock">
+        <div class="bar-mini"><b>DÉPÔT</b><span>MENU</span><span class="right">SEARCH ⌕ &nbsp; EN</span></div>
+        <div class="hero-mini">
+          <div class="copy"><h1>Paris.<br>Archive.<br>One feed.</h1><p>Curated archive fashion from Paris boutiques.</p></div>
+          <div class="img"><small>A.F. VANDERVORST · SS 2001</small></div>
+        </div>
+        <div class="sec searchrow"><div class="input">Search archives…</div><div class="browse">BROWSE BY&nbsp; DESIGNER · YEAR · CATEGORY</div></div>
+        <div class="sec">
+          <span class="tag">FEATURED ARCHIVES</span>
+          <div class="arch-row">
+            <div class="arch-card"><b>MARTIN MARGIELA</b><i>1988–2009</i></div>
+            <div class="arch-card"><b>HELMUT LANG</b><i>1996–2005</i></div>
+            <div class="arch-card"><b>HEDI SLIMANE</b><i>2000–2016</i></div>
+            <div class="arch-card"><b>VIEW ALL →</b><i>&nbsp;</i></div>
+          </div>
+        </div>
+        <div class="sec">
+          <span class="tag">CURATED SELECTION — TODAY'S EDIT</span>
+          <div class="grid8">
+            <div class="prod"><div class="ph"></div><div class="nm">FW99 Wide Trousers</div></div>
+            <div class="prod"><div class="ph"></div><div class="nm">SS05 Leather Jacket</div></div>
+            <div class="prod"><div class="ph"></div><div class="nm">2000s Combat Boots</div></div>
+            <div class="prod"><div class="ph"></div><div class="nm">AW01 Sleeveless Tee</div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <span class="tag">ACROSS PARIS</span>
+          <div class="map-mini">◉ PARIS MAP — THE BOUTIQUES</div>
+        </div>
+        <div class="foot">FOOTER</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Keep the map, last section</h3>
+      <p>Full lineup: hero, search + browse-by, featured archives, Today's Edit, then the Paris map closes the page. The map is a differentiator — it says "these are real boutiques you can walk into."</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="structure-b-drop-map" onclick="toggleSelect(this)" style="cursor: pointer;">
+    <div class="card-image" style="padding: 12px; background: #eceadf; height: auto;">
+      <div class="depot-mock">
+        <div class="bar-mini"><b>DÉPÔT</b><span>MENU</span><span class="right">SEARCH ⌕ &nbsp; EN</span></div>
+        <div class="hero-mini">
+          <div class="copy"><h1>Paris.<br>Archive.<br>One feed.</h1><p>Curated archive fashion from Paris boutiques.</p></div>
+          <div class="img"><small>A.F. VANDERVORST · SS 2001</small></div>
+        </div>
+        <div class="sec searchrow"><div class="input">Search archives…</div><div class="browse">BROWSE BY&nbsp; DESIGNER · YEAR · CATEGORY</div></div>
+        <div class="sec">
+          <span class="tag">FEATURED ARCHIVES</span>
+          <div class="arch-row">
+            <div class="arch-card"><b>MARTIN MARGIELA</b><i>1988–2009</i></div>
+            <div class="arch-card"><b>HELMUT LANG</b><i>1996–2005</i></div>
+            <div class="arch-card"><b>HEDI SLIMANE</b><i>2000–2016</i></div>
+            <div class="arch-card"><b>VIEW ALL →</b><i>&nbsp;</i></div>
+          </div>
+        </div>
+        <div class="sec">
+          <span class="tag">CURATED SELECTION — TODAY'S EDIT</span>
+          <div class="grid8">
+            <div class="prod"><div class="ph"></div><div class="nm">FW99 Wide Trousers</div></div>
+            <div class="prod"><div class="ph"></div><div class="nm">SS05 Leather Jacket</div></div>
+            <div class="prod"><div class="ph"></div><div class="nm">2000s Combat Boots</div></div>
+            <div class="prod"><div class="ph"></div><div class="nm">AW01 Sleeveless Tee</div></div>
+          </div>
+        </div>
+        <div class="foot">FOOTER — map moves to /stores, linked from footer + menu</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Drop the map from the landing page</h3>
+      <p>Tighter page ending on Today's Edit, matching your reference's rhythm. The map relocates to the /stores page (linked from the menu and footer) instead of disappearing.</p>
+    </div>
+  </div>
+
+</div>
