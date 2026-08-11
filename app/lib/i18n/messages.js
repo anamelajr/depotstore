@@ -110,7 +110,7 @@ export const MESSAGES = {
     "home.browseDesigner": "Designer",
     "home.browseYear": "Year",
     "home.browseCategory": "Category",
-    "home.featuredArchives": "Featured Archives",
+    "home.featured": "Featured",
     "home.todaysCuration": "Today's Curation",
     // Editorial index
     "editorial.label": "Editorial",
@@ -255,7 +255,7 @@ export const MESSAGES = {
     "home.browseDesigner": "Créateur",
     "home.browseYear": "Année",
     "home.browseCategory": "Catégorie",
-    "home.featuredArchives": "Archives à la une",
+    "home.featured": "À la une",
     "home.todaysCuration": "La Curation du Jour",
     // Editorial index
     "editorial.label": "Éditorial",

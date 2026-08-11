@@ -24,7 +24,7 @@ export default function FeaturedArchives() {
         className={`${CONTAINER} flex flex-col gap-6 py-8 md:h-[90px] md:flex-row md:items-center md:gap-0 md:py-0`}
       >
         <span className={`${BAND_LABEL} shrink-0 md:w-[17%]`}>
-          <T k="home.featuredArchives" />
+          <T k="home.featured" />
         </span>
 
         <div className="grid grid-cols-2 gap-y-5 sm:grid-cols-3 md:flex md:flex-1 md:gap-y-0">
