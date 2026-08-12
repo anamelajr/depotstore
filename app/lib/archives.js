@@ -34,7 +34,7 @@ export const ARCHIVES = [
     // /editorial/<slug>. No Slimane entry exists yet.
     editorialSlug: null,
     description:
-      "Hedi Slimane reshaped modern menswear at Dior Homme (2000–2007), defining the radically slim silhouette that became one of the most influential aesthetics of the 2000s. He revisited that vision at Saint Laurent in the early 2010s, fusing sharp tailoring with rock and youth culture — a legacy renewed two decades later by the \"Hedi Boy\" movement.",
+      "Hedi Slimane reshaped modern menswear at Dior Homme, defining the radically slim silhouette of the 2000s — a vision revisited at Saint Laurent, fusing sharp tailoring with rock and youth culture.",
     rules: [
       // Attribution REQUIRED: 2000–07 Dior stock is dominated by Galliano
       // womenswear (64 rows carry the era signal, ~6 carry homme/Slimane).

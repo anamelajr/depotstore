@@ -4,13 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import ProductCard from "../../components/ProductCard.js";
 import T from "../../components/T.js";
-import {
-  CONTAINER,
-  GROUND,
-  HAIRLINE,
-  HERO_GROUND,
-  UTILITY_CAPS,
-} from "../../components/home/tokens.js";
+import { GROUND, HAIRLINE, UTILITY_CAPS } from "../../components/home/tokens.js";
 import { getArchiveBySlug, getLiveArchives } from "../../lib/archives.js";
 import { fetchArchiveProducts } from "../../lib/fetchArchiveProducts.js";
 import { getLanguage } from "../../lib/i18n/language.js";
@@ -68,14 +62,17 @@ export default async function ArchivePage({ params }) {
           bottom. Literal bg class, not bg-[${HERO_GROUND}]: a dynamic value
           never reaches Tailwind's JIT scanner (see Hero.js). */}
       <section className="relative w-full bg-[#eceae4]">
-        <div className="grid grid-cols-1 md:min-h-[400px] md:grid-cols-[55fr_45fr]">
-          <div className="flex flex-col justify-center px-6 py-12 md:py-14 md:pl-[8.2vw] md:pr-14">
+        {/* Three tracks on md+: copy | portrait | empty band ground. The
+            trailing spacer pulls the figure off the right edge so it reads
+            as central-right (~62% of the page), matching the reference. */}
+        <div className="grid grid-cols-1 md:min-h-[320px] md:grid-cols-[44fr_34fr_22fr]">
+          <div className="flex flex-col justify-center px-6 py-12 md:py-10 md:pl-[4.5vw] md:pr-10">
             <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
               <T k="archive.eyebrow" />
             </span>
 
             <h1
-              className="mt-5 text-[clamp(25px,2.3vw,33px)] font-light leading-[1.22] tracking-[0.05em] text-zinc-950"
+              className="mt-6 text-[clamp(20px,1.95vw,30px)] font-light leading-[1.25] tracking-[0.06em] text-zinc-950"
               style={{ fontFamily: "var(--font-satoshi), sans-serif" }}
             >
               {archive.name}
@@ -83,7 +80,7 @@ export default async function ArchivePage({ params }) {
               {archive.years}
             </h1>
 
-            <p className="mt-5 max-w-[44ch] text-[13px] leading-[1.65] text-zinc-600">
+            <p className="mt-5 max-w-[36ch] text-[12px] leading-[1.7] text-zinc-600">
               {archive.description}
             </p>
 
@@ -103,24 +100,27 @@ export default async function ArchivePage({ params }) {
           {/* Mobile mirrors home Hero's order: copy first, image below. The
               asset is a transparent-background cutout (see reference mockup):
               contained on the band ground and bottom-anchored, so its crop
-              line reads as the figure bleeding off the band's bottom edge. */}
+              line reads as the figure bleeding off the band's bottom edge.
+              On md+ the cutout bleeds the band's full height, top to bottom. */}
           <div className="relative aspect-[4/5] md:aspect-auto md:min-h-full">
             <Image
               src={archive.image}
               alt={archive.imageAlt}
               fill
               priority
-              sizes="(max-width: 768px) 100vw, 45vw"
-              className="object-contain object-right-bottom pt-8 md:pt-10"
+              sizes="(max-width: 768px) 100vw, 34vw"
+              className="object-contain object-right-bottom pt-8 md:object-bottom md:pt-0"
             />
           </div>
+
+          <div aria-hidden="true" className="hidden md:block" />
         </div>
       </section>
 
       {/* Toolbar — count only. No FILTERS, no sort, no view toggle: an archive
           is a fixed, curated set, not a browsable feed. */}
       <div className="border-t" style={{ borderColor: HAIRLINE }}>
-        <div className={`${CONTAINER} py-4`}>
+        <div className="w-full px-6 py-4">
           <span className={UTILITY_CAPS}>
             {products.length} <T k="archive.items" />
           </span>
@@ -128,10 +128,10 @@ export default async function ArchivePage({ params }) {
       </div>
 
       {/* Feed's grid conventions, at four columns — this page has no filter
-          rail to make room for. Every member renders at once; the empty state
-          is the "0 ITEMS" above. */}
-      <div className={`${CONTAINER} pb-16 pt-2 md:pb-24`}>
-        <div className="grid grid-cols-2 gap-10 lg:grid-cols-4 lg:gap-x-3.5 lg:gap-y-16">
+          rail to make room for, so unlike the feed the grid runs the full
+          page width (reference layout) rather than the 1210px container. */}
+      <div className="w-full px-6 pb-16 pt-2 md:pb-24">
+        <div className="grid grid-cols-2 gap-10 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-10">
           {products.map((p) => (
             <ProductCard
               key={`${p.storeDomain}::${p.handle}`}
