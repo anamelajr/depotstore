@@ -45,13 +45,28 @@ function sleep(ms) {
 //
 // Plain overwrite, by design — era_year is derived data (deterministic parse,
 // no judgment), so the COALESCE/write-once protection that guards
-// brand/title/category deliberately does not apply. `newTitle` is folded
-// through the same COALESCE the enrich_product RPC applies: if the row already
-// had a title, the RPC keeps it, so the era must be read off that one.
-async function syncEraYear(row, newTitle) {
-  const effectiveTitle = row.title ?? newTitle ?? null;
-  const eraYear = parseEraYear(effectiveTitle, row.name);
-  if (eraYear === (row.era_year ?? null)) return;
+// brand/title/category deliberately does not apply. The title is RE-READ from
+// the row after the RPC rather than taken from our snapshot or our own
+// cleanTitle output: the RPC's COALESCE may have kept a title written by a
+// concurrent enrich run between our SELECT and our RPC, and deriving the era
+// from our never-persisted candidate would overwrite the correct value with
+// one parsed from a title the row doesn't carry (Codex review, 2026-08-12).
+async function syncEraYear(row) {
+  const { data: persisted, error: readErr } = await supabaseAdmin
+    .from("products")
+    .select("title, era_year")
+    .eq("id", row.id)
+    .single();
+  if (readErr) {
+    console.error(
+      `syncEraYear re-read failed for ${row.store_domain}/${row.handle}:`,
+      readErr.message
+    );
+    return;
+  }
+
+  const eraYear = parseEraYear(persisted.title ?? null, row.name);
+  if (eraYear === (persisted.era_year ?? null)) return;
 
   const { error } = await supabaseAdmin
     .from("products")
@@ -95,10 +110,7 @@ export async function POST(request) {
   const { data: rows, error: selErr } = await withVisibility(
     supabaseAdmin
       .from("products")
-      // era_year rides along for the derived-column refresh below. Adding a
-      // COLUMN is safe here; the batch/remaining-count parity invariant is
-      // about the FILTERS, which are untouched.
-      .select("id, handle, store_domain, name, brand, title, category, description, editorial_description, enrich_attempts, era_year"),
+      .select("id, handle, store_domain, name, brand, title, category, description, editorial_description, enrich_attempts"),
   )
     .lt("enrich_attempts", MAX_ENRICH_ATTEMPTS)
     .or("brand.is.null,title.is.null,category.is.null")
@@ -346,8 +358,9 @@ export async function POST(request) {
         } else {
           succeeded++;
           // Covers both title producers — the model path and the handle
-          // fallback converge on `newTitle` above.
-          await syncEraYear(row, newTitle);
+          // fallback converge on the RPC write above; syncEraYear re-reads
+          // whichever title the COALESCE actually kept.
+          await syncEraYear(row);
         }
       } else {
         failed++;
