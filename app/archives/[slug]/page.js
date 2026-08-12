@@ -100,7 +100,10 @@ export default async function ArchivePage({ params }) {
             ) : null}
           </div>
 
-          {/* Mobile mirrors home Hero's order: copy first, image below. */}
+          {/* Mobile mirrors home Hero's order: copy first, image below. The
+              asset is a transparent-background cutout (see reference mockup):
+              contained on the band ground and bottom-anchored, so its crop
+              line reads as the figure bleeding off the band's bottom edge. */}
           <div className="relative aspect-[4/5] md:aspect-auto md:min-h-full">
             <Image
               src={archive.image}
@@ -108,7 +111,7 @@ export default async function ArchivePage({ params }) {
               fill
               priority
               sizes="(max-width: 768px) 100vw, 45vw"
-              className="object-cover object-[50%_18%]"
+              className="object-contain object-bottom pt-8 md:pt-10"
             />
           </div>
         </div>

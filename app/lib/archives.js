@@ -28,7 +28,7 @@ export const ARCHIVES = [
     slug: "hedi-slimane",
     name: "HEDI SLIMANE",
     years: "2000–07 · 2012–16",
-    image: "/archives/hedi-slimane/hero.jpg",
+    image: "/archives/hedi-slimane/hero.png",
     imageAlt: "Hedi Slimane portrait",
     // When set, the hero renders a VIEW COLLECTION STORY link to
     // /editorial/<slug>. No Slimane entry exists yet.
