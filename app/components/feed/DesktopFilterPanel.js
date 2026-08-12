@@ -14,9 +14,14 @@ export default function DesktopFilterPanel({
   storeOptions,
   onStoreChange,
   onClearAll,
+  // Archive pages pass a pruned taxonomy (only categories present in that
+  // archive) and have a single filter dimension. Both default to today's feed
+  // behavior, so the feed call site is unchanged.
+  categoryGroups = null,
+  showStore = true,
 }) {
   const { language, t } = useLanguage();
-  const CATEGORY_GROUPS = getFilterGroups(language);
+  const CATEGORY_GROUPS = categoryGroups ?? getFilterGroups(language);
   const closeButtonRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const panelRef = useRef(null);
@@ -212,6 +217,7 @@ export default function DesktopFilterPanel({
           </section>
 
           {/* STORE section — below category */}
+          {showStore && (
           <section>
             <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
               {t("filter.store")}
@@ -239,6 +245,7 @@ export default function DesktopFilterPanel({
               );
             })}
           </section>
+          )}
         </div>
 
         {/* Footer */}
