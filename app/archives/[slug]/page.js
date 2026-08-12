@@ -111,7 +111,7 @@ export default async function ArchivePage({ params }) {
               fill
               priority
               sizes="(max-width: 768px) 100vw, 45vw"
-              className="object-contain object-bottom pt-8 md:pt-10"
+              className="object-contain object-right-bottom pt-8 md:pt-10"
             />
           </div>
         </div>
