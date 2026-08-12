@@ -12,7 +12,7 @@ import { chunkArray } from "./chunk.js";
 import { escapePostgrestValue } from "./fetchProductsPage.js";
 import {
   withVisibility,
-  PRODUCT_ROW_SELECT,
+  PRODUCT_ROW_SELECT_WITH_CATEGORY,
   mapProductRow,
 } from "./productQueries.js";
 
@@ -24,7 +24,11 @@ async function getDefaultClient() {
   return supabase;
 }
 
-const ROW_SELECT = `${PRODUCT_ROW_SELECT}, synced_at`;
+// The archive page filters and sorts client-side over the whole set, so it
+// needs three columns the feed's canonical select doesn't carry: `category`
+// (base PRODUCT_ROW_SELECT omits it even though mapProductRow emits it),
+// `subcategory` for leaf filters, and `synced_at` for the newest/oldest sorts.
+const ROW_SELECT = `${PRODUCT_ROW_SELECT_WITH_CATEGORY}, subcategory, synced_at`;
 
 function rowKey(row) {
   return `${row.store_domain}::${row.handle}`;
@@ -142,5 +146,12 @@ export async function fetchArchiveProducts(archive, { client = null } = {}) {
 
   return [...byKey.values()]
     .sort((a, b) => String(b.synced_at ?? "").localeCompare(String(a.synced_at ?? "")))
-    .map(mapProductRow);
+    // mapProductRow stays the narrow shared shape (it deliberately omits
+    // `subcategory` and has no notion of `synced_at`); the two extras are
+    // widened here, for this surface only, rather than in the shared mapper.
+    .map((row) => ({
+      ...mapProductRow(row),
+      subcategory: row.subcategory ?? null,
+      syncedAt: row.synced_at ?? null,
+    }));
 }

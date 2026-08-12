@@ -15,27 +15,48 @@ export default function MobileFilterPanel({
   storeOptions,
   onApply,        // (next: { categories, store, brand }) => void  — all three commit atomically
 }) {
+  // Body scroll lock keyed on isOpen alone: this component stays mounted while
+  // closed, so a dep on the committed selection would re-run the closed branch
+  // on every desktop-panel toggle and clear the lock that panel still holds.
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  if (typeof document === "undefined") return null;
+  if (!isOpen) return null;
+
+  // The body remounts on every open, so its useState initializers re-seed the
+  // drafts from the committed selection without setState-in-effect.
+  return (
+    <MobileFilterPanelBody
+      onClose={onClose}
+      selectedCategories={selectedCategories}
+      selectedStore={selectedStore}
+      selectedBrand={selectedBrand}
+      storeOptions={storeOptions}
+      onApply={onApply}
+    />
+  );
+}
+
+function MobileFilterPanelBody({
+  onClose,
+  selectedCategories,
+  selectedStore,
+  selectedBrand,
+  storeOptions,
+  onApply,
+}) {
   const { t } = useLanguage();
   const [view, setView] = useState("root"); // 'root' | 'category' | 'store'
   const [draftCategories, setDraftCategories] = useState(selectedCategories);
   const [draftStore, setDraftStore] = useState(selectedStore);
   const [draftBrand, setDraftBrand] = useState(selectedBrand);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-      setDraftCategories(selectedCategories);
-      setDraftStore(selectedStore);
-      setDraftBrand(selectedBrand);
-      setView("root");
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
-  }, [isOpen, selectedCategories, selectedStore, selectedBrand]);
-
-  if (typeof document === "undefined") return null;
-  if (!isOpen) return null;
 
   const handleApply = () => {
     onApply({ categories: draftCategories, store: draftStore, brand: draftBrand });
@@ -167,7 +188,9 @@ function CategoryView({ onBack, onClose, draftCategories, setDraftCategories }) 
   );
 }
 
-function OptionRow({ label, checked, onChange }) {
+// Exported for the archive filter panel, which reuses this exact checkbox row
+// so the two mobile panels can't drift apart visually.
+export function OptionRow({ label, checked, onChange }) {
   return (
     <button
       onClick={onChange}

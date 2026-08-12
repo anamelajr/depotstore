@@ -25,10 +25,28 @@ function clauseMatches(row, clause) {
   throw new Error(`stub: unsupported op ${op}`);
 }
 
+// PostgREST returns ONLY the selected columns; anything the select omits
+// arrives `undefined` at the mapper. Simulating that projection is what makes
+// a too-narrow ROW_SELECT (or a field dropped in the final map) visible to the
+// suite instead of silently emptying every category filter in production.
+// Projection happens on the way out only — filters still evaluate against the
+// full row, exactly like a server-side WHERE.
+function project(row, cols) {
+  if (!cols) return row;
+  return Object.fromEntries(cols.map((c) => [c, row[c]]));
+}
+
 function makeBuilder(rows, error) {
   const ops = [];
+  let cols = null;
   const builder = {
-    select: () => builder,
+    select: (spec) => {
+      cols = String(spec)
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+      return builder;
+    },
     eq: (col, value) => (ops.push((r) => r[col] === value), builder),
     gte: (col, value) => (ops.push((r) => r[col] != null && r[col] >= value), builder),
     lte: (col, value) => (ops.push((r) => r[col] != null && r[col] <= value), builder),
@@ -43,7 +61,12 @@ function makeBuilder(rows, error) {
       resolve(
         error
           ? { data: null, error }
-          : { data: rows.filter((r) => ops.every((op) => op(r))), error: null },
+          : {
+              data: rows
+                .filter((r) => ops.every((op) => op(r)))
+                .map((r) => project(r, cols)),
+              error: null,
+            },
       ),
   };
   return builder;
@@ -64,6 +87,8 @@ const base = {
   synced_at: "2026-08-11T10:00:00Z",
   description: "",
   title: null,
+  category: "Jackets & Coats",
+  subcategory: "jackets",
 };
 
 const ROWS = [
@@ -74,7 +99,11 @@ const ROWS = [
     brand: "SAINT LAURENT",
     name: "SL10H Sneakers by Hedi Slimane",
     era_year: null,
-    synced_at: "2026-08-11T09:00:00Z",
+    category: "Footwear",
+    subcategory: null,
+    // No synced_at at all — pins the `?? null` normalization for a column
+    // present in the select but NULL in the row.
+    synced_at: undefined,
   },
   {
     ...base,
@@ -91,6 +120,7 @@ const ROWS = [
     brand: "DIOR",
     name: "Dior Homme FW05 Wool Blazer",
     era_year: 2005,
+    subcategory: "coats",
     synced_at: "2026-08-11T11:00:00Z",
   },
   { ...base, handle: "hidden-sl", brand: "SAINT LAURENT", name: "AW13 Boots", era_year: 2013, hidden: true },
@@ -145,6 +175,46 @@ describe("fetchArchiveProducts — membership", () => {
 
   it("returns [] for an archive with no rules", async () => {
     expect(await fetchArchiveProducts({ rules: [] }, { client: makeClient(ROWS) })).toEqual([]);
+  });
+});
+
+// The archive page's client-side filter/sort reads category, subcategory and
+// syncedAt off these products. The select is the only thing standing between
+// those fields and `undefined`, and an undefined category empties every
+// category filter without erroring anywhere — hence a behavioural test of the
+// mapped output rather than an assertion on the select string.
+describe("fetchArchiveProducts — filter/sort field contract", () => {
+  const byHandle = async () => {
+    const products = await fetchArchiveProducts(archive, { client: makeClient(ROWS) });
+    return Object.fromEntries(products.map((p) => [p.handle, p]));
+  };
+
+  it("carries category, subcategory and syncedAt through to the mapped product", async () => {
+    const p = (await byHandle())["sl-teddy"];
+    expect(p.category).toBe("Jackets & Coats");
+    expect(p.subcategory).toBe("jackets");
+    expect(p.syncedAt).toBe("2026-08-11T10:00:00Z");
+  });
+
+  it("normalizes a NULL subcategory to null rather than undefined", async () => {
+    const p = (await byHandle())["sl10h"];
+    expect(p.category).toBe("Footwear");
+    expect(p.subcategory).toBeNull();
+  });
+
+  it("normalizes a missing synced_at to null", async () => {
+    expect((await byHandle())["sl10h"].syncedAt).toBeNull();
+  });
+
+  it("carries the fields through the include path too", async () => {
+    const products = await fetchArchiveProducts(
+      { ...archive, include: [{ storeDomain: "lesarchives.fr", handle: "dior-galliano" }] },
+      { client: makeClient(ROWS) },
+    );
+    const included = products.find((p) => p.handle === "dior-galliano");
+    expect(included.category).toBe("Jackets & Coats");
+    expect(included.subcategory).toBe("jackets");
+    expect(included.syncedAt).toBe("2026-08-11T10:00:00Z");
   });
 });
 
