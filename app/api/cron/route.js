@@ -5,6 +5,7 @@ import { chunkArray } from "../../lib/chunk.js";
 import { checkCdgAliasDrift } from "../../lib/searchAliases.js";
 import { refreshFxRates } from "../../lib/fx.js";
 import { captureInventorySnapshot } from "../../lib/captureInventorySnapshot.js";
+import { parseEraYear } from "../../lib/parseEra.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -201,7 +202,7 @@ export async function GET(request) {
             chunkArray(handles, HANDLE_CHUNK).map(async (handleChunk) => {
               const { data, error: existError } = await supabaseAdmin
                 .from("products")
-                .select("handle, brand, title, category")
+                .select("handle, brand, title, category, era_year")
                 .eq("store_domain", store.domain)
                 .in("handle", handleChunk);
 
@@ -220,10 +221,32 @@ export async function GET(request) {
         );
 
         const editorialRows = [];
+        // era_year is DERIVED, not editorial: a deterministic parse of the
+        // title/name (app/lib/parseEra.js), recomputable from scratch. It is
+        // therefore a plain overwrite and deliberately kept OUT of
+        // editorialRows, whose whole point is the COALESCE/write-once
+        // protection — mixing them would put a derived column on the
+        // editorial-protected write surface. It is equally not in Step 1's
+        // syncRows: that batch has only `name`, so a title-derived value would
+        // be clobbered back to a weaker (often NULL) name-derived one every
+        // hour. Steady state is ~zero rows per run.
+        const eraRows = [];
         for (const handle of handles) {
           const p = productMap[handle];
           const ex = editMap[handle];
           if (!p || !ex) continue;
+
+          // The title this row will carry once the editorial upsert below
+          // lands — COALESCE semantics, same as the RPC.
+          const effectiveTitle = ex.title ?? p.title ?? null;
+          const eraYear = parseEraYear(effectiveTitle, p.name);
+          if (eraYear !== (ex.era_year ?? null)) {
+            eraRows.push({
+              handle: p.handle,
+              store_domain: p.storeDomain,
+              era_year: eraYear,
+            });
+          }
 
           const needsUpdate =
             (!ex.brand && p.brand) ||
@@ -250,6 +273,19 @@ export async function GET(request) {
           if (editError) {
             throw new Error(
               `Editorial upsert failed for ${store.domain}: ${editError.message}`
+            );
+          }
+        }
+
+        if (eraRows.length > 0) {
+          throwIfPastDeadline(`era upsert at row ${i}`);
+          const { error: eraError } = await supabaseAdmin
+            .from("products")
+            .upsert(eraRows, { onConflict: "handle,store_domain" });
+
+          if (eraError) {
+            throw new Error(
+              `Era-year upsert failed for ${store.domain}: ${eraError.message}`
             );
           }
         }
