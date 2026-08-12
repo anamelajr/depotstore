@@ -65,7 +65,7 @@ Sub-md only; every `md:` class stays byte-identical. Band becomes a two-column g
 1. **`app/lib/archiveProductFilters.js`** — pure helpers (vitest target):
    - `buildArchiveFilterGroups(products, lang)` — CATEGORIES → `DesktopFilterPanel`'s `{value, label, children}` shape, keeping only parents/children with ≥1 matching product; parent with present children gets the "All <Label>" first child (mirror `getFilterGroups`); parent present only via null-subcategory rows renders as a leaf. Thread `language`.
    - `filterProductsByCategories(products, slugs)` — `[]` → all; else `resolveCategoryFilter(slugs)`, keep rows matching parent OR (category+subcategory) leaf — same OR semantics as the feed.
-   - `sortArchiveProducts(products, sort)` — `"interleaved"|"latest"` → `syncedAt` desc; `"oldest"` → asc; `"price_asc"/"price_desc"` → `parseEur`, nulls last, tie-break `syncedAt`. Returns a copy.
+   - `sortArchiveProducts(products, sort)` — `"interleaved"|"latest"` → `syncedAt` desc; `"oldest"` → asc; `"price_asc"/"price_desc"` → `parseEur`, nulls last, tie-break `syncedAt`. Null/unparseable `syncedAt` sorts **last in both directions** (same contract as price; production has zero null `synced_at` today, but the fetch contract test deliberately ships a null fixture, so the comparator's null behavior must be pinned). Deterministic tie-break (e.g. `storeDomain::handle`) for equal keys. Returns a copy.
 
 2. **`app/components/archive/ArchiveProductsClient.js`** (`"use client"`) — owns `selectedCategories`, `selectedSort`, and open/close state for four panels (mutually exclusive like FeedClient). Renders:
    - Toolbar row (same hairline + `UTILITY_CAPS` markup as today) showing **filtered** count: `{filtered.length} <T k="archive.items" />`.
@@ -114,7 +114,7 @@ This catches both a wrong select constant and a dropped field in the final map. 
 
 ## Verification
 
-**Unit (vitest, `npm test`)**: new `app/lib/__tests__/archiveProductFilters.test.js` — group derivation (absent categories excluded, null-subcategory parent as leaf, **fr labels** — catches silent-English drift), parent/leaf OR filtering, price sort with null/malformed prices, latest/oldest ordering. Extend `fetchArchiveProducts.test.js` with the select-projection contract test (above). Confirm the i18n parity test still passes.
+**Unit (vitest, `npm test`)**: new `app/lib/__tests__/archiveProductFilters.test.js` — group derivation (absent categories excluded, null-subcategory parent as leaf, **fr labels** — catches silent-English drift), parent/leaf OR filtering, price sort with null/malformed prices, latest/oldest ordering **including null-`syncedAt` rows sorting last in both directions**. Extend `fetchArchiveProducts.test.js` with the select-projection contract test (above). Confirm the i18n parity test still passes.
 
 **Visual iteration loop (explicitly requested by user — do not skip)**: start the dev server via preview tools (read-path only is safe; never trigger `/api/cron` or `/api/enrich`), open `/archives/hedi-slimane`:
 - Resize to mobile (375×812), screenshot, and compare side-by-side against `~/Downloads/mobile archive section reference.png`. Iterate on column split, bleed amount, portrait scale, type sizes, and vertical rhythm until the band reads balanced like the reference (accounting for our cutout asset vs the reference's rectangular photo). Multiple rounds expected; use judgment, not one-shot.
