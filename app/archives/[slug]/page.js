@@ -108,7 +108,7 @@ export default async function ArchivePage({ params }) {
               fill
               priority
               sizes="(max-width: 768px) 100vw, 45vw"
-              className="object-cover"
+              className="object-cover object-[50%_18%]"
             />
           </div>
         </div>
