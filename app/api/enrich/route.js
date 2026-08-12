@@ -14,6 +14,7 @@ import {
 import { buildFallbackTitle } from "../../lib/handleFallback.js";
 import { titleLeaksAllowedBrandStrict } from "../../lib/brand.js";
 import { normalizeSeasonCodes } from "../../lib/seasonCodes.js";
+import { parseEraYear } from "../../lib/parseEra.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -34,6 +35,49 @@ const MAX_ENRICH_ATTEMPTS = 3;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Refresh the derived era_year after a title write, so a freshly enriched row
+// joins its archive immediately instead of waiting for the next hourly cron
+// recompute. Freshness only: cron reconverges every row regardless, which is
+// why a failure here is logged and swallowed rather than counted as a failed
+// enrich.
+//
+// Plain overwrite, by design — era_year is derived data (deterministic parse,
+// no judgment), so the COALESCE/write-once protection that guards
+// brand/title/category deliberately does not apply. The title is RE-READ from
+// the row after the RPC rather than taken from our snapshot or our own
+// cleanTitle output: the RPC's COALESCE may have kept a title written by a
+// concurrent enrich run between our SELECT and our RPC, and deriving the era
+// from our never-persisted candidate would overwrite the correct value with
+// one parsed from a title the row doesn't carry (Codex review, 2026-08-12).
+async function syncEraYear(row) {
+  const { data: persisted, error: readErr } = await supabaseAdmin
+    .from("products")
+    .select("title, era_year")
+    .eq("id", row.id)
+    .single();
+  if (readErr) {
+    console.error(
+      `syncEraYear re-read failed for ${row.store_domain}/${row.handle}:`,
+      readErr.message
+    );
+    return;
+  }
+
+  const eraYear = parseEraYear(persisted.title ?? null, row.name);
+  if (eraYear === (persisted.era_year ?? null)) return;
+
+  const { error } = await supabaseAdmin
+    .from("products")
+    .update({ era_year: eraYear })
+    .eq("id", row.id);
+  if (error) {
+    console.error(
+      `syncEraYear failed for ${row.store_domain}/${row.handle}:`,
+      error.message
+    );
+  }
 }
 
 async function incrementAttempts(row) {
@@ -313,6 +357,10 @@ export async function POST(request) {
           await tally(row);
         } else {
           succeeded++;
+          // Covers both title producers — the model path and the handle
+          // fallback converge on the RPC write above; syncEraYear re-reads
+          // whichever title the COALESCE actually kept.
+          await syncEraYear(row);
         }
       } else {
         failed++;

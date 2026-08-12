@@ -112,6 +112,11 @@ export const MESSAGES = {
     "home.browseCategory": "Category",
     "home.featured": "Featured",
     "home.todaysCuration": "Today's Curation",
+    // Archive page chrome. Designer names, year ranges and descriptions are
+    // content and live in app/lib/archives.js — English-only, never here.
+    "archive.eyebrow": "Featured Archive",
+    "archive.items": "items",
+    "archive.viewStory": "View collection story",
     // Editorial index
     "editorial.label": "Editorial",
     "editorial.tagline": "Short, opinionated pieces on the designers and houses that shape archive fashion.",
@@ -148,6 +153,7 @@ export const MESSAGES = {
     "meta.editorialTitle": "Editorial · Dépôt",
     "meta.editorialDesc": "Editorial perspectives on archive fashion.",
     "meta.editorialSuffix": "Editorial · Dépôt",
+    "meta.archiveSuffix": "Archive · Dépôt",
     "meta.notFoundTitle": "Not found · Dépôt",
   },
   fr: {
@@ -257,6 +263,10 @@ export const MESSAGES = {
     "home.browseCategory": "Catégorie",
     "home.featured": "À la une",
     "home.todaysCuration": "La Curation du Jour",
+    // Archive page chrome (see the EN block).
+    "archive.eyebrow": "Archive à la une",
+    "archive.items": "articles",
+    "archive.viewStory": "Voir l'histoire de la collection",
     // Editorial index
     "editorial.label": "Éditorial",
     "editorial.tagline": "Des textes courts et affirmés sur les créateurs et maisons qui façonnent la mode archive.",
@@ -293,6 +303,7 @@ export const MESSAGES = {
     "meta.editorialTitle": "Éditorial · Dépôt",
     "meta.editorialDesc": "Perspectives éditoriales sur la mode archive.",
     "meta.editorialSuffix": "Éditorial · Dépôt",
+    "meta.archiveSuffix": "Archive · Dépôt",
     "meta.notFoundTitle": "Introuvable · Dépôt",
   },
 };
