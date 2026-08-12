@@ -80,7 +80,7 @@ export default async function ArchivePage({ params }) {
               {archive.years}
             </h1>
 
-            <p className="mt-5 max-w-[36ch] text-[12px] leading-[1.7] text-zinc-600">
+            <p className="mt-5 max-w-[32ch] text-[12px] leading-[1.6] text-zinc-600">
               {archive.description}
             </p>
 
