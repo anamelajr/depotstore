@@ -47,5 +47,9 @@ next-env.d.ts
 # brainstorming session artifacts (visual companion)
 .superpowers/
 
+# agent tooling byproducts — screenshots, console logs, live-mode state
+.playwright-mcp/
+.impeccable/
+
 # raw GPT outputs from the CLI drafting script on parse failure
 drafts/
