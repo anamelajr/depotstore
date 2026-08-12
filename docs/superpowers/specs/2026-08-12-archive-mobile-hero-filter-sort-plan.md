@@ -84,7 +84,8 @@ Sub-md only; every `md:` class stays byte-identical. Band becomes a two-column g
 | File | Change |
 |---|---|
 | `app/archives/[slug]/page.js` | Hero mobile classes (Part A); replace toolbar+grid (lines 120–143) with `<ArchiveProductsClient/>`; bump `unstable_cache` keyPart to `"archive-products-v2"` |
-| `app/lib/fetchArchiveProducts.js` | `ROW_SELECT` += `category, subcategory`; final map: `{ ...mapProductRow(row), subcategory: row.subcategory ?? null, syncedAt: row.synced_at ?? null }` — do **not** widen `mapProductRow` itself |
+| `app/lib/fetchArchiveProducts.js` | `ROW_SELECT` += `category, subcategory` (build on `PRODUCT_ROW_SELECT_WITH_CATEGORY` — note plain `PRODUCT_ROW_SELECT` lacks `category` even though `mapProductRow` emits it); final map: `{ ...mapProductRow(row), subcategory: row.subcategory ?? null, syncedAt: row.synced_at ?? null }` — do **not** widen `mapProductRow` itself |
+| `app/lib/__tests__/fetchArchiveProducts.test.js` | Fetch-layer contract test (adversarial-review finding, see below) |
 | `app/components/MobileFilterPanel.js` | Named `export { OptionRow }` only |
 | `app/components/feed/DesktopFilterPanel.js` | Optional props `categoryGroups = null` (falls back to `getFilterGroups(language)`) and `showStore = true` — defaults preserve feed behavior exactly |
 
@@ -94,9 +95,18 @@ Reused verbatim: `MobileFeedActionBar`, `MobileSortPanel`, `DesktopFeedBar`, `De
 
 Bump the `unstable_cache` keyPart (`"archive-products"` → `"archive-products-v2"`): without it, up to an hour post-deploy the cached payload lacks `subcategory`/`syncedAt` and leaf filters/sorts silently no-op.
 
+### Fetch-layer contract test (from adversarial review — confirmed gap)
+
+The existing test stub is select-blind (`select: () => builder` at `fetchArchiveProducts.test.js:31`) and returns whole fixture rows, so a `ROW_SELECT` missing `category`/`subcategory` — or a final map dropping a field — is invisible to the suite while silently emptying every category filter in production (PostgREST returns only selected columns; `mapProductRow` emits `category: row.category` without complaint). Fix at the behavior level, keeping the file's stated philosophy (membership semantics, not call-chain shape):
+
+- Make the stub's `select(cols)` **project returned rows onto the selected columns**, simulating PostgREST — a missing column then surfaces as `undefined` in output exactly as in production.
+- Add `category`/`subcategory`/`synced_at` values to fixture rows and assert mapped products carry `category`, `subcategory`, `syncedAt` with real values plus the `?? null` normalization (row with null subcategory → `subcategory: null`, missing synced_at → `syncedAt: null`).
+
+This catches both a wrong select constant and a dropped field in the final map. Do **not** assert on the select string itself (brittle, contradicts the stub's design comment).
+
 ## Implementation order
 
-1. `fetchArchiveProducts.js` fields + cache keyPart bump.
+1. `fetchArchiveProducts.js` fields + cache keyPart bump, **with the fetch-layer contract test above** (test first — it fails against today's select-blind stub setup, then passes with the widened select + map).
 2. `archiveProductFilters.js` + unit tests.
 3. `DesktopFilterPanel` prop additions + `MobileFilterPanel` `OptionRow` export.
 4. `ArchiveFilterPanel` → `ArchiveProductsClient` → wire into `page.js`.
@@ -104,7 +114,7 @@ Bump the `unstable_cache` keyPart (`"archive-products"` → `"archive-products-v
 
 ## Verification
 
-**Unit (vitest, `npm test`)**: new `app/lib/__tests__/archiveProductFilters.test.js` — group derivation (absent categories excluded, null-subcategory parent as leaf, **fr labels** — catches silent-English drift), parent/leaf OR filtering, price sort with null/malformed prices, latest/oldest ordering. Confirm `fetchArchiveProducts.test.js` and the i18n parity test still pass.
+**Unit (vitest, `npm test`)**: new `app/lib/__tests__/archiveProductFilters.test.js` — group derivation (absent categories excluded, null-subcategory parent as leaf, **fr labels** — catches silent-English drift), parent/leaf OR filtering, price sort with null/malformed prices, latest/oldest ordering. Extend `fetchArchiveProducts.test.js` with the select-projection contract test (above). Confirm the i18n parity test still passes.
 
 **Visual iteration loop (explicitly requested by user — do not skip)**: start the dev server via preview tools (read-path only is safe; never trigger `/api/cron` or `/api/enrich`), open `/archives/hedi-slimane`:
 - Resize to mobile (375×812), screenshot, and compare side-by-side against `~/Downloads/mobile archive section reference.png`. Iterate on column split, bleed amount, portrait scale, type sizes, and vertical rhythm until the band reads balanced like the reference (accounting for our cutout asset vs the reference's rectangular photo). Multiple rounds expected; use judgment, not one-shot.
