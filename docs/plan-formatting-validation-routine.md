@@ -132,17 +132,18 @@ Pure, Supabase-free, unit-testable. Exports:
 - `evaluateFormattingHealth(rows)` → `{ status, violations: {key: {count, items[], truncated}}, review: {…}, silent: {queued_null}, scanned, fingerprint }`
 - `fingerprintViolations(violations)` → stable hash of sorted `(key, id)` tuples
 
-**Compute the fingerprint here, in JS — not in the workflow's shell.** It is the
-single most consequential piece of logic in the design (it decides whether you
-are told), and a `jq`/`sha256sum` pipeline is neither unit-testable nor
-reviewable. Returning it in the response payload reduces the workflow to a
-string comparison and makes verification step 6 a real test rather than a hope.
   - rows with a NULL editorial field and `enrich_attempts < 3` counted into
     `silent.queued_null` and **never** into `violations`
   - brand-fold and corpus-genericness checks run across the whole row set (both
     are inherently cross-row) inside this function, so they stay testable
   - cap `items[]` per key (~50) with a `truncated` flag; `count` stays the true
     total
+
+**Compute the fingerprint here, in JS — not in the workflow's shell.** It is the
+single most consequential piece of logic in the design (it decides whether you
+are told), and a `jq`/`sha256sum` pipeline is neither unit-testable nor
+reviewable. Returning it in the response payload reduces the workflow to a
+string comparison and makes verification step 6 a real test rather than a hope.
 
 **New — `app/lib/__tests__/formattingHealth.test.js`**
 Follows `enrichHealth.test.js` style. Must cover at minimum: a NULL-field row
