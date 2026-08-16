@@ -130,7 +130,16 @@ Flag titles containing a capitalised token below a distinct-brand threshold.
 Pure, Supabase-free, unit-testable. Exports:
 - `classifyRow(row)` → violation keys for one row
 - `evaluateFormattingHealth(rows)` → `{ status, violations: {key: {count, items[], truncated}}, review: {…}, silent: {queued_null}, scanned, fingerprint }`
-- `fingerprintViolations(violations)` → stable hash of sorted `(key, id)` tuples
+- `fingerprintViolations(tuples)` → stable hash of sorted `(key, id)` tuples
+
+**Fingerprint before truncation — the order is load-bearing.** Inside
+`evaluateFormattingHealth`, build the full `(key, id)` tuple set, hash it, and
+only then cap `items[]` for display. The signature takes the raw tuple set, not
+the capped response structure: hashing the capped structure means ids past the
+cap cannot affect the hash, and `enrichment_failed` has 76 items **today** — a
+fix or new breakage among items 51–76 would leave the displayed head and the
+hash unchanged and be silently swallowed. `count` is displayed but not hashed,
+so it cannot compensate.
 
   - rows with a NULL editorial field and `enrich_attempts < 3` counted into
     `silent.queued_null` and **never** into `violations`
@@ -198,7 +207,7 @@ Daily (e.g. `20 7 * * *`), `workflow_dispatch` on, `permissions: issues: write`.
 - **Validate the response contract before touching the issue, and fail closed.**
   Non-200 and unparseable JSON fail the job, but that is not enough: a `200`
   returning `{}` is valid JSON with no violations, which would read as all-clear
-  and *close your issue*. Require `status`, `violations` and `review` objects, an
+  and overwrite the living report with a false clean status. Require `status`, `violations` and `review` objects, an
   integer `scanned`, a non-empty `fingerprint`, and `checked_at`; a missing or
   wrong-typed field fails the job and leaves the issue untouched. Violations themselves are still not a job
   failure — the issue is the alert. That keeps a red workflow meaningful and
@@ -215,11 +224,25 @@ Daily (e.g. `20 7 * * *`), `workflow_dispatch` on, `permissions: issues: write`.
   Including it would email on every bad-title→different-bad-title edit, which is
   noise in a system whose value rests on silence being trustworthy. Review-tier
   items are likewise excluded, so they can never generate mail.
-- Maintain exactly one open issue labelled `formatting-audit` via `gh`:
-  no open issue + violations → create; open + fingerprint changed → edit body
-  **and comment** (the only path that emails); open + fingerprint unchanged →
-  edit body silently; open + zero violations → edit body one last time (so the
-  review section is preserved in the record) then close.
+- Maintain exactly one **permanently open** issue labelled `formatting-audit`
+  via `gh` — a living report, **never closed by the workflow**:
+  no issue yet → create (first run only); fingerprint changed → edit body
+  **and comment** (the only deliberate email path); fingerprint unchanged →
+  edit body silently. At zero violations the body says so and stays open.
+  Two reasons close-on-clean is wrong here:
+  1. **The review tier would be orphaned.** With close-on-clean, a review-only
+     finding arriving after a clean state has no destination — the create rule
+     keys on violations, so nothing is rendered anywhere. The permanently open
+     issue is where "worth a glance" items live regardless of violation count.
+  2. **Close and re-create both notify.** Closing an issue and creating one
+     each send their own notification to repo watchers, so a flapping
+     violation (fixed one week, back the next) would email twice per cycle
+     through the lifecycle alone. Never closing keeps comments as the single
+     email channel, which is the design's whole promise.
+  Cost, stated openly: "issue open" no longer signals "something is wrong" —
+  the first line of the body carries the current status instead. If a human
+  closes the issue manually, the next run recreates it (the create rule keys on
+  "no open issue with the label", not on violations).
 - **Create the `formatting-audit` label as a setup step**, or have the workflow
   ensure it (`gh label create … || true`) before first use. `gh issue create
   --label` fails outright against a label that does not exist, so without this
@@ -271,16 +294,24 @@ note `FORMATTING_HEALTH_URL` under environment variables.
    guarantee — assert both directions, not just the first.
 7. **Malformed-response test**: feed the workflow's parsing step a `200` body of
    `{}` and a body missing `scanned`. Both must fail the job and leave the issue
-   untouched. A run that closes the issue on either is the failure mode.
-8. **Keyset paging test**: assert the page loop issues `gt("id", lastId)` and
-   terminates, and that a mocked page error propagates as a throw rather than a
-   truncated result. Cheapest meaningful check is a fake client returning three
-   pages then an error, asserting the route rejects instead of returning two
-   pages' worth of findings.
-9. After merge, create the `formatting-audit` label, set `FORMATTING_HEALTH_URL`,
-   then `workflow_dispatch` once and confirm the issue is created naming the
-   right items.
-10. Re-run `workflow_dispatch` immediately: the second run must edit the issue
+   untouched. A run that edits the report to "clean" on either is the failure
+   mode.
+8. **Cap-tail fingerprint test**: build >50 violations of one key, hash, then
+   change an item beyond the display cap while the first 50 stay identical —
+   the fingerprint must change even though `items[]` doesn't. Guards the
+   fingerprint-before-truncation ordering directly.
+9. **Review-at-zero-violations test**: zero violations, non-empty review →
+   the rendered body must still contain the "Worth a glance" section, and the
+   workflow path must edit (not skip, not close) the issue.
+10. **Keyset paging test**: assert the page loop issues `gt("id", lastId)` and
+    terminates, and that a mocked page error propagates as a throw rather than a
+    truncated result. Cheapest meaningful check is a fake client returning three
+    pages then an error, asserting the route rejects instead of returning two
+    pages' worth of findings.
+11. After merge, create the `formatting-audit` label, set `FORMATTING_HEALTH_URL`,
+    then `workflow_dispatch` once and confirm the issue is created naming the
+    right items.
+12. Re-run `workflow_dispatch` immediately: the second run must edit the issue
     **without** commenting (fingerprint unchanged). This is the anti-spam gate —
     verify it explicitly rather than assuming.
 
