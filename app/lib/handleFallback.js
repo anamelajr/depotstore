@@ -103,7 +103,10 @@ export function stripAllBrandSpellings(name, brand) {
 // "girl" into BRAND_HANDLE_SLUGS and let any handle containing those words
 // resolve to a brand — so they get a conservative, per-brand, leading-position-
 // only table here. Keyed by normalized canonical brand.
-const SUB_LINE_PREFIXES = {
+// Exported (read-only) for the formatting validator, which distinguishes a
+// leaked sub-line prefix from a plain season-ordering problem — the two need
+// different fixes, so the alert must not conflate them.
+export const SUB_LINE_PREFIXES = {
   "rick owens": ["DRKSHDW", "LILIES"],
   "comme des garcons": ["HOMME PLUS", "HOMME", "BLACK", "GIRL", "SHIRT", "PLAY", "TAO"],
   "ann demeulemeester": ["BLANCHE"],

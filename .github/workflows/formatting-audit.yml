@@ -1,0 +1,98 @@
+name: Formatting Audit
+
+# Daily read-only check that live items meet the house formatting convention
+# (app/lib/formattingHealth.js). Results are filed as ONE permanently open
+# GitHub issue — a living report — so the notification email is readable rather
+# than "job failed".
+#
+# Notification policy, deliberately narrow: the ONLY thing that mails you is a
+# comment, posted only when the violation fingerprint changes. The issue is
+# never closed by this workflow, because closing and re-creating each notify on
+# their own — a violation that flaps would then mail twice per cycle through
+# the lifecycle alone. Violations are not a job failure either, so a red run
+# keeps meaning "the check itself is broken".
+on:
+  schedule:
+    - cron: "20 7 * * *"
+  workflow_dispatch: {}
+
+# A scheduled run overlapping a manual dispatch would otherwise race on the
+# create step and file two issues.
+concurrency:
+  group: formatting-audit
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch /api/health/formatting
+        env:
+          HEALTH_URL: ${{ vars.FORMATTING_HEALTH_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HEALTH_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "FORMATTING_HEALTH_URL variable or CRON_SECRET secret is not set" >&2
+            exit 1
+          fi
+          status=$(curl -sS --max-time 120 -o /tmp/formatting.json -w "%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" "$HEALTH_URL")
+          echo "HTTP $status"
+          [ "$status" = "200" ]
+
+      # Validates the response contract and renders the body. Exits non-zero on
+      # a malformed payload (including a 200 body of `{}`), failing the job
+      # before anything touches the issue.
+      - name: Render report
+        id: render
+        run: |
+          set -euo pipefail
+          fingerprint=$(node scripts/renderFormattingReport.mjs /tmp/formatting.json /tmp/body.md)
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: File the living report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINGERPRINT: ${{ steps.render.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          # `gh issue create --label` fails outright against a label that does
+          # not exist, so the very first run would error without this.
+          gh label create formatting-audit \
+            --description "Living report from the daily formatting audit" \
+            --color ededed 2>/dev/null || true
+
+          number=$(gh issue list --label formatting-audit --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+
+          if [ -z "$number" ]; then
+            gh issue create --title "Site formatting audit" \
+              --label formatting-audit --body-file /tmp/body.md
+            echo "created the living report"
+            exit 0
+          fi
+
+          previous=$(gh issue view "$number" --json body --jq '.body' \
+            | sed -n 's/.*<!-- formatting-audit-fingerprint: \([^ >]*\) -->.*/\1/p' | head -1)
+
+          gh issue edit "$number" --body-file /tmp/body.md
+
+          if [ "$previous" = "$FINGERPRINT" ]; then
+            echo "fingerprint unchanged ($FINGERPRINT) — edited silently"
+          else
+            # The one deliberate email path.
+            gh issue comment "$number" \
+              --body "Formatting findings changed (\`${previous:-none}\` → \`$FINGERPRINT\`). See the report above."
+            echo "fingerprint changed — commented"
+          fi
