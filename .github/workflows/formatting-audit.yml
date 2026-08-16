@@ -22,7 +22,11 @@ concurrency:
   group: formatting-audit
   cancel-in-progress: false
 
+# Declaring this block at all sets every unlisted scope to `none`, so the
+# private-repo checkout needs `contents: read` spelled out — without it
+# actions/checkout fails before the endpoint is ever called.
 permissions:
+  contents: read
   issues: write
 
 jobs:
