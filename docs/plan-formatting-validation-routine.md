@@ -129,7 +129,14 @@ Flag titles containing a capitalised token below a distinct-brand threshold.
 **New — `app/lib/formattingHealth.js`**
 Pure, Supabase-free, unit-testable. Exports:
 - `classifyRow(row)` → violation keys for one row
-- `evaluateFormattingHealth(rows)` → `{ status, violations: {key: {count, items[], truncated}}, review: {…}, silent: {queued_null}, scanned }`
+- `evaluateFormattingHealth(rows)` → `{ status, violations: {key: {count, items[], truncated}}, review: {…}, silent: {queued_null}, scanned, fingerprint }`
+- `fingerprintViolations(violations)` → stable hash of sorted `(key, id)` tuples
+
+**Compute the fingerprint here, in JS — not in the workflow's shell.** It is the
+single most consequential piece of logic in the design (it decides whether you
+are told), and a `jq`/`sha256sum` pipeline is neither unit-testable nor
+reviewable. Returning it in the response payload reduces the workflow to a
+string comparison and makes verification step 6 a real test rather than a hope.
   - rows with a NULL editorial field and `enrich_attempts < 3` counted into
     `silent.queued_null` and **never** into `violations`
   - brand-fold and corpus-genericness checks run across the whole row set (both
@@ -143,7 +150,8 @@ under the attempt cap yields zero violations; the same row at
 `enrich_attempts = 3` yields `enrichment_failed`; each title class fires on a
 real example from Context; two labels folding together report once, not twice;
 `Zip-up Hoodie` produces **no** finding (regression guard for the rejected
-rule); a clean row set returns `status: "ok"`.
+rule); a clean row set returns `status: "ok"`; plus the fingerprint
+discrimination pair in Verification step 6.
 
 **New — `app/api/health/formatting/route.js`**
 Copy the auth and shape of `app/api/health/enrich/route.js` (bearer
@@ -154,26 +162,67 @@ current volume; each well under the 8s `authenticator` statement timeout — the
 whole-table read must never become one query). Set `maxDuration = 60`.
 Returns the `evaluateFormattingHealth` result plus `checked_at`.
 
+**Paging must be keyset, not offset.** `.order("id", { ascending: true })` plus
+`.gt("id", lastId)` per page, carrying the last id forward — **not**
+`.range(from, to)`.
+
+Ordering alone is not sufficient here, and the distinction matters:
+`captureInventorySnapshot.js:68-75` documents this hazard already ("without it,
+concurrent writes can make pages skip/duplicate rows") and solves it with an
+ordered `.range()`. That is adequate *there* because the snapshot applies no
+visibility filter, so a `hidden` flip cannot move a row in or out of its set.
+This scan filters, and `/api/enrich` sets `hidden = true` in five places
+(`route.js:315,330,386,399,412`). A row hidden between page 3 and page 4 shrinks
+the filtered set, shifts every later offset down by one, and silently drops a
+row. Keyset paging is immune because the cursor is a row value, not a position.
+
+The consequence is worse than one missed row: a dropped violation changes the
+fingerprint, emailing "something changed", then emailing again when it
+reappears — exactly the false-alarm behaviour this design exists to prevent.
+
+**Fail closed on any page error.** If a page query returns an error, throw and
+let the route 500 (matching `captureInventorySnapshot.js:83-85`'s
+`product re-read failed at offset …`). Never return a partial result set: a
+short scan under-reports, and the workflow would read that as items being fixed.
+Assert ids are unique across the assembled set before evaluating; a duplicate
+means the cursor logic is wrong and must fail rather than double-count.
+
 **New — `.github/workflows/formatting-audit.yml`**
 Daily (e.g. `20 7 * * *`), `workflow_dispatch` on, `permissions: issues: write`.
+- Add `concurrency: { group: formatting-audit, cancel-in-progress: false }` — a
+  scheduled run overlapping a manual `workflow_dispatch` would otherwise race
+  and can create two issues.
 - Curl the endpoint with `CRON_SECRET`, URL from a new repo variable
   `FORMATTING_HEALTH_URL` (mirrors `ENRICH_HEALTH_URL`).
-- **Fail the job only on infrastructure errors** — non-200, unparseable JSON.
-  Violations are not a job failure; the issue is the alert. Avoids
-  double-notifying and keeps a red workflow meaningful.
+- **Validate the response contract before touching the issue, and fail closed.**
+  Non-200 and unparseable JSON fail the job, but that is not enough: a `200`
+  returning `{}` is valid JSON with no violations, which would read as all-clear
+  and *close your issue*. Require `status`, `violations` and `review` objects, an
+  integer `scanned`, a non-empty `fingerprint`, and `checked_at`; a missing or
+  wrong-typed field fails the job and leaves the issue untouched. Violations themselves are still not a job
+  failure — the issue is the alert. That keeps a red workflow meaningful and
+  avoids double-notifying.
 - Render JSON into a markdown body grouped by key with store + id + current
   value per item, a separate **Worth a glance** section for the review tier, and
-  a fingerprint (hash of sorted violating ids — **violations only**) as an HTML
-  comment.
+  a fingerprint as an HTML comment.
+- **The fingerprint hashes sorted `(violation_key, id)` tuples, not bare ids.**
+  An id-only hash treats materially different states as identical: an item that
+  swaps one violation class for another, gains a second violation, or has one of
+  two violations fixed keeps the same id set and would be silently swallowed —
+  breaking the guarantee that you hear about changes.
+  **Deliberately excluded from the fingerprint:** the item's current field value.
+  Including it would email on every bad-title→different-bad-title edit, which is
+  noise in a system whose value rests on silence being trustworthy. Review-tier
+  items are likewise excluded, so they can never generate mail.
 - Maintain exactly one open issue labelled `formatting-audit` via `gh`:
   no open issue + violations → create; open + fingerprint changed → edit body
   **and comment** (the only path that emails); open + fingerprint unchanged →
   edit body silently; open + zero violations → edit body one last time (so the
   review section is preserved in the record) then close.
-
-The fingerprint gate is what stops a standing backlog emailing daily — you hear
-from it when something *changes*. Review-tier items never enter the fingerprint,
-so they cannot generate mail.
+- **Create the `formatting-audit` label as a setup step**, or have the workflow
+  ensure it (`gh label create … || true`) before first use. `gh issue create
+  --label` fails outright against a label that does not exist, so without this
+  the very first run errors.
 
 **Docs** — add the endpoint + workflow to CLAUDE.md alongside the enrich probe;
 note `FORMATTING_HEALTH_URL` under environment variables.
@@ -189,6 +238,12 @@ note `FORMATTING_HEALTH_URL` under environment variables.
 - **Row-count growth.** The paged scan is O(all live rows). Fine at 8k; an order
   of magnitude more moves this to a precomputed RPC. Return `scanned` so the
   trend is visible.
+- **The scan is not a consistent snapshot even with keyset paging.** Keyset
+  removes skips and duplicates; it does not make the read atomic. A row enriched
+  mid-scan is evaluated in whichever state it was read. Acceptable — the check is
+  eventually consistent by design and re-runs daily — but it means a single
+  run's counts are a reading, not a transaction. Do not build anything that
+  assumes otherwise.
 - **First run will be loud** — ~85 items. That is the correct first reading.
 
 ## Verification
@@ -208,11 +263,25 @@ note `FORMATTING_HEALTH_URL` under environment variables.
    `silent`. If none exists at the time, assert it in the unit test instead.
 5. Eyeball the review section and tune the distinct-brand threshold. It must at
    minimum surface id 14953917, and must not surface routine `Zip-up` titles.
-6. After merge, set `FORMATTING_HEALTH_URL`, then `workflow_dispatch` once and
-   confirm the issue is created naming the right items.
-7. Re-run `workflow_dispatch` immediately: the second run must edit the issue
-   **without** commenting (fingerprint unchanged). This is the anti-spam gate —
-   verify it explicitly rather than assuming.
+6. **Fingerprint discrimination test** (unit-level, no network): two result sets
+   with an identical id set but different violation keys must produce different
+   fingerprints; the same set with only a changed field value must produce the
+   same one. This is the finding that broke the "you'll hear about changes"
+   guarantee — assert both directions, not just the first.
+7. **Malformed-response test**: feed the workflow's parsing step a `200` body of
+   `{}` and a body missing `scanned`. Both must fail the job and leave the issue
+   untouched. A run that closes the issue on either is the failure mode.
+8. **Keyset paging test**: assert the page loop issues `gt("id", lastId)` and
+   terminates, and that a mocked page error propagates as a throw rather than a
+   truncated result. Cheapest meaningful check is a fake client returning three
+   pages then an error, asserting the route rejects instead of returning two
+   pages' worth of findings.
+9. After merge, create the `formatting-audit` label, set `FORMATTING_HEALTH_URL`,
+   then `workflow_dispatch` once and confirm the issue is created naming the
+   right items.
+10. Re-run `workflow_dispatch` immediately: the second run must edit the issue
+    **without** commenting (fingerprint unchanged). This is the anti-spam gate —
+    verify it explicitly rather than assuming.
 
 ## Follow-ups (not in this change)
 
