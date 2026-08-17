@@ -171,7 +171,13 @@ async function main() {
   const changes = [];
 
   let scanned = 0;
-  let from = 0;
+  // Keyset cursor, not .range() offsets. In --only-null mode the scan filter
+  // (`category IS NULL`) describes a MUTABLE set: /api/enrich can fill a
+  // category between pages, dropping rows out of the set and shifting every
+  // later offset down — an offset scan then silently skips eligible NULL rows.
+  // A cursor on id is a row value, not a position, so it is immune (same
+  // reasoning as scanVisibleRows in /api/health/formatting; see CLAUDE.md).
+  let lastId = 0;
 
   while (true) {
     const remaining = LIMIT == null ? PAGE : LIMIT - scanned;
@@ -181,8 +187,9 @@ async function main() {
     let query = supabaseAdmin
       .from("products")
       .select("id, handle, store_domain, name, title, brand, category, description, editorial_description")
+      .gt("id", lastId)
       .order("id", { ascending: true })
-      .range(from, from + rangeSize - 1);
+      .limit(rangeSize);
     if (ONLY_NULL) query = query.is("category", null);
 
     const { data, error } = await query;
@@ -223,7 +230,7 @@ async function main() {
     }
 
     scanned += data.length;
-    from += data.length;
+    lastId = data[data.length - 1].id;
     console.log(`Scanned ${scanned} rows, ${changes.length} would change…`);
 
     if (data.length < rangeSize) break;
