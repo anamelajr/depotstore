@@ -53,8 +53,12 @@ search.
   inline equivalent). Unwrapped, `"vivienne westwood"` returns nothing and
   `"Dresses, Skirts & Robes"` 400s.
 - **Price is stored as TEXT** (`'€29.99'`, EUR) — the canonical base; conversion
-  is presentational, never written back. DB ordering is lexicographic, so price
-  sorts fetch all matching rows and sort numerically in JS before paginating.
+  is presentational, never written back. DB ordering on it is lexicographic, so
+  price sorts order and paginate on **`price_cents`**, a STORED GENERATED INT
+  parsed from `price` (`scripts/sql/2026-08-17-price-cents.sql`). It is
+  DB-derived, never authored: Postgres rejects direct writes, so no writer may
+  include it in a payload. Unparseable/NULL price → NULL `price_cents` → sorts
+  last via `nullsFirst: false`, still visible.
 - **Filter submits are additive.** `buildFeedUrl(searchParams, {…})` merges
   (feed actions), `buildFreshFeedUrl` discards (nav menu / store links); a raw
   `router.push('/feed?search=…')` wipes every other param. `MobileFilterPanel`
@@ -105,6 +109,17 @@ any change.
     END
   WHERE handle = p_handle AND store_domain = p_store_domain;
   ```
+- **`increment_description_attempts(p_ids BIGINT[])` /
+  `decrement_description_attempts(p_ids BIGINT[])` RPCs** — claim-by-increment
+  for `/api/backfill-descriptions`, issued BEFORE any OpenAI call. The
+  increment is a soft claim: it doesn't exclude rows from re-selection
+  (attempts=1 still passes `< 3`) — the route's attempts-ASC-first ordering is
+  what steers an overlapping run onto a different batch, so keep that ordering
+  and this increment together (the only-if-NULL write guard stops duplicate
+  writes, not duplicate calls). The decrement releases rows the 240s deadline
+  stranded before any call was made, so they don't burn toward `MAX_ATTEMPTS`
+  untried. Needs `description_attempts INT NOT NULL DEFAULT 0`. DDL:
+  [`scripts/sql/2026-08-17-description-attempts.sql`](scripts/sql/2026-08-17-description-attempts.sql).
 - **`increment_enrich_attempts` RPC** — `enrich_attempts = enrich_attempts + 1`
   WHERE handle + store_domain. Needs `enrich_attempts INT NOT NULL DEFAULT 0`.
 - **`get_interleaved_products` / `count_interleaved_products` RPCs** — take

@@ -48,20 +48,26 @@ export async function generateMetadata() {
 }
 
 export default async function RootLayout({ children }) {
-  const stores = await getActiveStores();
+  // All four were sequential awaits; nothing here depends on anything else,
+  // so the two DB reads and the two cookie reads overlap. Reading cookies at
+  // all opts the tree into dynamic rendering — that is deliberate, so the
+  // first server paint already carries the visitor's currency and language
+  // (no flash). `source` is server-side diagnostics only — pass the nested
+  // `rates` down, never the wrapper (CurrencyProvider/formatPrice expect
+  // { GBP, USD }).
+  const [stores, { rates, source }, cookieStore, initialLanguage] =
+    await Promise.all([
+      getActiveStores(),
+      getFxRates(),
+      cookies(),
+      getLanguage(),
+    ]);
 
-  // Reading cookies here opts the tree into dynamic rendering so the first
-  // server paint already carries the visitor's currency and language (no flash).
-  const cookieCurrency = (await cookies()).get("depot_currency")?.value;
+  const cookieCurrency = cookieStore.get("depot_currency")?.value;
   const initialCurrency = ALLOWED_CURRENCIES.includes(cookieCurrency)
     ? cookieCurrency
     : "EUR";
 
-  const initialLanguage = await getLanguage();
-
-  // `source` is server-side diagnostics only — pass the nested `rates` down,
-  // never the wrapper (CurrencyProvider/formatPrice expect { GBP, USD }).
-  const { rates, source } = await getFxRates();
   if (source === "fallback") {
     console.warn(
       JSON.stringify({ event: "fx_layout_fallback", note: "serving FALLBACK_RATES" }),

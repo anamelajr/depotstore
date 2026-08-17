@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertDev } from "../_gate.js";
-import { getActiveStores } from "../../../lib/stores.js";
+import { fetchActiveStoresFresh } from "../../../lib/stores.js";
 import { fetchStoreProducts } from "../../../lib/shopifyFetch.js";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function POST() {
   const gate = assertDev();
   if (gate) return gate;
 
-  const stores = await getActiveStores();
+  const stores = await fetchActiveStoresFresh();
   const storeResults = [];
   let totalProcessed = 0;
   let totalUpdated = 0;

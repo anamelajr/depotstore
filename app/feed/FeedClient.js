@@ -59,6 +59,14 @@ export default function FeedClient({ stores = [], initialData = null }) {
   // Fetch state
   const [products, setProducts] = useState(serverMatch ? initialData.products : []);
   const [total, setTotal] = useState(serverMatch ? initialData.total : 0);
+  // Pagination is driven by the SERVER's hasMore, never by comparing the
+  // appended row count against `total`: past the first page the API no longer
+  // computes an exact count (it probes with limit+1 instead), and the catalog
+  // mutates hourly, so a page-1 total is not a safe stopping condition.
+  // `total` stays purely a display number.
+  const [serverHasMore, setServerHasMore] = useState(
+    serverMatch ? initialData.hasMore === true : false,
+  );
   const [loading, setLoading] = useState(!serverMatch);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -131,6 +139,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     setLoadMoreOffset(null); // cancel pending Load More for the old filter
     setProducts(initialData.products);
     setTotal(initialData.total);
+    setServerHasMore(initialData.hasMore === true);
     setError(null);
     setLoading(false);
   }, [initialData]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -247,6 +256,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
       .then((data) => {
         setProducts(data.products || []);
         setTotal(data.total ?? 0);
+        setServerHasMore(data.hasMore === true);
         setError(null);
         restoreDelivered = (data.products || []).length > 0;
       })
@@ -255,6 +265,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
           setError("Failed to load products.");
           setProducts([]);
           setTotal(0);
+          setServerHasMore(false);
         }
       })
       .finally(() => {
@@ -324,7 +335,10 @@ export default function FeedClient({ stores = [], initialData = null }) {
         // unguarded append would leave old-filter cards in the new grid.
         if (filterKeyRef.current !== requestFilterKey) return;
         setProducts((prev) => [...prev, ...(data.products || [])]);
-        setTotal(data.total ?? 0);
+        // `total` is intentionally NOT updated here: past offset 0 the API
+        // returns null for it, and the displayed count should stay the number
+        // the user was shown for this filter.
+        setServerHasMore(data.hasMore === true);
       })
       .catch((err) => {
         if (err.name !== "AbortError") {
@@ -412,7 +426,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     (localStore !== ALL_STORES_VALUE ? 1 : 0) +
     (selectedBrand ? 1 : 0) +
     (searchQuery ? 1 : 0);
-  const hasMore = !loading && products.length < total;
+  const hasMore = !loading && serverHasMore;
 
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-clip">

@@ -76,11 +76,16 @@ function OdometerDigit({ value }) {
 
 function GallerySection({ src, alt, index, onZoom, registerRef, eager }) {
   const ref = useRef(null);
-  const [revealed, setRevealed] = useState(false);
+  // The first section starts revealed so the SSR HTML paints the LCP image at
+  // opacity 1. It used to start at 0 and only fade in after hydration ran the
+  // IntersectionObserver — i.e. the largest paint waited on JS. Sections 2+
+  // keep the reveal animation.
+  const [revealed, setRevealed] = useState(eager);
 
   // Reduced motion is handled by the `.pdp-motion` CSS override (forces
   // opacity 1 / no transform), so the observer can run unconditionally.
   useEffect(() => {
+    if (eager) return;
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(
@@ -96,7 +101,7 @@ function GallerySection({ src, alt, index, onZoom, registerRef, eager }) {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [eager]);
 
   return (
     <section
@@ -119,10 +124,17 @@ function GallerySection({ src, alt, index, onZoom, registerRef, eager }) {
             "opacity 500ms cubic-bezier(0.22,1,0.36,1), transform 500ms cubic-bezier(0.22,1,0.36,1)",
         }}
       >
+        {/* Slide 1 deliberately carries a bare `src` at width=1600 and NO
+            srcSet, matching ProductGallery's first slide and the document
+            preload exactly. A srcSet here would let the browser pick a
+            different candidate than the preload fetched, reinstating the
+            double download this is meant to collapse. */}
         <img
           src={shopifyImageUrl(src, 1600)}
           alt={index === 0 ? alt : ""}
           loading={eager ? "eager" : "lazy"}
+          fetchPriority={eager ? "high" : undefined}
+          decoding="async"
           className="max-h-[86%] max-w-[72%] object-contain"
         />
       </button>

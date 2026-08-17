@@ -2,7 +2,6 @@ import Link from "next/link";
 import Price from "./Price.js";
 import T from "./T";
 import SaveShareRow from "./SaveShareRow";
-import ClampedDescription from "./ClampedDescription";
 import { buildFreshFeedUrl } from "../lib/feed-utils.js";
 
 const CONTACT_EMAIL = "hello@depot.paris";
@@ -23,7 +22,7 @@ export default function ProductInfoPanel({
   storeLocation,
   handle,
   productUrl,
-  description,
+  descriptionSlot,
 }) {
   const ctaHref = `https://${storeDomain}/products/${handle}?utm_source=depot`;
   // CTA text is a <T> leaf so it swaps live on language toggle.
@@ -77,12 +76,10 @@ export default function ProductInfoPanel({
           </div>
         )}
 
-        {/* Description */}
-        {description && (
-          <div className="mt-10">
-            <ClampedDescription text={description} />
-          </div>
-        )}
+        {/* Description — a node, not a string: the PDP passes either a
+            rendered ClampedDescription (row already has one) or a Suspense
+            boundary that streams a freshly generated one. */}
+        {descriptionSlot && <div className="mt-10">{descriptionSlot}</div>}
 
         {/* Sold token */}
         {!available && (

@@ -5,14 +5,21 @@ import Accordion from "../../components/Accordion";
 import SaveShareRow from "../../components/SaveShareRow";
 import MoreFromStore from "../../components/MoreFromStore";
 import Price from "../../components/Price.js";
-import { resolveProductDetail } from "../../lib/resolveProductDetail";
+import { resolveProductDetailCore } from "../../lib/resolveProductDetail";
+import ProductDescription, {
+  ProductDescriptionFallback,
+} from "../../components/ProductDescription";
+import ClampedDescription from "../../components/ClampedDescription";
 import Link from "next/link";
+import ReactDOM from "react-dom";
+import { Suspense } from "react";
+import { shopifyImageUrl } from "../../lib/shopifyImage.js";
 
 export default async function ProductPage({ params, searchParams }) {
   const { handle } = await params;
   const { store: storeDomain } = await searchParams;
 
-  const detail = await resolveProductDetail({ handle, storeDomain });
+  const detail = await resolveProductDetailCore({ handle, storeDomain });
 
   if (!detail) {
     return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
@@ -22,6 +29,37 @@ export default async function ProductPage({ params, searchParams }) {
 
   const productUrl = `https://${storeDomain}/products/${handle}`;
   const storeFeedHref = `/feed?store=${encodeURIComponent(storeDomain)}`;
+
+  // Start the LCP image fetch with the document instead of waiting for the
+  // gallery markup to be parsed. Must be the exact URL both galleries request
+  // for slide 1 (plain src at width=1600, no srcSet) or the preload is a
+  // second download rather than a head start.
+  if (images[0]) {
+    ReactDOM.preload(shopifyImageUrl(images[0], 1600), {
+      as: "image",
+      fetchPriority: "high",
+    });
+  }
+
+  // Steady state (row already has a description): pass the text straight
+  // through — no boundary, no placeholder flash. Otherwise stream it, so an
+  // OpenAI generation never blocks the shell. Both slots resolve through one
+  // React.cache'd call, so the document costs at most one generation.
+  const desktopDescriptionSlot = description ? (
+    <ClampedDescription text={description} />
+  ) : (
+    <Suspense fallback={<ProductDescriptionFallback />}>
+      <ProductDescription handle={handle} storeDomain={storeDomain} />
+    </Suspense>
+  );
+
+  const mobileDescriptionSlot = description ? (
+    <p>{description}</p>
+  ) : (
+    <Suspense fallback={<ProductDescriptionFallback />}>
+      <ProductDescription handle={handle} storeDomain={storeDomain} plain />
+    </Suspense>
+  );
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
@@ -40,7 +78,7 @@ export default async function ProductPage({ params, searchParams }) {
           storeLocation={storeLocation}
           handle={handle}
           productUrl={productUrl}
-          description={description}
+          descriptionSlot={desktopDescriptionSlot}
         />
       </div>
 
@@ -100,13 +138,7 @@ export default async function ProductPage({ params, searchParams }) {
 
         {/* Accordions */}
         <div className="mt-10 px-6">
-          <Accordion label="Description">
-            {description ? (
-              <p>{description}</p>
-            ) : (
-              <p className="text-zinc-400">No description available.</p>
-            )}
-          </Accordion>
+          <Accordion label="Description">{mobileDescriptionSlot}</Accordion>
           <Accordion label="Store Profile" isLast>
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-zinc-900">
@@ -128,11 +160,15 @@ export default async function ProductPage({ params, searchParams }) {
 
       {/* More from this store — one instance serves both breakpoints */}
       <div className="mx-auto max-w-[1400px] px-0 lg:px-10 lg:pb-10">
-        <MoreFromStore
-          storeDomain={storeDomain}
-          currentHandle={handle}
-          storeName={storeName}
-        />
+        {/* Its Supabase read used to block the whole document; nothing above
+            the fold depends on it. */}
+        <Suspense fallback={null}>
+          <MoreFromStore
+            storeDomain={storeDomain}
+            currentHandle={handle}
+            storeName={storeName}
+          />
+        </Suspense>
       </div>
 
     </div>
