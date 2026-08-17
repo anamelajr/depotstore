@@ -16,6 +16,10 @@ function EditorialProductCard({ product }) {
             imageUrl={product.imageUrl}
             imageUrl2={product.imageUrl2}
             alt={displayTitle}
+            // Matches the 4-col desktop / 2-col mobile grid below. Without a
+            // `sizes` these cards got no srcSet at all — every one of them
+            // downloaded the flat width=800 derivative.
+            sizes="(min-width: 1024px) 25vw, 50vw"
           />
         ) : null}
         {product.available === false ? (

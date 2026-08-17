@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import localFont from "next/font/local";
+import { preconnect } from "react-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import LayoutClient from "./components/LayoutClient";
@@ -48,6 +49,14 @@ export async function generateMetadata() {
 }
 
 export default async function RootLayout({ children }) {
+  // Every product photo on the site comes from cdn.shopify.com, so open the
+  // connection (DNS + TCP + TLS) with the document instead of paying for it
+  // when the first <img> is discovered. React 19 hoists this into <head>;
+  // same idiom as the PDP's ReactDOM.preload. No crossOrigin — the imgs are
+  // plain no-cors requests, and a mismatched mode would open a second,
+  // unused connection.
+  preconnect("https://cdn.shopify.com");
+
   // All four were sequential awaits; nothing here depends on anything else,
   // so the two DB reads and the two cookie reads overlap. Reading cookies at
   // all opts the tree into dynamic rendering — that is deliberate, so the

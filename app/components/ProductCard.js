@@ -6,7 +6,10 @@ import HoverSwapImage from "./HoverSwapImage.js";
 import Price from "./Price.js";
 import { useLanguage } from "./LanguageProvider";
 
-export default function ProductCard({ product, imageSizes }) {
+// `priority` is passed straight through to HoverSwapImage: false for the vast
+// majority of cards, "eager"/"high" for the handful a grid renders above the
+// fold. See HoverSwapImage for what each tier does.
+export default function ProductCard({ product, imageSizes, priority = false }) {
   const { t } = useLanguage();
   const {
     name,
@@ -53,7 +56,18 @@ export default function ProductCard({ product, imageSizes }) {
       {/* Image */}
       <div className="relative aspect-[4/5] shrink-0 overflow-hidden bg-zinc-100">
         {imageUrl ? (
-          <HoverSwapImage imageUrl={imageUrl} imageUrl2={imageUrl2} alt={displayTitle} sizes={imageSizes} />
+          // Keyed on the image URLs, not just the card's own identity: feed
+          // cards are keyed by productUrl + name, so a product whose photos
+          // change in place would keep the old loaded/loaded2/primed state and
+          // skip the fade and hover gates for the new images.
+          <HoverSwapImage
+            key={`${imageUrl}|${imageUrl2 ?? ""}`}
+            imageUrl={imageUrl}
+            imageUrl2={imageUrl2}
+            alt={displayTitle}
+            sizes={imageSizes}
+            priority={priority}
+          />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-100 text-xs text-zinc-400">
             {t("product.noImage")}

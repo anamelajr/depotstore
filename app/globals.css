@@ -29,6 +29,31 @@ body {
   box-shadow: none;
 }
 
+/* Feed grid — offscreen card skipping.
+   `contain-intrinsic-size` is always on so the browser records each card's
+   real "last remembered size" while it renders; the `auto` keyword is what
+   makes that recording happen, and without it a scroll-restored grid would
+   later collapse onto the fallback estimate. `content-visibility` itself is
+   toggled on separately (see FeedClient) — enabling it during the restore
+   frame would make the pre-paint scroll jump land against estimated heights
+   instead of real ones.
+
+   The fallback lengths only shape total document height for never-rendered
+   cards on fresh loads, i.e. the scrollbar, not visible content: scroll
+   anchoring holds the viewport steady as estimates below it correct. Derived
+   from card width x 5/4 + caption (~90px mobile, ~60px desktop); keep within
+   ~20% of real card height if the grid geometry changes.
+
+   Browsers without support ignore both declarations -> unchanged behavior. */
+.feed-card-cv { contain-intrinsic-size: auto 290px; }          /* 2-col phones: ~160px card → 200px img + caption */
+@media (min-width: 640px) {
+  /* Still 2-col up to 1023px, but cards are ~280-350px wide → ~445-520px
+     tall; from 1024px the 3-col cards run ~316-470px wide → ~455-630px.
+     One 500px estimate stays within ~20% across both ranges. */
+  .feed-card-cv { contain-intrinsic-size: auto 500px; }
+}
+.feed-card-cv--on { content-visibility: auto; }
+
 @keyframes navMenuEnter {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
