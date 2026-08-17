@@ -95,8 +95,9 @@ Mind the apostrophe: `leadingSubLinePrefix` (`app/lib/formattingHealth.js:101-11
 builds a regex from the prefix — `Y'S` must match both `'` and `’` in titles
 (row 15239796 uses `’`). Escape/normalize accordingly (small tweak to the regex
 build or store the prefix as a pattern-safe form). Effect: the 3
-`season_not_first` items reclassify to `sub_line_prefix` (correct key; the fix
-for the titles themselves is a strip, done in the follow-up SQL).
+`season_not_first` items reclassify to `sub_line_prefix` (correct key; the
+titles themselves are repaired in the follow-up SQL — see the reorder-don't-
+strip instruction in step 4 there).
 
 ### C. Swimwear category — taxonomy + classifier
 
@@ -129,7 +130,9 @@ the parent regex and the matching leaf regex where applicable):
 Do NOT add speculative terms (e.g. "pillow"/homeware — out of taxonomy; those
 rows legitimately stay null).
 
-### E. Harden `scripts/backfillCategories.mjs` for scoped repair
+### E. Harden the backfill scripts for scoped repair
+
+#### E1. `scripts/backfillCategories.mjs`
 
 As written the script is a full-table rewrite: it scans every row, omits
 `productType` (which the cron HAD at sync time), and overwrites any
@@ -146,6 +149,23 @@ abort on batch failure. For this repair add:
 - Print the exact id list written (rollback input).
 
 The legacy full-table mode stays available but is NOT part of this repair.
+
+#### E2. `scripts/backfillSubcategory.mjs`
+
+The `--emit-sql` output has two flaws for a rerun:
+
+- It emits an UPDATE for **every** classified row in the three parent
+  categories, including rows whose subcategory is already set — a
+  full-population rewrite, not a repair. Add an `--only-null` flag that emits
+  updates only where `current_subcategory` is null, and append
+  `AND subcategory IS NULL` to each emitted UPDATE as a CAS predicate.
+- The rollback snapshot is `CREATE TABLE IF NOT EXISTS
+  products_subcategory_backfill_snapshot` — that table was created by the
+  2026-05-21 run (`scripts/sql/2026-05-21-subcategory-backfill.sql`), so a
+  rerun can silently keep the stale May snapshot as its "rollback state".
+  Emit a date-suffixed table name
+  (`products_subcategory_backfill_snapshot_<YYYYMMDD>`) scoped to the ids
+  being updated, plus a row-count `SELECT` to eyeball before the UPDATEs run.
 
 ### F. Tests
 
@@ -174,15 +194,20 @@ Order matters: merge + deploy the PR first, then:
    **Do not run without `--only-null`**: the full-table mode re-classifies
    without `productType` (which the cron had at sync time) and can flip valid
    categories to different values or NULL.
-3. **Subcategory backfill** (fills the leaf the step above cannot):
-   `node scripts/backfillSubcategory.mjs` (report) then `--emit-sql FILE`,
-   review, and run the SQL in the Supabase SQL Editor. `backfillCategories`
-   writes only the parent column, so newly repaired Bags & Accessories rows
-   would otherwise be invisible to the accessories/bags leaf filters. The
-   emitted SQL is parent-gated (skips cross-category disagreements, honouring
-   `products_subcategory_matches_category`) and snapshots prior values into
-   `products_subcategory_backfill_snapshot` first. Swimwear has no leaves —
+3. **Subcategory backfill — scoped** (fills the leaf the step above cannot):
+   `node scripts/backfillSubcategory.mjs --only-null` (report) then
+   `--only-null --emit-sql FILE`, review the SQL (date-suffixed snapshot
+   table + `AND subcategory IS NULL` predicates per E2), and run it in the
+   Supabase SQL Editor. `backfillCategories` writes only the parent column,
+   so newly repaired Bags & Accessories rows would otherwise be invisible to
+   the accessories/bags leaf filters. The emitted SQL is parent-gated (skips
+   cross-category disagreements, honouring
+   `products_subcategory_matches_category`). Swimwear has no leaves —
    unaffected.
+   **Do not run without `--only-null`**: the unscoped emit rewrites every
+   already-set subcategory in the three parent categories, and (pre-E2) its
+   `CREATE TABLE IF NOT EXISTS` snapshot silently reuses the stale May 2026
+   snapshot table as rollback state.
 4. **Hand-edited titles** (~10 rows, verify each against the retailer listing
    before writing; single UPDATEs scoped to id):
    - 830639 → brand `Y-3` (allowlisted), title `Leather Shoes` (or retitle with
@@ -196,8 +221,18 @@ Order matters: merge + deploy the PR first, then:
      `205w39nyc Cowboy Leather Boots` (check listing for season).
    - 821449 `A2013` / 196811 `FW90s` / 5857846 `SS19999` → resolve against the
      retailer listing (likely `2013`, `1990s`, `SS99`); never guess in code.
-   - Season/sub-line strips: 14880839 (`London `), 14937632 (`Boutique `),
-     15239796 (`Y’s `), 14881061 (`Tao `) — strip the prefix, keep the rest.
+   - Sub-line prefixes: 14880839 (`London`), 14937632 (`Boutique`),
+     15239796 (`Y’s`), 14881061 (`Tao`) — **reorder, don't strip**: move the
+     season code to the front and keep the sub-line token
+     (`Y’s FW11 Black Hooded Shirt` → `FW11 Y’s Black Hooded Shirt`). This
+     preserves the sub-line identity (consistent with the collab-title
+     decision above) and passes the audit: with the season first,
+     `season_not_first` never fires, `sub_line_prefix` is only reachable
+     through that flag, and none of these tokens are allowlisted brands so
+     `brand_in_title` stays quiet. These sub-lines cannot be promoted to the
+     brand field (unlike MM6/Y-3/Pleats Please they are not allowlisted
+     brands, and adding them is out of scope). Strip instead of reorder only
+     where the operator judges the token adds nothing.
 5. Trigger `/api/health/formatting` (bearer CRON_SECRET — safe, read-only) and
    confirm the issue-#114 fingerprint change reflects the drop; remaining count
    should be the true-residue rows only.
