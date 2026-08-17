@@ -129,8 +129,26 @@ async function fetchShopifyProduct(handle, storeDomain) {
 // 600s normally, up to 1h during a sustained Supabase outage.
 const STORE_GATE_TTL_MS = 600_000;
 const STORE_GATE_HARD_CAP_MS = 3_600_000;
+// `?store=` is a public query param, and unknown domains are cached (data:
+// null) like real ones so probes can't hammer Supabase — which means the map
+// grows with every unique garbage domain a scanner throws at it. Cap it well
+// above the real store count (~15) and evict oldest-inserted past the cap;
+// legit domains get re-fetched on their next hit, probe garbage never returns.
+const STORE_GATE_MAX_ENTRIES = 500;
 
-const storeGateCache = new Map(); // domain → { data, fetchedAt }
+// domain → { data, fetchedAt }. Exported for tests only — nothing outside
+// this module (or its test) should touch it.
+export const storeGateCache = new Map();
+
+function setGateEntry(domain, entry) {
+  // Delete-then-set refreshes insertion order, making eviction oldest-first.
+  storeGateCache.delete(domain);
+  storeGateCache.set(domain, entry);
+  for (const key of storeGateCache.keys()) {
+    if (storeGateCache.size <= STORE_GATE_MAX_ENTRIES) break;
+    storeGateCache.delete(key);
+  }
+}
 
 async function readStoreRow(storeDomain) {
   const { data, error } = await supabase
@@ -153,7 +171,7 @@ async function resolveStoreGate(storeDomain) {
 
   try {
     const data = await readStoreRow(storeDomain);
-    storeGateCache.set(storeDomain, { data, fetchedAt: Date.now() });
+    setGateEntry(storeDomain, { data, fetchedAt: Date.now() });
     return data;
   } catch (e) {
     if (entry && age < STORE_GATE_HARD_CAP_MS) {

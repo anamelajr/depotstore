@@ -33,6 +33,21 @@ AS $$
    WHERE id = ANY(p_ids);
 $$;
 
+-- Release RPC. The route claims the whole batch up front, but the 240s
+-- deadline can strand queued rows before any OpenAI call is issued for them.
+-- After the pool drains, the route calls this on the never-attempted ids so a
+-- stranded row doesn't burn attempts toward the < 3 cap without a single
+-- generation. GREATEST floors at 0 defensively (a release should only ever
+-- follow this run's own increment, but a double-release must not go negative).
+CREATE OR REPLACE FUNCTION decrement_description_attempts(p_ids BIGINT[])
+RETURNS void
+LANGUAGE sql
+AS $$
+  UPDATE products
+     SET description_attempts = GREATEST(description_attempts - 1, 0)
+   WHERE id = ANY(p_ids);
+$$;
+
 -- Supports the claim SELECT: newest-first among visible rows that still need a
 -- description and have attempts left. Same visibility predicate as the feed
 -- indexes — keep it byte-identical to `withVisibility`.

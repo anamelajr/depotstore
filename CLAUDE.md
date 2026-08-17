@@ -109,11 +109,14 @@ any change.
     END
   WHERE handle = p_handle AND store_domain = p_store_domain;
   ```
-- **`increment_description_attempts(p_ids BIGINT[])` RPC** — claim-by-increment
+- **`increment_description_attempts(p_ids BIGINT[])` /
+  `decrement_description_attempts(p_ids BIGINT[])` RPCs** — claim-by-increment
   for `/api/backfill-descriptions`, issued BEFORE any OpenAI call so an
   overlapping run can't duplicate spend (the only-if-NULL write guard stops
-  duplicate writes, not duplicate calls). Needs `description_attempts INT NOT
-  NULL DEFAULT 0`. DDL:
+  duplicate writes, not duplicate calls); the decrement releases rows the
+  240s deadline stranded before any call was made, so they don't burn toward
+  `MAX_ATTEMPTS` untried. Needs `description_attempts INT NOT NULL DEFAULT 0`.
+  DDL:
   [`scripts/sql/2026-08-17-description-attempts.sql`](scripts/sql/2026-08-17-description-attempts.sql).
 - **`increment_enrich_attempts` RPC** — `enrich_attempts = enrich_attempts + 1`
   WHERE handle + store_domain. Needs `enrich_attempts INT NOT NULL DEFAULT 0`.

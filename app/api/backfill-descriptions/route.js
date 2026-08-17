@@ -53,20 +53,23 @@ async function generateOne(row) {
 
 // Simple fixed-size worker pool. Keeps OpenAI concurrency bounded without
 // pulling in a dependency; each worker pulls the next index until the queue or
-// the deadline is exhausted.
-async function runPool(rows, worker, startMs) {
+// the deadline is exhausted. Returns the Set of row ids actually handed to a
+// worker — rows stranded past the deadline are absent, so the caller can
+// release their claims (exported for tests).
+export async function runPool(rows, worker, startMs) {
   let next = 0;
-  const results = [];
+  const attempted = new Set();
   const workers = Array.from({ length: Math.min(CONCURRENCY, rows.length) }, async () => {
     for (;;) {
       const i = next++;
       if (i >= rows.length) return;
       if (Date.now() - startMs > DEADLINE_MS) return;
-      results.push(await worker(rows[i]));
+      attempted.add(rows[i].id);
+      await worker(rows[i]);
     }
   });
   await Promise.all(workers);
-  return results;
+  return attempted;
 }
 
 export async function POST(request) {
@@ -126,6 +129,14 @@ export async function POST(request) {
   // different set. The write-side only-if-NULL guard below prevents duplicate
   // WRITES; it does nothing about duplicate CALLS, which are the actual cost.
   // A failed claim aborts the run rather than generating unclaimed.
+  //
+  // Accepted residual: the SELECT above and this RPC are not one atomic
+  // operation, so two invocations landing within that sub-second window would
+  // both claim (and both generate) the same rows. The route's only dispatcher
+  // is the hourly cron, fire-and-forget, so the realistic overlap is a manual
+  // trigger colliding with cron to the millisecond. Closing it fully needs a
+  // claim-and-return RPC (`FOR UPDATE SKIP LOCKED`) — deliberately not built
+  // for a once-an-hour, single-dispatcher route.
   const ids = rows.map((r) => r.id);
   const { error: claimError } = await supabaseAdmin.rpc(
     "increment_description_attempts",
@@ -145,7 +156,7 @@ export async function POST(request) {
   let generated = 0;
   let failed = 0;
 
-  await runPool(
+  const attempted = await runPool(
     rows,
     async (row) => {
       const text = await generateOne(row);
@@ -167,6 +178,31 @@ export async function POST(request) {
     startMs,
   );
 
+  // RELEASE WHAT WAS NEVER TRIED. The claim above covers the whole batch, but
+  // a slow run (OpenAI near the 30s timeout) can hit DEADLINE_MS with rows
+  // still queued. Those rows burned an attempt without a single OpenAI call;
+  // left alone, three degraded runs would exhaust them permanently. Rows whose
+  // call was at least STARTED keep their attempt — that spend was real.
+  // A failed release is logged and accepted: the row loses one attempt, and
+  // the cron source-change reset restores exhausted rows when listings change.
+  const stranded = ids.filter((id) => !attempted.has(id));
+  if (stranded.length > 0) {
+    const { error: releaseError } = await supabaseAdmin.rpc(
+      "decrement_description_attempts",
+      { p_ids: stranded },
+    );
+    if (releaseError) {
+      console.error(
+        JSON.stringify({
+          event: "description_backfill_error",
+          stage: "release",
+          stranded: stranded.length,
+          reason: releaseError.message,
+        }),
+      );
+    }
+  }
+
   const { count: remaining } = await supabaseAdmin
     .from("products")
     .select("id", { count: "exact", head: true })
@@ -182,6 +218,7 @@ export async function POST(request) {
       claimed: rows.length,
       generated,
       failed,
+      stranded: stranded.length,
       remaining: remaining ?? null,
       ms: Date.now() - startMs,
     }),
@@ -192,6 +229,7 @@ export async function POST(request) {
     claimed: rows.length,
     generated,
     failed,
+    stranded: stranded.length,
     remaining: remaining ?? null,
   });
 }

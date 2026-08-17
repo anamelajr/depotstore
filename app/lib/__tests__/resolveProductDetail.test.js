@@ -34,6 +34,7 @@ import {
   resolveSizes,
   resolveProductDetailCore,
   resolveDescription,
+  storeGateCache,
 } from "../resolveProductDetail.js";
 
 describe("stripHtml", () => {
@@ -323,6 +324,37 @@ describe("resolveProductDetailCore zero-price gate", () => {
       storeDomain: "graindesell.shop",
     });
     expect(result?.price).toBe(null);
+  });
+});
+
+// `?store=` is user-controlled: a scanner cycling unique garbage domains must
+// not grow the module-scope gate cache without bound (Codex review P3).
+describe("store gate cache bound", () => {
+  beforeEach(() => {
+    storeGateCache.clear();
+    tableRows.stores = null; // every probed domain is unknown → cached as null
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false })),
+    );
+  });
+
+  afterEach(() => {
+    storeGateCache.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("evicts oldest entries past the cap instead of growing unbounded", async () => {
+    for (let i = 0; i < 650; i++) {
+      await resolveProductDetailCore({
+        handle: "probe",
+        storeDomain: `garbage-${i}.example`,
+      });
+    }
+    expect(storeGateCache.size).toBeLessThanOrEqual(500);
+    // Oldest probes evicted, newest retained.
+    expect(storeGateCache.has("garbage-0.example")).toBe(false);
+    expect(storeGateCache.has("garbage-649.example")).toBe(true);
   });
 });
 
