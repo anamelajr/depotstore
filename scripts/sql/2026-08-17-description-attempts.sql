@@ -10,10 +10,14 @@
 --      never drain.
 --
 --   2. Duplicate OpenAI spend. The route increments this counter on the
---      selected ids BEFORE issuing any generation, so an overlapping or
---      retried invocation cannot claim the same rows. The write-side
---      `.is("editorial_description", null)` guard prevents duplicate WRITES;
---      it does nothing about duplicate CALLS, which are what costs money.
+--      selected ids BEFORE issuing any generation, and its SELECT orders by
+--      attempts ASC first — so an overlapping run sorts freshly-claimed rows
+--      behind the untouched backlog and lands on a different batch. This is
+--      soft deprioritization, not exclusion (attempts=1 still passes `< 3`);
+--      see the route's claim comment for the accepted residual. The
+--      write-side `.is("editorial_description", null)` guard prevents
+--      duplicate WRITES; it does nothing about duplicate CALLS, which are
+--      what costs money.
 --
 -- NOT NULL DEFAULT 0 so the route's `description_attempts < 3` predicate is
 -- total — a nullable column would make `< 3` skip every existing row.
@@ -48,8 +52,11 @@ AS $$
    WHERE id = ANY(p_ids);
 $$;
 
--- Supports the claim SELECT: newest-first among visible rows that still need a
--- description and have attempts left. Same visibility predicate as the feed
+-- Supports the claim SELECT: filters visible rows that still need a
+-- description and have attempts left. The route orders by attempts ASC before
+-- synced_at DESC, so this index serves the FILTER (partial-index predicate)
+-- but not the sort order — Postgres sorts the surviving few-thousand rows,
+-- which is fine under the 8s cap. Same visibility predicate as the feed
 -- indexes — keep it byte-identical to `withVisibility`.
 --
 -- Plain CREATE INDEX (not CONCURRENTLY): see the note in

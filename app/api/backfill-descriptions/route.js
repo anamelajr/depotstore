@@ -86,6 +86,15 @@ export async function POST(request) {
   // Visibility predicate matches `withVisibility` (available + hidden + the
   // '€0.00' NOT-FOR-SALE carve-out): never spend tokens on a product the feed
   // will not show. NULL price stays eligible — unknown, not unsellable.
+  //
+  // ORDER BY attempts FIRST. This is what turns the increment below into an
+  // effective claim: a run that overlaps this one sorts the rows we just
+  // bumped to attempts=1 BEHIND the untouched attempts=0 backlog, so
+  // concurrent runs diverge onto disjoint batches whenever more than one
+  // batch of work remains. Ordering by synced_at alone would hand every
+  // overlapping run the identical newest-100 set (attempts=1 still passes
+  // `< 3`). Side effect, also wanted: never-tried rows drain before failed
+  // rows retry. Within an attempt tier, newest first.
   const { data: candidates, error: selectError } = await supabaseAdmin
     .from("products")
     .select("id, handle, store_domain, store_name, name, brand, price, description")
@@ -94,6 +103,7 @@ export async function POST(request) {
     .or(`price.is.null,price.neq."${ZERO_PRICE}"`)
     .is("editorial_description", null)
     .lt("description_attempts", MAX_ATTEMPTS)
+    .order("description_attempts", { ascending: true })
     .order("synced_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(BATCH_SIZE);
@@ -125,18 +135,23 @@ export async function POST(request) {
   }
 
   // CLAIM BEFORE SPENDING. Increment the attempt counter on the selected ids
-  // before any OpenAI call, so an overlapping or retried invocation selects a
-  // different set. The write-side only-if-NULL guard below prevents duplicate
-  // WRITES; it does nothing about duplicate CALLS, which are the actual cost.
-  // A failed claim aborts the run rather than generating unclaimed.
+  // before any OpenAI call. The increment does NOT exclude the rows from a
+  // later SELECT's predicate (attempts=1 still passes `< 3`); it deprioritizes
+  // them via the attempts-first ordering above, which is what steers an
+  // overlapping run onto a different batch. The write-side only-if-NULL guard
+  // below prevents duplicate WRITES; it does nothing about duplicate CALLS,
+  // which are the actual cost. A failed claim aborts the run rather than
+  // generating unclaimed.
   //
-  // Accepted residual: the SELECT above and this RPC are not one atomic
-  // operation, so two invocations landing within that sub-second window would
-  // both claim (and both generate) the same rows. The route's only dispatcher
-  // is the hourly cron, fire-and-forget, so the realistic overlap is a manual
-  // trigger colliding with cron to the millisecond. Closing it fully needs a
-  // claim-and-return RPC (`FOR UPDATE SKIP LOCKED`) — deliberately not built
-  // for a once-an-hour, single-dispatcher route.
+  // Accepted residual: the deprioritization is soft. A run overlapping this
+  // one anywhere in its ~240s window duplicates work in two cases — (a) it
+  // starts between our SELECT and this RPC committing, or (b) fewer than
+  // BATCH_SIZE attempts=0 rows remain, so its batch partially overlaps ours.
+  // (a) is a sub-second window; (b) only occurs in the drained steady state,
+  // where the duplicated set is small. The route's only dispatcher is the
+  // hourly cron, fire-and-forget, no retry. True in-flight exclusion needs a
+  // lease column or claim-and-return RPC — deliberately not built for a
+  // once-an-hour, single-dispatcher route.
   const ids = rows.map((r) => r.id);
   const { error: claimError } = await supabaseAdmin.rpc(
     "increment_description_attempts",
