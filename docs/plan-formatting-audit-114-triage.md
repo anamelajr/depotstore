@@ -129,7 +129,25 @@ the parent regex and the matching leaf regex where applicable):
 Do NOT add speculative terms (e.g. "pillow"/homeware — out of taxonomy; those
 rows legitimately stay null).
 
-### E. Tests
+### E. Harden `scripts/backfillCategories.mjs` for scoped repair
+
+As written the script is a full-table rewrite: it scans every row, omits
+`productType` (which the cron HAD at sync time), and overwrites any
+disagreement — so a `--write` run today could flip currently-valid categories
+to different values or NULL, with no compare-and-set, no transaction, and no
+abort on batch failure. For this repair add:
+
+- `--only-null` flag: scan filter `.is("category", null)` (the actual repair
+  target), and a matching CAS predicate on the write —
+  `.update({ category }).in("id", slice).is("category", null)` — so a
+  concurrently-changed row is never clobbered. Rollback is then trivial
+  (prior value was NULL; snapshot the id list before writing).
+- Abort nonzero on the first failed batch instead of continuing.
+- Print the exact id list written (rollback input).
+
+The legacy full-table mode stays available but is NOT part of this repair.
+
+### F. Tests
 
 - Extend classifier tests (or add) for each new vocab term + Swimwear mapping.
 - `formattingHealth` tests: sub-line reclassification for `Y’s FW11 …` with the
@@ -145,12 +163,27 @@ Order matters: merge + deploy the PR first, then:
    and same for `A.P.C`→`A.P.C.`, `A.F VANDEVORST`→`A.F. VANDEVORST`,
    `J.W. ANDERSON`→`JW ANDERSON`, `Y-PROJECT`→`Y/PROJECT`.
    Fixes all 29 `non_canonical_brand` + all 5 `split_brand_family`.
-2. **Category backfill**: `node scripts/backfillCategories.mjs` (dry-run, review)
-   then `--write`. With C+D deployed this rescues swimwear, bayonetta, harness,
-   kilt, French-noun rows, and the Saddle bag (via its now-present
-   editorial_description). Expect a small residue of truly unclassifiable rows —
-   they stay NULL and reported; triage those by hand afterwards.
-3. **Hand-edited titles** (~10 rows, verify each against the retailer listing
+2. **Category backfill — scoped, never full-table**:
+   `node scripts/backfillCategories.mjs --only-null` (dry-run, review every
+   transition) then `--only-null --write`. With C+D+E deployed this rescues
+   swimwear, bayonetta, harness, kilt, French-noun rows, and the Saddle bag
+   (via its now-present editorial_description) while touching ONLY rows whose
+   category is NULL — currently-valid categories cannot be rewritten. Expect a
+   small residue of truly unclassifiable rows — they stay NULL and reported;
+   triage those by hand afterwards.
+   **Do not run without `--only-null`**: the full-table mode re-classifies
+   without `productType` (which the cron had at sync time) and can flip valid
+   categories to different values or NULL.
+3. **Subcategory backfill** (fills the leaf the step above cannot):
+   `node scripts/backfillSubcategory.mjs` (report) then `--emit-sql FILE`,
+   review, and run the SQL in the Supabase SQL Editor. `backfillCategories`
+   writes only the parent column, so newly repaired Bags & Accessories rows
+   would otherwise be invisible to the accessories/bags leaf filters. The
+   emitted SQL is parent-gated (skips cross-category disagreements, honouring
+   `products_subcategory_matches_category`) and snapshots prior values into
+   `products_subcategory_backfill_snapshot` first. Swimwear has no leaves —
+   unaffected.
+4. **Hand-edited titles** (~10 rows, verify each against the retailer listing
    before writing; single UPDATEs scoped to id):
    - 830639 → brand `Y-3` (allowlisted), title `Leather Shoes` (or retitle with
      more detail from listing).
@@ -165,7 +198,7 @@ Order matters: merge + deploy the PR first, then:
      retailer listing (likely `2013`, `1990s`, `SS99`); never guess in code.
    - Season/sub-line strips: 14880839 (`London `), 14937632 (`Boutique `),
      15239796 (`Y’s `), 14881061 (`Tao `) — strip the prefix, keep the rest.
-4. Trigger `/api/health/formatting` (bearer CRON_SECRET — safe, read-only) and
+5. Trigger `/api/health/formatting` (bearer CRON_SECRET — safe, read-only) and
    confirm the issue-#114 fingerprint change reflects the drop; remaining count
    should be the true-residue rows only.
 
