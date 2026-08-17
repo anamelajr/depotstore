@@ -344,9 +344,20 @@ async function main() {
   console.log("──────────────────────────────────────────────");
   console.log(`  Written: ${written}`);
   console.log("──────────────────────────────────────────────");
-  // Rollback input. In --only-null mode every one of these rows was NULL
-  // before the run, so the undo is a single scoped UPDATE back to NULL.
-  console.log("\nIds written (rollback input):");
+  if (ONLY_NULL) {
+    // Rollback input. Every one of these rows was NULL before the run (the
+    // CAS predicate guarantees it), so the undo is a single scoped UPDATE
+    // back to NULL.
+    console.log("\nIds written (rollback input — prior value was NULL):");
+  } else {
+    // Full-table mode overwrote rows with DIFFERENT non-null prior values.
+    // This id list is an audit trail only — resetting it to NULL would
+    // destroy those prior categories, so it must not be labelled rollback.
+    console.log(
+      "\nIds written (audit trail — NOT rollback input: full-table mode does" +
+        " not record prior values; restore from a snapshot instead):",
+    );
+  }
   console.log(JSON.stringify(writtenIds));
 }
 

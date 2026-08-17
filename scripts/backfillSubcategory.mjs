@@ -179,14 +179,18 @@ function emitSql(detail, path) {
     groups[d.proposed_subcategory].push(d.id);
   }
   const allIds = Object.values(groups).flat();
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  // Per-RUN suffix, to the second: a date-only stamp collides on a same-day
+  // rerun and the unconditional CREATE TABLE below would abort the whole
+  // transaction (loud and safe, but it blocks a legitimate re-emit).
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, "");
   const snapshotTable = `products_subcategory_backfill_snapshot_${stamp}`;
   const lines = [
-    "-- Wet backfill: subcategory assignments computed " + new Date().toISOString(),
+    "-- Wet backfill: subcategory assignments computed " + now.toISOString(),
     `-- scope: ${ONLY_NULL ? "--only-null (subcategory IS NULL rows only)" : "FULL (rewrites already-set subcategories)"}`,
     "BEGIN;",
     "",
-    "-- Snapshot for rollback. Date-suffixed: a CREATE TABLE IF NOT EXISTS",
+    "-- Snapshot for rollback. Run-stamped: a CREATE TABLE IF NOT EXISTS",
     "-- would silently reuse the 2026-05-21 snapshot as this run's rollback state.",
     `CREATE TABLE ${snapshotTable} AS`,
     "  SELECT id, category, subcategory FROM products",
