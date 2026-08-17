@@ -311,9 +311,14 @@ export default function FeedClient({ stores = [], initialData = null }) {
           if (!restoreDelivered) {
             // Failed/empty restore: the layout effect will never run its
             // cleanup, so do it here — drop the pending jump and the saved
-            // state so later navigations aren't blocked.
+            // state so later navigations aren't blocked. cvEnabled must come
+            // back on too: the layout effect's double-rAF is the only other
+            // writer, and it's gated behind the pending flag cleared here —
+            // without this, every grid a later soft nav renders into this
+            // mounted feed keeps offscreen skipping disabled.
             scrollRestorePending.current = false;
             scrollRestoreY.current = null;
+            setCvEnabled(true);
             sessionStorage.removeItem("depot_feed_scroll");
             sessionStorage.removeItem("depot_feed_count");
             sessionStorage.removeItem("depot_feed_filter_key");

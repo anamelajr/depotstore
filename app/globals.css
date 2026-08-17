@@ -45,9 +45,12 @@ body {
    ~20% of real card height if the grid geometry changes.
 
    Browsers without support ignore both declarations -> unchanged behavior. */
-.feed-card-cv { contain-intrinsic-size: auto 290px; }          /* 2-col mobile: ~160px card → 200px img + caption */
-@media (min-width: 1024px) {
-  .feed-card-cv { contain-intrinsic-size: auto 500px; }        /* 3-col: ~330-470px card → 410-590px img + caption */
+.feed-card-cv { contain-intrinsic-size: auto 290px; }          /* 2-col phones: ~160px card → 200px img + caption */
+@media (min-width: 640px) {
+  /* Still 2-col up to 1023px, but cards are ~280-350px wide → ~445-520px
+     tall; from 1024px the 3-col cards run ~316-470px wide → ~455-630px.
+     One 500px estimate stays within ~20% across both ranges. */
+  .feed-card-cv { contain-intrinsic-size: auto 500px; }
 }
 .feed-card-cv--on { content-visibility: auto; }
 
