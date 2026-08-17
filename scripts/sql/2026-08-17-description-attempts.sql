@@ -37,8 +37,9 @@ $$;
 -- description and have attempts left. Same visibility predicate as the feed
 -- indexes — keep it byte-identical to `withVisibility`.
 --
--- CREATE INDEX CONCURRENTLY cannot run in a transaction — run on its own.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_needs_description
+-- Plain CREATE INDEX (not CONCURRENTLY): see the note in
+-- 2026-08-17-feed-indexes.sql.
+CREATE INDEX IF NOT EXISTS idx_products_needs_description
   ON products (synced_at DESC, id DESC)
   WHERE available = true AND hidden = false
     AND (price IS NULL OR price <> '€0.00')

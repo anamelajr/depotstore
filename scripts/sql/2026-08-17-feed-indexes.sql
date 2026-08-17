@@ -12,29 +12,36 @@
 -- of these back to a seq scan with no error. If the visibility rule ever
 -- changes, it changes HERE too, in the same commit.
 --
--- RUN EACH STATEMENT SEPARATELY in the Supabase SQL Editor.
--- CREATE INDEX CONCURRENTLY cannot run inside a transaction block, so unlike
--- the RPC migrations in this directory there is deliberately no BEGIN/COMMIT.
--- CONCURRENTLY keeps writes (the hourly cron sync) unblocked while they build.
+-- NOT `CONCURRENTLY`, on purpose. The Supabase SQL Editor submits a script as
+-- a single transaction, and CREATE INDEX CONCURRENTLY is one of the commands
+-- Postgres refuses to run inside one — it fails there even as a lone
+-- statement. A plain CREATE INDEX takes a ShareLock that blocks WRITES to
+-- `products` while it builds; reads are unaffected. At ~27.7k rows that is a
+-- matter of seconds, and the only writer is the hourly cron sync (a run that
+-- overlapped would simply retry next hour). Safe to paste this whole file.
+--
+-- If you ever need the non-blocking build (a much larger table, or a sync you
+-- can't afford to interrupt), run these through `psql` against the direct
+-- connection string instead, where CONCURRENTLY works — not the web editor.
 
 -- 1. Per-store newest-first. Serves the homepage daily rotation,
 --    MoreFromStore, the store-filtered feed, and — the reason this one is
 --    first — the `store_order` CTE inside get_interleaved_products /
 --    count_interleaved_products, whose GROUP BY store_domain over all visible
 --    rows becomes an index-only scan.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_visible_store_synced
+CREATE INDEX IF NOT EXISTS idx_products_visible_store_synced
   ON products (store_domain, synced_at DESC, id DESC)
   WHERE available = true AND hidden = false
     AND (price IS NULL OR price <> '€0.00');
 
 -- 2. Global newest-first: the unfiltered feed and the newest/oldest sorts.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_visible_synced
+CREATE INDEX IF NOT EXISTS idx_products_visible_synced
   ON products (synced_at DESC, id DESC)
   WHERE available = true AND hidden = false
     AND (price IS NULL OR price <> '€0.00');
 
 -- 3. Category / leaf-subcategory filtering.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_visible_category
+CREATE INDEX IF NOT EXISTS idx_products_visible_category
   ON products (category, subcategory)
   WHERE available = true AND hidden = false
     AND (price IS NULL OR price <> '€0.00');
@@ -44,8 +51,8 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_visible_category
 --    it, and it still costs on every write). Note there are TWO of them —
 --    `idx_products_available` and `products_available_idx` are duplicates of
 --    each other. Run these last, and only once the EXPLAIN check has passed.
--- DROP INDEX CONCURRENTLY IF EXISTS idx_products_available;
--- DROP INDEX CONCURRENTLY IF EXISTS products_available_idx;
+-- DROP INDEX IF EXISTS idx_products_available;
+-- DROP INDEX IF EXISTS products_available_idx;
 
 -- Verification (read-only, safe to run any time):
 --

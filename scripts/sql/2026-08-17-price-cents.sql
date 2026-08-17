@@ -42,9 +42,10 @@ ALTER TABLE products
 -- `withVisibility`). `id` is the deterministic tiebreaker, matching the
 -- read path's `.order("price_cents").order("id")`.
 --
--- CREATE INDEX CONCURRENTLY cannot run in a transaction — run this statement
--- on its own, after the ALTER has finished.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_visible_price_cents
+-- Plain CREATE INDEX (not CONCURRENTLY): see the note in
+-- 2026-08-17-feed-indexes.sql — the SQL Editor runs scripts in a transaction,
+-- which CONCURRENTLY cannot join.
+CREATE INDEX IF NOT EXISTS idx_products_visible_price_cents
   ON products (price_cents, id)
   WHERE available = true AND hidden = false
     AND (price IS NULL OR price <> '€0.00');
