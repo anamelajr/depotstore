@@ -15,6 +15,14 @@ import { ALL_STORES_VALUE, LOAD_SIZE, buildFeedUrl } from "../lib/feed-utils";
 import { SORT_MAP } from "../lib/sort-options";
 import { useLanguage } from "../components/LanguageProvider";
 
+// How many leading cards opt out of lazy loading: two desktop rows at 3-col,
+// three mobile rows at 2-col. Of those, only the first row's worth get
+// fetchPriority=high — they're the plausible LCP candidates, and cards 3–6
+// staying at normal priority is what keeps them from racing the LCP for
+// bandwidth on a constrained connection.
+const EAGER_COUNT = 6;
+const HIGH_COUNT = 2;
+
 export default function FeedClient({ stores = [], initialData = null }) {
   const storeOptions = [
     { value: ALL_STORES_VALUE, label: "All Stores" },
@@ -89,6 +97,10 @@ export default function FeedClient({ stores = [], initialData = null }) {
   // server-seeded state means `loading` starts false with a full first page,
   // so the pre-paint jump would run against the short grid and clamp.
   const restoreDoneRef = useRef(false);
+  // A restored grid lands mid-scroll, so index-based priority would eager the
+  // cards at the top of the document — the ones the user has already scrolled
+  // past. Set on the restore path, cleared on every fresh/soft-nav render.
+  const suppressPriorityRef = useRef(false);
 
   // On mount: check sessionStorage for back-navigation scroll restore.
   // Runs before the filter fetch effect so restoreCountRef is set in time.
@@ -123,6 +135,10 @@ export default function FeedClient({ stores = [], initialData = null }) {
       scrollRestorePending.current = true;
       restoreCountRef.current = count;
       restoreDoneRef.current = false;
+      // Read strictly after this write: the restored grid only renders once
+      // the restore fetch settles (the same ordering guarantee restoreCountRef
+      // relies on).
+      suppressPriorityRef.current = true;
       setLoading(true); // pre-paint: hide the seeded grid until the restore batch lands
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -136,6 +152,9 @@ export default function FeedClient({ stores = [], initialData = null }) {
   useEffect(() => {
     if (!serverMatch) return;
     if (restoreCountRef.current !== null || scrollRestorePending.current) return; // restore path refetches
+    // Soft-nav filter changes render fresh from the top, so index-based
+    // priority is correct again.
+    suppressPriorityRef.current = false;
     setLoadMoreOffset(null); // cancel pending Load More for the old filter
     setProducts(initialData.products);
     setTotal(initialData.total);
@@ -428,6 +447,13 @@ export default function FeedClient({ stores = [], initialData = null }) {
     (searchQuery ? 1 : 0);
   const hasMore = !loading && serverHasMore;
 
+  // Read during render on purpose, and a ref rather than state: it's false on
+  // both server and client for a fresh load, so the first 6 cards ship eager
+  // inside the SSR HTML — the whole win, since the preload scanner fires
+  // before hydration — with no mismatch to reconcile. As state it would cost a
+  // second render, which is exactly what the priority tier exists to beat.
+  const priorityDisabled = suppressPriorityRef.current;
+
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-clip">
       <div className="min-h-screen bg-white text-zinc-950">
@@ -495,19 +521,34 @@ export default function FeedClient({ stores = [], initialData = null }) {
           ) : (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-10 lg:grid-cols-3 lg:gap-x-3.5 lg:gap-y-16">
-                {products.map((p) => (
-                  <div
-                    key={`${p.productUrl ?? "unknown"}-${p.name}`}
-                    onClick={() => {
-                      sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
-                      sessionStorage.setItem("depot_feed_count", String(products.length));
-                      sessionStorage.setItem("depot_feed_filter_key", filterKey);
-                      sessionStorage.setItem("depot_feed_url", window.location.pathname + window.location.search);
-                    }}
-                  >
-                    <ProductCard product={p} imageSizes="(min-width: 1024px) 33vw, 50vw" />
-                  </div>
-                ))}
+                {
+                  // eslint-disable-next-line react-hooks/refs -- priorityDisabled is a deliberate render-time ref read; see its declaration
+                  products.map((p, i) => (
+                    <div
+                      key={`${p.productUrl ?? "unknown"}-${p.name}`}
+                      onClick={() => {
+                        sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
+                        sessionStorage.setItem("depot_feed_count", String(products.length));
+                        sessionStorage.setItem("depot_feed_filter_key", filterKey);
+                        sessionStorage.setItem("depot_feed_url", window.location.pathname + window.location.search);
+                      }}
+                    >
+                      {/* Load More appends are all i >= 30, hence lazy. */}
+                      <ProductCard
+                        product={p}
+                        imageSizes="(min-width: 1024px) 33vw, 50vw"
+                        priority={
+                          priorityDisabled
+                            ? false
+                            : i < HIGH_COUNT
+                              ? "high"
+                              : i < EAGER_COUNT
+                                ? "eager"
+                                : false
+                        }
+                      />
+                    </div>
+                  ))}
               </div>
               <div className="flex flex-col items-center gap-4 pt-10">
                 <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">

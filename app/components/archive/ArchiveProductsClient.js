@@ -119,11 +119,15 @@ export default function ArchiveProductsClient({ products }) {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-10 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-10">
-            {visible.map((p) => (
+            {visible.map((p, i) => (
               <ProductCard
                 key={`${p.storeDomain}::${p.handle}`}
                 product={p}
                 imageSizes="(min-width: 1024px) 25vw, 50vw"
+                // Above-the-fold tier for a 4-col desktop / 2-col mobile grid:
+                // the first two are the plausible LCP candidates, the next two
+                // are eager but normal-priority so they don't race them.
+                priority={i < 2 ? "high" : i < 4 ? "eager" : false}
               />
             ))}
           </div>
