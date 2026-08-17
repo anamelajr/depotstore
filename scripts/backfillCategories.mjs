@@ -310,7 +310,12 @@ async function main() {
         .in("id", slice);
       if (ONLY_NULL) update = update.is("category", null);
 
-      const { error } = await update;
+      // .select("id") returns the rows the UPDATE actually touched. A CAS-
+      // skipped row (enriched between scan and write) matches zero rows but
+      // still reports error: null — counting the requested slice would put
+      // never-written ids into the rollback list, and rolling those back to
+      // NULL would erase a concurrently written category.
+      const { data: updated, error } = await update.select("id");
 
       if (error) {
         // Abort rather than continue: a partial write across category groups
@@ -321,9 +326,15 @@ async function main() {
         console.error(JSON.stringify(writtenIds));
         process.exit(1);
       }
-      written += slice.length;
-      groupWritten += slice.length;
-      writtenIds.push(...slice);
+      const landedIds = (updated ?? []).map((r) => r.id);
+      written += landedIds.length;
+      groupWritten += landedIds.length;
+      writtenIds.push(...landedIds);
+      if (landedIds.length < slice.length) {
+        console.log(
+          `  (${slice.length - landedIds.length} of ${slice.length} skipped by compare-and-set — concurrently populated)`,
+        );
+      }
     }
     console.log(`  ${label(newCat).padEnd(22)}  wrote ${groupWritten}/${ids.length}`);
   }
