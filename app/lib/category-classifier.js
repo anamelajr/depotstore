@@ -44,7 +44,12 @@ function tryClassify(text, { strict = false } = {}) {
   //    detail", "perfect with a silk scarf") inside descriptions of
   //    actual garments. We defer B&A in strict mode so garment rules
   //    (3/4/4b/5) get first claim — see rule 5.5 below.
-  const bagsAccessoriesRx = /\b(bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|card[\s-]?holders?|pouchettes?|baguettes?|compact[\s-]?mirrors?|chapkas?|accessor(?:y|ies))\b/;
+  //    Vocabulary observed in the audit's unclassified rows: `bayonetta` is
+  //    chezsnowbunny's slang for narrow wrap sunglasses, `foulard` / `cabas`
+  //    are the French scarf / tote nouns that store's titles use verbatim.
+  //    `harness` is deliberately NOT here — it is a common garment descriptor
+  //    ("harness leather jacket"), so it runs late with belts/ties (rule 7.5).
+  const bagsAccessoriesRx = /\b(bayonettas?|foulards?|cabas|bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|card[\s-]?holders?|pouchettes?|baguettes?|compact[\s-]?mirrors?|chapkas?|accessor(?:y|ies))\b/;
   if (!strict && bagsAccessoriesRx.test(text)) {
     return "Bags & Accessories";
   }
@@ -55,14 +60,17 @@ function tryClassify(text, { strict = false } = {}) {
 
   // 3. Jackets & Coats. Includes bolero (short jacket), perfecto (leather
   //    motorcycle jacket), cape, caban (peacoat).
-  if (/\b(jackets?|coats?|blazers?|parkas?|bombers?|puffers?|anoraks?|trench(?:coats?|es)?|overcoats?|peacoats?|windbreakers?|raincoats?|shearlings?|boleros?|perfectos?|capes?|cabans?)\b/.test(text)) {
+  //    `vestes?` is the French jacket noun (chezsnowbunny titles it verbatim);
+  //    the English "vest" is a Tops word and stays in rules 4b/7 — the plural
+  //    "vestes" cannot be reached by `vests?`, so the two do not collide.
+  if (/\b(jackets?|coats?|blazers?|parkas?|bombers?|puffers?|anoraks?|trench(?:coats?|es)?|overcoats?|peacoats?|windbreakers?|raincoats?|shearlings?|boleros?|perfectos?|capes?|cabans?|veste|vestes)\b/.test(text)) {
     return "Jackets & Coats";
   }
 
   // 4. Dresses & Skirts — negative lookahead stops "dress shirt"/"dress pants"
   //    from being pulled in. midi/maxi only count when modifying dress/skirt.
   if (/\bdress(?:es)?\b(?!\s*(shirt|shirts|pants?|trousers?))/.test(text) ||
-      /\b(skirts?|miniskirts?|gowns?|jumpsuits?|sundress(?:es)?|rompers?|kaftans?|caftans?)\b/.test(text) ||
+      /\b(skirts?|miniskirts?|kilts?|gowns?|jumpsuits?|sundress(?:es)?|rompers?|kaftans?|caftans?)\b/.test(text) ||
       /\b(midi|maxi)\s+(dress(?:es)?|skirts?)\b/.test(text)) {
     return "Dresses & Skirts";
   }
@@ -75,7 +83,7 @@ function tryClassify(text, { strict = false } = {}) {
   //     nouns (top, tank, vest, knit, jersey, long/short-sleeve) stay in
   //     the catch-all rule 7. `bodies` (lingerie body), `bras`, `corsets`,
   //     and `bustiers` join the high-confidence list.
-  if (/\b(t[\s-]?shirts?|tee[\s-]?shirts?|tees?|shirts?|blouses?|sweaters?|hoodies?|sweatshirts?|cardigans?|tank[\s-]?tops?|polo[\s-]?shirts?|polos?|turtlenecks?|pullovers?|crewnecks?|knitwears?|camisoles?|bodysuits?|waistcoats?|tunics?|zip[\s-]?ups?|zipups?|bod(?:y|ies)|bras?|corsets?|bustiers?|vests?|roll[\s-]?necks?|button[\s-]?ups?|button[\s-]?downs?|overshirts?)\b/.test(text)) {
+  if (/\b(t[\s-]?shirts?|tee[\s-]?shirts?|tees?|shirts?|blouses?|sweaters?|hoodies?|sweatshirts?|cardigans?|tank[\s-]?tops?|polo[\s-]?shirts?|polos?|turtlenecks?|pullovers?|crewnecks?|knitwears?|camisoles?|bodysuits?|waistcoats?|tunics?|zip[\s-]?ups?|zipups?|bod(?:y|ies)|bras?|corsets?|bustiers?|vests?|roll[\s-]?necks?|button[\s-]?ups?|button[\s-]?downs?|overshirts?|d[eé]bardeurs?)\b/.test(text)) {
     return "Tops";
   }
 
@@ -130,7 +138,7 @@ function tryClassify(text, { strict = false } = {}) {
   //      Tops — acceptable tradeoff vs. recovering the larger "Tie <garment>"
   //      Tops bucket.
   if (/\b(neckties?|ties?)\b(?![\s-]?dye)/.test(text) ||
-      /\b(belts?|bow[\s-]?tie|bowtie)\b/.test(text)) {
+      /\b(belts?|harness(?:es)?|bow[\s-]?tie|bowtie)\b/.test(text)) {
     return "Bags & Accessories";
   }
 
@@ -147,26 +155,32 @@ function tryClassify(text, { strict = false } = {}) {
   return null;
 }
 
-// Swimwear / robe guard. There is no taxonomy slot for swimwear today, and
-// these titles produce noisy false positives downstream:
+// Swimwear / robe short-circuit. Both classes must bypass tryClassify, whose
+// garment rules read swim/robe prose disastrously:
 //   - "Mesh Swimsuit"      → desc literally writes "swim suit" (with space),
 //                            which matches `\bsuit\b` and routes to Sets.
 //   - "Swimsuit - Moschino"→ desc says "ring detail", matches `rings?`.
 //   - "Swimsuit - Ralph L."→ desc "halter top", matches `tops?`.
 //   - "Leopard Bathrobe"   → desc "tie belt", matches `belts?`.
-// Returning null short-circuits classification before any pass runs, leaving
-// these correctly uncategorised until a swimwear/robe taxonomy is added.
-const SWIMWEAR_RX = /\b(swim[\s-]?suits?|bikinis?|trikinis?|swim[\s-]?wear|bathrobes?)\b/;
+// Swimwear now has a taxonomy slot (categories.js), so those rows resolve to
+// "Swimwear" — no leaves, so subcategory stays null. Robes do NOT: there is no
+// robe/loungewear slot, so `bathrobe` keeps the original null short-circuit
+// rather than being filed under a category it does not belong to.
+const SWIMWEAR_RX = /\b(swim[\s-]?suits?|bikinis?|trikinis?|swim[\s-]?wear|pareos?|sarongs?)\b/;
+const ROBE_RX = /\b(bathrobes?)\b/;
+const joinLower = (sources) => sources.filter(Boolean).join(" ").toLowerCase();
 function isSwimwear(...sources) {
-  const text = sources.filter(Boolean).join(" ").toLowerCase();
-  return SWIMWEAR_RX.test(text);
+  return SWIMWEAR_RX.test(joinLower(sources));
+}
+function isRobe(...sources) {
+  return ROBE_RX.test(joinLower(sources));
 }
 
 function classifyTopsLeaf(text) {
   if (!text) return null;
   if (/\b(t[\s-]?shirts?|tee[\s-]?shirts?|tees?)\b/.test(text)) return "tees";
   if (/\b(hoodies?|sweatshirts?|sweaters?|crewnecks?|cardigans?|pullovers?|fleeces?|half[\s-]?zips?)\b/.test(text)) return "hoodies_sweaters";
-  if (/\b(shirts?|blouses?|polo[\s-]?shirts?|polos?|button[\s-]?ups?|button[\s-]?downs?|overshirts?|tunics?|tank[\s-]?tops?|tanks?|camisoles?|cami|bodysuits?|bras?|corsets?|bustiers?|vests?|waistcoats?|jerseys?)\b/.test(text)) return "shirts_blouses";
+  if (/\b(shirts?|blouses?|polo[\s-]?shirts?|polos?|button[\s-]?ups?|button[\s-]?downs?|overshirts?|tunics?|tank[\s-]?tops?|tanks?|camisoles?|cami|bodysuits?|bras?|corsets?|bustiers?|vests?|waistcoats?|jerseys?|d[eé]bardeurs?)\b/.test(text)) return "shirts_blouses";
   if (/\b(knitwears?|knits?|turtlenecks?|roll[\s-]?necks?)\b/.test(text)) return "knitwear";
   return null;
 }
@@ -175,15 +189,15 @@ function classifyJacketsCoatsLeaf(text) {
   if (!text) return null;
   if (/\b(bombers?|blazers?|anoraks?|windbreakers?|boleros?|perfectos?)\b/.test(text)) return "jackets";
   if (/\b(trench(?:coats?|es)?|parkas?|peacoats?|overcoats?|raincoats?)\b/.test(text)) return "coats";
-  if (/\bjackets?\b/.test(text)) return "jackets";
+  if (/\b(jackets?|veste|vestes)\b/.test(text)) return "jackets";
   if (/\bcoats?\b/.test(text)) return "coats";
   return null;
 }
 
 function classifyBagsAccessoriesLeaf(text) {
   if (!text) return null;
-  if (/\b(bags?|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|baguettes?|pouchettes?|card[\s-]?holders?)\b/.test(text)) return "bags";
-  if (/\b(belts?|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|bowtie|bow[\s-]?tie|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|compact[\s-]?mirrors?|chapkas?|neckties?|ties?)\b/.test(text)) return "accessories";
+  if (/\b(bags?|cabas|totes?|clutch(?:es)?|purses?|handbags?|backpacks?|satchels?|pouch(?:es)?|wallets?|briefcases?|duffels?|crossbody|baguettes?|pouchettes?|card[\s-]?holders?)\b/.test(text)) return "bags";
+  if (/\b(belts?|bayonettas?|harness(?:es)?|foulards?|scarves|scarf|headscarves|headscarfs?|gloves?|sunglasses|eyeglasses|glasses|eyewear|beanies?|hats?|caps?|berets?|headbands?|necklaces?|chokers?|bracelets?|earrings?|rings?|brooch(?:es)?|jewelry|jewellery|watch(?:es)?|bowtie|bow[\s-]?tie|pendants?|dog[\s-]?tags?|bangles?|mittens?|neckpieces?|umbrellas?|compact[\s-]?mirrors?|chapkas?|neckties?|ties?)\b/.test(text)) return "accessories";
   return null;
 }
 
@@ -265,6 +279,9 @@ export function assignCategory(product) {
   // must still classify as Jackets — desc text is not allowed to veto a
   // strong title match.
   if (isSwimwear(rawType, rawTitle, strippedName)) {
+    return { category: "Swimwear", subcategory: null };
+  }
+  if (isRobe(rawType, rawTitle, strippedName)) {
     return { category: null, subcategory: null };
   }
 
@@ -291,6 +308,9 @@ export function assignCategory(product) {
   // suit"), null out before description fallback misclassifies on
   // accessory-style prose ("halter top", "ring detail", "tie belt").
   if (isSwimwear(descHead, editorialHead)) {
+    return { category: "Swimwear", subcategory: null };
+  }
+  if (isRobe(descHead, editorialHead)) {
     return { category: null, subcategory: null };
   }
 

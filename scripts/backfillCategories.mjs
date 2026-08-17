@@ -15,8 +15,20 @@
  *   - Prints a summary of every old → new transition plus counts.
  *   - Use --verbose to dump every row that would change.
  *
+ * Scoped repair mode (--only-null):
+ *   The full-table mode above is a rewrite: it re-classifies WITHOUT
+ *   productType (the cron had it at sync time) and overwrites any
+ *   disagreement, so it can flip currently-valid categories to a different
+ *   value or to NULL. `--only-null` is the repair the formatting audit needs:
+ *   it scans only rows whose category IS NULL and carries a compare-and-set
+ *   predicate (`.is("category", null)`) on every UPDATE, so a row another
+ *   process changed mid-run is never clobbered. Rollback is then trivial —
+ *   every touched row's prior value was NULL, and the id list is printed.
+ *
  * Usage:
  *   node scripts/backfillCategories.mjs                   # dry-run (default)
+ *   node scripts/backfillCategories.mjs --only-null       # dry-run, NULL rows only
+ *   node scripts/backfillCategories.mjs --only-null --write
  *   node scripts/backfillCategories.mjs --limit=500       # scan 500 rows only
  *   node scripts/backfillCategories.mjs --verbose         # print every row
  *   node scripts/backfillCategories.mjs --write           # commit to DB
@@ -49,6 +61,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const rawArgs = process.argv.slice(2);
 const args = new Set(rawArgs);
 const WRITE = args.has("--write");
+const ONLY_NULL = args.has("--only-null");
 const VERBOSE = args.has("--verbose");
 const limitArg = rawArgs.find((a) => a.startsWith("--limit="));
 const LIMIT = limitArg ? parseInt(limitArg.slice("--limit=".length), 10) : null;
@@ -146,6 +159,7 @@ async function main() {
   console.log(`  mode:    ${WRITE ? "\x1b[33mWRITE\x1b[0m (will update DB)" : "\x1b[32mdry-run\x1b[0m (no writes)"}`);
   console.log(`  limit:   ${LIMIT ?? "(no limit — full table)"}`);
   console.log(`  verbose: ${VERBOSE}`);
+  console.log(`  scope:   ${ONLY_NULL ? "--only-null (rows with category IS NULL)" : "\x1b[33mFULL TABLE\x1b[0m (can rewrite valid categories)"}`);
   console.log("──────────────────────────────────────────────\n");
 
   if (!WRITE) {
@@ -157,18 +171,28 @@ async function main() {
   const changes = [];
 
   let scanned = 0;
-  let from = 0;
+  // Keyset cursor, not .range() offsets. In --only-null mode the scan filter
+  // (`category IS NULL`) describes a MUTABLE set: /api/enrich can fill a
+  // category between pages, dropping rows out of the set and shifting every
+  // later offset down — an offset scan then silently skips eligible NULL rows.
+  // A cursor on id is a row value, not a position, so it is immune (same
+  // reasoning as scanVisibleRows in /api/health/formatting; see CLAUDE.md).
+  let lastId = 0;
 
   while (true) {
     const remaining = LIMIT == null ? PAGE : LIMIT - scanned;
     if (remaining <= 0) break;
     const rangeSize = Math.min(PAGE, remaining);
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("products")
       .select("id, handle, store_domain, name, title, brand, category, description, editorial_description")
+      .gt("id", lastId)
       .order("id", { ascending: true })
-      .range(from, from + rangeSize - 1);
+      .limit(rangeSize);
+    if (ONLY_NULL) query = query.is("category", null);
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Fetch error:", error.message);
@@ -206,7 +230,7 @@ async function main() {
     }
 
     scanned += data.length;
-    from += data.length;
+    lastId = data[data.length - 1].id;
     console.log(`Scanned ${scanned} rows, ${changes.length} would change…`);
 
     if (data.length < rangeSize) break;
@@ -278,23 +302,45 @@ async function main() {
   }
 
   let written = 0;
-  let failed = 0;
+  const writtenIds = [];
 
   for (const [newCat, ids] of byNewCat) {
     let groupWritten = 0;
     for (let i = 0; i < ids.length; i += BATCH_UPDATE) {
       const slice = ids.slice(i, i + BATCH_UPDATE);
-      const { error } = await supabaseAdmin
+      // Compare-and-set in --only-null mode: the row must STILL be NULL for
+      // the write to land. Without it a row enriched between the scan and the
+      // write would be silently overwritten by a stale classification.
+      let update = supabaseAdmin
         .from("products")
         .update({ category: newCat })
         .in("id", slice);
+      if (ONLY_NULL) update = update.is("category", null);
+
+      // .select("id") returns the rows the UPDATE actually touched. A CAS-
+      // skipped row (enriched between scan and write) matches zero rows but
+      // still reports error: null — counting the requested slice would put
+      // never-written ids into the rollback list, and rolling those back to
+      // NULL would erase a concurrently written category.
+      const { data: updated, error } = await update.select("id");
 
       if (error) {
+        // Abort rather than continue: a partial write across category groups
+        // leaves the table in a state neither the report nor the printed id
+        // list describes, and the operator cannot tell what to roll back.
         console.error(`Update failed (category=${label(newCat)}, ${slice.length} ids):`, error.message);
-        failed += slice.length;
-      } else {
-        written += slice.length;
-        groupWritten += slice.length;
+        console.error(`Aborting after ${written} successful writes. Ids written so far:`);
+        console.error(JSON.stringify(writtenIds));
+        process.exit(1);
+      }
+      const landedIds = (updated ?? []).map((r) => r.id);
+      written += landedIds.length;
+      groupWritten += landedIds.length;
+      writtenIds.push(...landedIds);
+      if (landedIds.length < slice.length) {
+        console.log(
+          `  (${slice.length - landedIds.length} of ${slice.length} skipped by compare-and-set — concurrently populated)`,
+        );
       }
     }
     console.log(`  ${label(newCat).padEnd(22)}  wrote ${groupWritten}/${ids.length}`);
@@ -304,8 +350,22 @@ async function main() {
   console.log("  Write complete");
   console.log("──────────────────────────────────────────────");
   console.log(`  Written: ${written}`);
-  console.log(`  Failed:  ${failed}`);
   console.log("──────────────────────────────────────────────");
+  if (ONLY_NULL) {
+    // Rollback input. Every one of these rows was NULL before the run (the
+    // CAS predicate guarantees it), so the undo is a single scoped UPDATE
+    // back to NULL.
+    console.log("\nIds written (rollback input — prior value was NULL):");
+  } else {
+    // Full-table mode overwrote rows with DIFFERENT non-null prior values.
+    // This id list is an audit trail only — resetting it to NULL would
+    // destroy those prior categories, so it must not be labelled rollback.
+    console.log(
+      "\nIds written (audit trail — NOT rollback input: full-table mode does" +
+        " not record prior values; restore from a snapshot instead):",
+    );
+  }
+  console.log(JSON.stringify(writtenIds));
 }
 
 main().catch((err) => {

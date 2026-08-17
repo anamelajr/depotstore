@@ -39,6 +39,11 @@ export const BRAND_ALIASES = {
   "FERRÉ": "GIANFRANCO FERRÉ",
   "MCQUEEN": "ALEXANDER MCQUEEN",
   "FAYCAL": "FAYÇAL AMOR",
+  // Punctuation drift accepted by the allowlist's normalize/compact fold, so
+  // both spellings reached the DB. Canonical side = the app/brands.js label.
+  "A.F VANDEVORST": "A.F. VANDEVORST",
+  "J.W. ANDERSON": "JW ANDERSON",
+  "Y-PROJECT": "Y/PROJECT",
   // Deliberately NOT aliased: sub-line words (BLACK, GIRL, DRKSHDW, BLANCHE).
   // They would enter BRAND_HANDLE_SLUGS and let any handle containing "black"
   // resolve to a brand. Sub-lines are handled by stripSubLinePrefix in

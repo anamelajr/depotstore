@@ -6,6 +6,15 @@
 // Usage:
 //   node scripts/backfillSubcategory.mjs                  # report only
 //   node scripts/backfillSubcategory.mjs --emit-sql FILE  # write wet-backfill SQL
+//
+// --only-null scopes the emitted SQL to a REPAIR instead of a re-population:
+// only rows whose subcategory is currently NULL are emitted, and every UPDATE
+// carries `AND subcategory IS NULL` as a compare-and-set predicate. Without it
+// the emit rewrites every already-set subcategory in the three parent
+// categories. The rollback snapshot table is date-suffixed either way — the
+// 2026-05-21 run left a `products_subcategory_backfill_snapshot` behind, and a
+// `CREATE TABLE IF NOT EXISTS` would silently keep that stale May state as the
+// rollback target.
 
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
@@ -21,6 +30,7 @@ if (!SUPABASE_URL || !SERVICE_ROLE) {
 
 const args = process.argv.slice(2);
 const emitSqlIdx = args.indexOf("--emit-sql");
+const ONLY_NULL = args.includes("--only-null");
 const sqlOutPath = emitSqlIdx >= 0 ? args[emitSqlIdx + 1] : null;
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -150,8 +160,14 @@ function printSamples(detail) {
 function emitSql(detail, path) {
   const groups = {};
   const crossCategory = [];
+  let alreadySet = 0;
   for (const d of detail) {
     if (!d.proposed_subcategory) continue;
+    // Repair scope: leave rows that already carry a leaf alone.
+    if (ONLY_NULL && d.current_subcategory != null) {
+      alreadySet += 1;
+      continue;
+    }
     // The CHECK constraint requires subcategory to match current category's leaves.
     // Skip cross-category re-classifications — they signal a wrong existing parent
     // (e.g. a Scarf currently in Tops). Those need separate review, not a silent reparent.
@@ -162,14 +178,26 @@ function emitSql(detail, path) {
     groups[d.proposed_subcategory] ??= [];
     groups[d.proposed_subcategory].push(d.id);
   }
+  const allIds = Object.values(groups).flat();
+  // Per-RUN suffix, to the second: a date-only stamp collides on a same-day
+  // rerun and the unconditional CREATE TABLE below would abort the whole
+  // transaction (loud and safe, but it blocks a legitimate re-emit).
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, "");
+  const snapshotTable = `products_subcategory_backfill_snapshot_${stamp}`;
   const lines = [
-    "-- Wet backfill: subcategory assignments computed " + new Date().toISOString(),
+    "-- Wet backfill: subcategory assignments computed " + now.toISOString(),
+    `-- scope: ${ONLY_NULL ? "--only-null (subcategory IS NULL rows only)" : "FULL (rewrites already-set subcategories)"}`,
     "BEGIN;",
     "",
-    "-- Snapshot for rollback",
-    "CREATE TABLE IF NOT EXISTS products_subcategory_backfill_snapshot AS",
+    "-- Snapshot for rollback. Run-stamped: a CREATE TABLE IF NOT EXISTS",
+    "-- would silently reuse the 2026-05-21 snapshot as this run's rollback state.",
+    `CREATE TABLE ${snapshotTable} AS`,
     "  SELECT id, category, subcategory FROM products",
-    "  WHERE category IN ('Tops','Jackets & Coats','Bags & Accessories');",
+    `  WHERE id IN (${allIds.join(",") || "NULL"});`,
+    "",
+    "-- Eyeball before the UPDATEs: this must equal the row count reported by the script.",
+    `SELECT count(*) AS snapshot_rows FROM ${snapshotTable};`,
     "",
   ];
   for (const leaf of Object.keys(groups).sort()) {
@@ -177,7 +205,8 @@ function emitSql(detail, path) {
     const chunkSize = 500;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      lines.push(`UPDATE products SET subcategory = '${leaf}' WHERE id IN (${chunk.join(",")});`);
+      const cas = ONLY_NULL ? " AND subcategory IS NULL" : "";
+      lines.push(`UPDATE products SET subcategory = '${leaf}' WHERE id IN (${chunk.join(",")})${cas};`);
     }
   }
   lines.push("", "COMMIT;");
@@ -186,6 +215,8 @@ function emitSql(detail, path) {
   console.log(`\nWet-backfill SQL written to ${path}`);
   console.log(`  rows considered:      ${detail.length}`);
   console.log(`  rows updated:         ${updated} across ${Object.keys(groups).length} leaves`);
+  console.log(`  snapshot table:       ${snapshotTable}`);
+  if (ONLY_NULL) console.log(`  already-set skip:     ${alreadySet} (subcategory already populated)`);
   console.log(`  cross-category skip:  ${crossCategory.length} (proposed parent disagrees with current category — see below)`);
   if (crossCategory.length) {
     console.log("\n=== Cross-category skips (review manually if you want them re-parented) ===");

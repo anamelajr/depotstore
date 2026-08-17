@@ -111,7 +111,25 @@ export const SUB_LINE_PREFIXES = {
   "comme des garcons": ["HOMME PLUS", "HOMME", "BLACK", "GIRL", "SHIRT", "PLAY", "TAO"],
   "ann demeulemeester": ["BLANCHE"],
   "maison margiela": ["MM6"],
+  "yohji yamamoto": ["Y'S", "POUR HOMME"],
+  "john galliano": ["LONDON"],
+  "valentino": ["BOUTIQUE"],
 };
+
+// Builds the body of a leading-sub-line regex from a prefix literal. Two things
+// the raw string cannot do on its own:
+//   - regex metacharacters ("Y'S" is safe, but "Y/PROJECT"-shaped future
+//     entries are not) must be escaped;
+//   - the apostrophe must match BOTH the straight `'` and the curly `’` —
+//     vendors use either, and row 15239796 stores the curly one, so a literal
+//     `'` would silently miss it.
+// Exported so the formatting validator matches exactly what the strip matches.
+export function subLinePrefixPattern(prefix) {
+  return prefix
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+")
+    .replace(/['’]/g, "['’]");
+}
 
 // Removes a leading sub-line marker left behind after the brand strip. Matches
 // ONLY at the start and only when followed by a dash separator, so a genuine
@@ -122,7 +140,7 @@ export function stripSubLinePrefix(title, brand) {
   const prefixes = SUB_LINE_PREFIXES[key];
   if (!prefixes || !title) return title;
   for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) {
-    const re = new RegExp(`^\\s*${prefix.replace(/\s+/g, "\\s+")}\\s*-\\s*`, "i");
+    const re = new RegExp(`^\\s*${subLinePrefixPattern(prefix)}\\s*-\\s*`, "i");
     if (re.test(title)) return title.replace(re, "");
   }
   return title;

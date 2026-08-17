@@ -55,6 +55,30 @@ describe("classifyRow — title classes, on the real production examples", () =>
     expect(found).not.toContain("season_not_first");
   });
 
+  it("matches a curly-apostrophe sub-line (Y\u2019s FW11 …, id 15239796)", () => {
+    for (const title of ["Y\u2019s FW11 Black Hooded Shirt", "Y's FW11 Black Hooded Shirt"]) {
+      const found = keys({ brand: "YOHJI YAMAMOTO", title });
+      expect(found).toContain("sub_line_prefix");
+      expect(found).not.toContain("season_not_first");
+    }
+  });
+
+  it("keys the other newly-mapped sub-lines (London / Boutique)", () => {
+    expect(keys({ brand: "JOHN GALLIANO", title: "London SS87 Cotton Shirt" })).toContain(
+      "sub_line_prefix"
+    );
+    expect(keys({ brand: "VALENTINO", title: "Boutique FW90 Wool Skirt" })).toContain(
+      "sub_line_prefix"
+    );
+  });
+
+  it("goes quiet once the season leads and the sub-line token is kept", () => {
+    const found = keys({ brand: "YOHJI YAMAMOTO", title: "FW11 Y\u2019s Black Hooded Shirt" });
+    expect(found).not.toContain("sub_line_prefix");
+    expect(found).not.toContain("season_not_first");
+    expect(found).not.toContain("brand_in_title");
+  });
+
   it("falls back to season_not_first when the leading token is not a known sub-line", () => {
     const found = keys({ brand: "Y'S", title: "London SS87 Cotton Shirt" });
     expect(found).toContain("season_not_first");

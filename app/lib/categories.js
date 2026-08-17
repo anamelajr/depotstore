@@ -51,6 +51,7 @@ export const CATEGORIES = [
       { slug: "accessories", label: "Accessories", labelFr: "Accessoires", subcategory: "accessories" },
     ],
   },
+  { slug: "swimwear", label: "Swimwear", labelFr: "Maillots de bain", dbName: "Swimwear" },
   { slug: "sets", label: "Sets", labelFr: "Ensembles", dbName: "Sets" },
 ];
 

@@ -348,3 +348,17 @@ describe("canonical labels stay reachable from /designers", () => {
     ).toBe("ALAÏA");
   });
 });
+
+describe("canonicalBrand — punctuation-drift families (issue #114)", () => {
+  it("folds the drifted spellings onto the allowlist label", () => {
+    expect(canonicalBrand("A.F VANDEVORST")).toBe("A.F. VANDEVORST");
+    expect(canonicalBrand("J.W. Anderson")).toBe("JW ANDERSON");
+    expect(canonicalBrand("Y-Project")).toBe("Y/PROJECT");
+  });
+
+  it("leaves the allowlist spellings untouched (no false non_canonical_brand)", () => {
+    expect(canonicalBrand("A.F. Vandevorst")).toBe("A.F. Vandevorst");
+    expect(canonicalBrand("JW Anderson")).toBe("JW Anderson");
+    expect(canonicalBrand("Y/PROJECT")).toBe("Y/PROJECT");
+  });
+});
