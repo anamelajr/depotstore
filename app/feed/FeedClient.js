@@ -82,6 +82,13 @@ export default function FeedClient({ stores = [], initialData = null }) {
   // Load More: offset to fetch next batch from (null = idle)
   const [loadMoreOffset, setLoadMoreOffset] = useState(null);
 
+  // Whether grid items may skip offscreen rendering work. On by default (fresh
+  // loads want it from the first frame); turned off for the restore frame so
+  // the pre-paint scroll jump measures real card heights, then back on after
+  // one painted frame. Both writes are idempotent, so StrictMode's
+  // double-invoke is harmless.
+  const [cvEnabled, setCvEnabled] = useState(true);
+
   // Scroll restore refs
   const scrollRestoreY = useRef(null);
   const scrollRestorePending = useRef(false);
@@ -139,6 +146,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
       // the restore fetch settles (the same ordering guarantee restoreCountRef
       // relies on).
       suppressPriorityRef.current = true;
+      setCvEnabled(false); // the restore frame must lay out every card for real
       setLoading(true); // pre-paint: hide the seeded grid until the restore batch lands
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,6 +187,11 @@ export default function FeedClient({ stores = [], initialData = null }) {
     sessionStorage.removeItem("depot_feed_filter_key");
     sessionStorage.removeItem("depot_feed_url");
     window.scrollTo(0, y);
+    // Double rAF = after one fully painted frame, by which point every card
+    // has a browser-recorded last-remembered size. Only then is it safe to let
+    // offscreen cards stop rendering: doing it any earlier would have made the
+    // jump above land against estimated heights.
+    requestAnimationFrame(() => requestAnimationFrame(() => setCvEnabled(true)));
   }, [loading, products]);
 
   // Close ALL filter/sort UI on either breakpoint crossing.
@@ -526,6 +539,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
                   products.map((p, i) => (
                     <div
                       key={`${p.productUrl ?? "unknown"}-${p.name}`}
+                      className={`feed-card-cv${cvEnabled ? " feed-card-cv--on" : ""}`}
                       onClick={() => {
                         sessionStorage.setItem("depot_feed_scroll", String(window.scrollY));
                         sessionStorage.setItem("depot_feed_count", String(products.length));
