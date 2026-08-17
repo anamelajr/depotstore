@@ -117,6 +117,66 @@ describe("assignCategory — flat buckets (subcategory must be null)", () => {
   });
 });
 
+describe("assignCategory — Swimwear (flat, no leaves)", () => {
+  const cases = [
+    ["Mesh Swimsuit",        "Swimwear", null],
+    ["Swim Suit",            "Swimwear", null],
+    ["Leopard Bikini",       "Swimwear", null],
+    ["Trikini",              "Swimwear", null],
+    ["Printed Swimwear",     "Swimwear", null],
+    ["Silk Pareo",           "Swimwear", null],
+    ["Sarong",               "Swimwear", null],
+  ];
+  it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
+    expect(classify(title)).toEqual({ category, subcategory });
+  });
+
+  it("classifies from the description when the title is silent", () => {
+    expect(
+      assignCategory({ title: "One Piece", description: "A stretch swim suit with halter top." }),
+    ).toEqual({ category: "Swimwear", subcategory: null });
+  });
+
+  it("does not let swim prose in a description veto a clear garment title", () => {
+    expect(
+      assignCategory({ title: "Leather Jacket", description: "Layer it over a swimsuit." }),
+    ).toEqual({ category: "Jackets & Coats", subcategory: "jackets" });
+  });
+
+  it("keeps bathrobes uncategorised — there is no robe slot in the taxonomy", () => {
+    expect(classify("Leopard Bathrobe")).toEqual({ category: null, subcategory: null });
+  });
+});
+
+describe("assignCategory — audit vocabulary (issue #114)", () => {
+  const cases = [
+    ["Bayonetta",             "Bags & Accessories", "accessories"],
+    ["Black Bayonettas",      "Bags & Accessories", "accessories"],
+    ["Leather Harness",       "Bags & Accessories", "accessories"],
+    ["Silk Foulard",          "Bags & Accessories", "accessories"],
+    ["Cabas",                 "Bags & Accessories", "bags"],
+    ["Tartan Kilt",           "Dresses & Skirts",   null],
+    ["Veste En Cuir",         "Jackets & Coats",    "jackets"],
+    ["Vestes",                "Jackets & Coats",    "jackets"],
+    ["Débardeur",             "Tops",               "shirts_blouses"],
+    ["Debardeur Noir",        "Tops",               "shirts_blouses"],
+  ];
+  it.each(cases)("%s → %s / %s", (title, category, subcategory) => {
+    expect(classify(title)).toEqual({ category, subcategory });
+  });
+
+  it("keeps `harness` late so a harness jacket stays a jacket", () => {
+    expect(classify("Harness Leather Jacket")).toEqual({
+      category: "Jackets & Coats",
+      subcategory: "jackets",
+    });
+  });
+
+  it("keeps the English singular `vest` in Tops", () => {
+    expect(classify("Wool Vest")).toEqual({ category: "Tops", subcategory: "shirts_blouses" });
+  });
+});
+
 describe("assignCategory — uncategorisable rows", () => {
   it("returns { category: null, subcategory: null } when nothing matches", () => {
     expect(classify("Comme des Garçons Special Piece")).toEqual({

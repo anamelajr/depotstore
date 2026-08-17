@@ -17,7 +17,7 @@ import {
   titleLeaksAllowedBrandStrict,
 } from "./brand.js";
 import { normalizeSeasonCodes, manualReviewFlags } from "./seasonCodes.js";
-import { SUB_LINE_PREFIXES } from "./handleFallback.js";
+import { SUB_LINE_PREFIXES, subLinePrefixPattern } from "./handleFallback.js";
 import { MAX_ENRICH_ATTEMPTS } from "./enrichLimits.js";
 
 // Editorial fields enrichment is responsible for filling. A NULL here is either
@@ -95,15 +95,17 @@ function brandFoldKey(brand) {
   return normalized ? normalized.replace(/\s+/g, "") : null;
 }
 
-// Does `title` open with a known sub-line marker for `brand`? The four
-// season-ordering hits in production are really sub-line leaks ("Tao FW07 …"),
-// and the fix for those is a strip, not a reorder — so they get their own key.
+// Does `title` open with a known sub-line marker for `brand`? The
+// season-ordering hits in production are really sub-line leaks ("Tao FW07 …",
+// "Y’s FW11 …"), and the fix for those is a reorder or a strip — never a plain
+// season move — so they get their own key. The pattern builder is shared with
+// stripSubLinePrefix so both agree on apostrophe and metacharacter handling.
 function leadingSubLinePrefix(title, brand) {
   const key = normalizeBrand(canonicalBrand(brand));
   const prefixes = key ? SUB_LINE_PREFIXES[key] : null;
   if (!prefixes || !title) return null;
   for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) {
-    const re = new RegExp(`^\\s*${prefix.replace(/\s+/g, "\\s+")}\\b`, "i");
+    const re = new RegExp(`^\\s*${subLinePrefixPattern(prefix)}\\b`, "i");
     if (re.test(title)) return prefix;
   }
   return null;

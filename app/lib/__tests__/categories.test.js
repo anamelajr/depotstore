@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveCategoryFilter } from "../categories.js";
+import {
+  resolveCategoryFilter,
+  CATEGORY_SLUG_TO_DB,
+  getFilterGroups,
+  getNavTopLevel,
+} from "../categories.js";
 
 describe("resolveCategoryFilter", () => {
   it("returns empty arrays for null / undefined / non-array input", () => {
@@ -91,6 +96,28 @@ describe("resolveCategoryFilter", () => {
     expect(resolveCategoryFilter(["bottoms", "tops_tees"])).toEqual({
       parentCategories: ["Bottoms"],
       leafFilters: [{ category: "Tops", subcategory: "tees" }],
+    });
+  });
+});
+
+describe("Swimwear", () => {
+  it("resolves as a flat parent category with no leaves", () => {
+    expect(resolveCategoryFilter(["swimwear"])).toEqual({
+      parentCategories: ["Swimwear"],
+      leafFilters: [],
+    });
+    expect(CATEGORY_SLUG_TO_DB.swimwear).toBe("Swimwear");
+  });
+
+  it("appears in the filter panel and nav in both languages", () => {
+    const en = getFilterGroups("en").find((g) => g.value === "swimwear");
+    const fr = getFilterGroups("fr").find((g) => g.value === "swimwear");
+    expect(en).toEqual({ value: "swimwear", label: "Swimwear", children: null });
+    expect(fr.label).toBe("Maillots de bain");
+    expect(getNavTopLevel("fr").find((n) => n.slug === "swimwear")).toMatchObject({
+      label: "Maillots de bain",
+      expandable: false,
+      childSlugs: [],
     });
   });
 });
