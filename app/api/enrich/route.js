@@ -15,6 +15,7 @@ import { buildFallbackTitle } from "../../lib/handleFallback.js";
 import { titleLeaksAllowedBrandStrict } from "../../lib/brand.js";
 import { normalizeSeasonCodes } from "../../lib/seasonCodes.js";
 import { parseEraYear } from "../../lib/parseEra.js";
+import { MAX_ENRICH_ATTEMPTS } from "../../lib/enrichLimits.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -22,7 +23,8 @@ export const maxDuration = 300;
 const BATCH_SIZE = 80;
 const CYCLE_MS = 300; // 200 RPM = one call every 300 ms, measured from start
 const MAX_DEPTH = 30;
-const MAX_ENRICH_ATTEMPTS = 3;
+// Re-exported from app/lib/enrichLimits.js so /api/health/formatting draws its
+// silent/report line from the same constant — see the note there.
 // Batch size is bounded by Vercel maxDuration (300 s), not by the LLM
 // rate limits. With realistic gpt-5.4-mini latency around 1.5–2 s/call
 // (sleep is no longer the floor at 300 ms), 80 × 2 s ≈ 160 s leaves

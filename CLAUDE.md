@@ -196,6 +196,31 @@ any change.
   trigger `/api/cron` or `/api/enrich` locally** — they write prod rows and
   spend OpenAI. Vercel-only: `NEXT_PUBLIC_BASE_URL`-dependent links and cron
   self-fetch; `/admin/*` is localhost-only (404 in prod).
+- **Two read-only health probes, both bearer-`CRON_SECRET`, both polled by
+  GitHub Actions.** `/api/health/enrich` (`enrich-health.yml`) alarms when
+  OpenAI goes quiet — a red job IS the alert. `/api/health/formatting`
+  (`formatting-audit.yml`) scans every live row against the house convention
+  and files findings into ONE permanently open issue labelled
+  `formatting-audit`; there, a red job means the *check* broke, and the only
+  thing that emails is a comment posted when the violation fingerprint changes.
+  Neither writes. Both are safe to hit locally, unlike `/api/cron` +
+  `/api/enrich`.
+  - Rules live in `app/lib/formattingHealth.js` and compose the existing
+    helpers (`withVisibility`, `normalizeSeasonCodes`, `manualReviewFlags`,
+    `canonicalBrand`, `titleLeaksAllowedBrandStrict`) rather than restating
+    them — a rule that stops tracking the write path is worse than no rule.
+  - **Fingerprint before truncation, over `(key, id)` tuples.** Hashing the
+    display-capped `items[]` would hide a change past the cap; hashing bare ids
+    would miss an item swapping one violation class for another. The field
+    *value* is excluded on purpose, so bad-title→different-bad-title stays
+    silent.
+  - A NULL editorial field under `MAX_ENRICH_ATTEMPTS` (`app/lib/enrichLimits.js`,
+    imported by `/api/enrich` — do not re-declare it) is **silent**: still
+    queued, not broken.
+  - The scan pages by **keyset** (`.gt("id", lastId)`), not `.range()`.
+    `captureInventorySnapshot.js` can use offsets because it applies no
+    visibility filter; this one filters, and `/api/enrich` flips `hidden`
+    mid-scan, which would shift every later offset and silently drop a row.
 - Schema/RPC changes apply to Supabase **before** dependent code merges.
 - Manual SQL (`enrich_attempts` resets, self-brand sweeps, RPC migrations)
   routes through the Supabase SQL Editor — MCP is read-only. Snapshot before
@@ -213,7 +238,10 @@ Annotated:
   (`~/DepotArchive/inventory-archive.sqlite`). When set, `/admin/inventory` reads
   the full local history via `app/lib/inventoryArchive/localReaders.js`; unset
   (Vercel), it reads Supabase and never loads `node:sqlite`.
-- `CRON_SECRET` — bearer for `/api/cron` + `/api/enrich`; also a GitHub Actions
-  repo secret.
+- `CRON_SECRET` — bearer for `/api/cron` + `/api/enrich` + both `/api/health/*`
+  probes; also a GitHub Actions repo secret.
+- `ENRICH_HEALTH_URL` / `FORMATTING_HEALTH_URL` — GitHub Actions repo
+  *variables* (not app env), the deployed URL each health workflow curls. Unset
+  = the job fails loudly rather than silently passing.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` — auto-injected by Vercel; lets cron
   self-fetch bypass Deployment Protection on previews.
