@@ -1,6 +1,6 @@
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin } from "../../lib/supabase.js";
-import { getActiveStores, fetchStoreProducts } from "../../lib/stores.js";
+import { fetchActiveStoresFresh, fetchStoreProducts } from "../../lib/stores.js";
 import { chunkArray } from "../../lib/chunk.js";
 import { checkCdgAliasDrift } from "../../lib/searchAliases.js";
 import { refreshFxRates } from "../../lib/fx.js";
@@ -30,7 +30,9 @@ export async function GET(request) {
   const syncStart = new Date(syncStartMs).toISOString();
   const summary = { stores: {}, errors: [], totalUpserted: 0 };
 
-  const STORES = await getActiveStores();
+  // Authoritative, uncached: this list chooses which stores sync AND scopes
+  // the stale-delete. Never the cached render-path wrapper.
+  const STORES = await fetchActiveStoresFresh();
   if (STORES.length === 0) {
     return Response.json(
       { error: "No active stores returned — aborting sync to protect existing data" },
@@ -176,7 +178,10 @@ export async function GET(request) {
             chunkArray(resetHandles, HANDLE_CHUNK).map(async (handleChunk) => {
               const { error: resetError } = await supabaseAdmin
                 .from("products")
-                .update({ enrich_attempts: 0 })
+                // `description_attempts` rides along on the same reset: a
+                // row exhausted against incomplete source data deserves a
+                // fresh generation budget once its listing changes.
+                .update({ enrich_attempts: 0, description_attempts: 0 })
                 .eq("store_domain", store.domain)
                 .in("handle", handleChunk);
 
@@ -380,6 +385,17 @@ export async function GET(request) {
     fetch(enrichUrl, { method: "POST", headers: enrichHeaders }).catch(() => {})
   );
   summary.enrichTriggered = true;
+
+  // Editorial-description backfill — dispatched the same fire-and-forget way,
+  // reusing the bearer + protection-bypass headers. It is a separate route
+  // (not a step here) because the sync already claims 240s of this function's
+  // 300s budget; ~100 OpenAI calls need their own. Failures are swallowed:
+  // the next hourly run picks the backlog straight back up.
+  const backfillUrl = `${new URL(request.url).origin}/api/backfill-descriptions`;
+  waitUntil(
+    fetch(backfillUrl, { method: "POST", headers: enrichHeaders }).catch(() => {})
+  );
+  summary.descriptionBackfillTriggered = true;
 
   // Refresh FX rates off the response path. refreshFxRates is timeout-bounded
   // (~5 s AbortController), so a hung provider never delays the cron response

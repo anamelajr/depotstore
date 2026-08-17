@@ -65,6 +65,18 @@ function applySearchFilter(query, search) {
 // through this one function so their semantics can't drift: alias
 // expansion and category resolution happen INSIDE, on raw inputs.
 //
+// Returns `{ products, total, hasMore }`.
+//
+// The exact count is computed ONLY on the first page (`offset === 0`). Every
+// Load More used to repeat the full count scan alongside the row fetch —
+// double the DB work for a number the UI already had. Subsequent pages
+// instead over-fetch by one row and derive `hasMore` from whether that extra
+// row materialized, so `total` comes back null past the first page.
+//
+// `hasMore` is deliberately server-derived and never reconstructed from a
+// client-supplied total: the catalog mutates hourly, so a total captured at
+// page 1 would either hide Load More early or drive repeated empty loads.
+//
 // Throws on Supabase/RPC error or abort; callers decide how to degrade.
 export async function fetchProductsPage({
   store = null,
@@ -76,6 +88,10 @@ export async function fetchProductsPage({
   offset = 0,
   signal = undefined,
 } = {}) {
+  // Only the first page pays for an exact count; later pages derive hasMore
+  // from a limit+1 probe.
+  const wantsCount = offset === 0;
+
   const { parentCategories, leafFilters } = resolveCategoryFilter(categorySlugs);
   const expandedSearch = expandSearchAliases(search);
 
@@ -116,37 +132,49 @@ export async function fetchProductsPage({
       ? subcategoryParts.join(",")
       : null;
 
-    const [{ data, error }, { data: countData, error: countError }] =
-      await Promise.all([
-        fetchInterleavedProducts({
-          store: store || null,
-          category: categoryDbParam,
-          subcategory: subcategoryDbParam,
-          search: expandedSearch || null,
-          brand: brand || null,
-          limit,
-          offset,
-          signal,
-        }),
-        countInterleavedProducts({
-          store: store || null,
-          category: categoryDbParam,
-          subcategory: subcategoryDbParam,
-          search: expandedSearch || null,
-          brand: brand || null,
-          signal,
-        }),
-      ]);
+    const [{ data, error }, countResult] = await Promise.all([
+      fetchInterleavedProducts({
+        store: store || null,
+        category: categoryDbParam,
+        subcategory: subcategoryDbParam,
+        search: expandedSearch || null,
+        brand: brand || null,
+        // +1 probe row on Load More pages; sliced off below.
+        limit: wantsCount ? limit : limit + 1,
+        offset,
+        signal,
+      }),
+      wantsCount
+        ? countInterleavedProducts({
+            store: store || null,
+            category: categoryDbParam,
+            subcategory: subcategoryDbParam,
+            search: expandedSearch || null,
+            brand: brand || null,
+            signal,
+          })
+        : null,
+    ]);
 
-    if (error || countError) {
-      const msg = error?.message || countError?.message;
+    if (error || countResult?.error) {
+      const msg = error?.message || countResult?.error?.message;
       console.error("RPC error:", msg);
       throw new Error(msg || "Failed to fetch products");
     }
 
+    const rows = data || [];
+    if (wantsCount) {
+      const total = Number(countResult.data);
+      return {
+        products: rows.map(mapProductRow),
+        total,
+        hasMore: offset + rows.length < total,
+      };
+    }
     return {
-      products: (data || []).map(mapProductRow),
-      total: Number(countData),
+      products: rows.slice(0, limit).map(mapProductRow),
+      total: null,
+      hasMore: rows.length > limit,
     };
   }
 
@@ -155,22 +183,41 @@ export async function fetchProductsPage({
   const from = offset;
   const to = from + limit - 1;
 
-  // Price is stored as TEXT ("€29.99") so DB ordering is lexicographic.
-  // For price sorts: fetch all matching rows, sort numerically in JS, then paginate.
+  // Price sorts order and paginate in the DB on `price_cents`, the STORED
+  // GENERATED integer derived from the canonical TEXT `price`
+  // (scripts/sql/2026-08-17-price-cents.sql). TEXT `price` remains canonical
+  // and is what gets rendered; price_cents is never authored or written by
+  // app code.
+  //
+  // This replaces a fetch-everything-and-sort-in-JS branch that ran with no
+  // `.range()`. PostgREST caps an unranged read at 1,000 rows against ~8,000
+  // visible products, so that branch sorted an arbitrary slice of the catalog
+  // — wrong results, not just slow — and re-fetched the whole set on every
+  // Load More.
+  //
+  // NULL price → NULL price_cents → sorted last in BOTH directions
+  // (`nullsFirst: false`), and still returned: NULL means unknown, not
+  // unsellable.
   if (sort === "price_asc" || sort === "price_desc") {
-    // `id` is selected only for the tiebreaker below; it's stripped by
-    // mapProductRow on the way out so the JSON response shape matches the
-    // other surfaces.
+    const ascending = sort === "price_asc";
     let priceQuery = withVisibility(
       supabase
         .from("products")
-        .select(`${PRODUCT_ROW_SELECT_WITH_CATEGORY}, id`, { count: "exact" }),
-    );
+        .select(
+          PRODUCT_ROW_SELECT_WITH_CATEGORY,
+          wantsCount ? { count: "exact" } : undefined,
+        ),
+    ).range(from, wantsCount ? to : to + 1);
 
     if (store) priceQuery = priceQuery.eq("store_domain", store);
     priceQuery = applyCategoryOrFilter(priceQuery, { parentCategories, leafFilters });
     if (brand) priceQuery = priceQuery.ilike("brand", `%${brand}%`);
     priceQuery = applySearchFilter(priceQuery, expandedSearch);
+    priceQuery = priceQuery
+      .order("price_cents", { ascending, nullsFirst: false })
+      // Deterministic tiebreaker: without it, equal prices can reshuffle
+      // between pages and produce duplicate or skipped cards on Load More.
+      .order("id", { ascending });
     if (signal) priceQuery = priceQuery.abortSignal(signal);
 
     const { data, count, error } = await priceQuery;
@@ -180,15 +227,18 @@ export async function fetchProductsPage({
       throw new Error(error.message);
     }
 
-    const parsePrice = (p) => parseFloat((p || "").replace(/[^0-9.]/g, "")) || 0;
-    data.sort((a, b) => {
-      const diff = parsePrice(a.price) - parsePrice(b.price);
-      if (diff !== 0) return sort === "price_asc" ? diff : -diff;
-      return sort === "price_asc" ? a.id - b.id : b.id - a.id;
-    });
-
-    const paged = data.slice(from, from + limit);
-    return { products: paged.map(mapProductRow), total: count };
+    if (wantsCount) {
+      return {
+        products: data.map(mapProductRow),
+        total: count,
+        hasMore: from + data.length < count,
+      };
+    }
+    return {
+      products: data.slice(0, limit).map(mapProductRow),
+      total: null,
+      hasMore: data.length > limit,
+    };
   }
 
   // Default newest-first ordering; covers explicit oldest/newest sorts AND
@@ -196,8 +246,11 @@ export async function fetchProductsPage({
   let query = withVisibility(
     supabase
       .from("products")
-      .select(PRODUCT_ROW_SELECT_WITH_CATEGORY, { count: "exact" }),
-  ).range(from, to);
+      .select(
+        PRODUCT_ROW_SELECT_WITH_CATEGORY,
+        wantsCount ? { count: "exact" } : undefined,
+      ),
+  ).range(from, wantsCount ? to : to + 1);
 
   if (store) query = query.eq("store_domain", store);
   query = applyCategoryOrFilter(query, { parentCategories, leafFilters });
@@ -219,5 +272,16 @@ export async function fetchProductsPage({
     throw new Error(error.message);
   }
 
-  return { products: data.map(mapProductRow), total: count };
+  if (wantsCount) {
+    return {
+      products: data.map(mapProductRow),
+      total: count,
+      hasMore: from + data.length < count,
+    };
+  }
+  return {
+    products: data.slice(0, limit).map(mapProductRow),
+    total: null,
+    hasMore: data.length > limit,
+  };
 }

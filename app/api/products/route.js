@@ -23,7 +23,7 @@ export async function GET(request) {
     : (page - 1) * limit;
 
   try {
-    const { products, total } = await fetchProductsPage({
+    const { products, total, hasMore } = await fetchProductsPage({
       store: store || null,
       categorySlugs,
       search,
@@ -32,7 +32,10 @@ export async function GET(request) {
       limit,
       offset,
     });
-    return Response.json({ products, total, page, limit });
+    // `total` is null past the first page (the exact count is only computed at
+    // offset 0); `hasMore` is the authoritative pagination signal from there
+    // on. The client keeps displaying the offset-0 total.
+    return Response.json({ products, total, hasMore, page, limit });
   } catch (err) {
     return Response.json(
       { error: "Failed to fetch products", detail: err.message },

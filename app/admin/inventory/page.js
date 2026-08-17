@@ -1,4 +1,4 @@
-import { getActiveStores } from "../../lib/stores.js";
+import { fetchActiveStoresFresh } from "../../lib/stores.js";
 import { getInventoryInsights } from "../../lib/inventoryAnalytics.js";
 import InventoryCharts from "./_components/InventoryCharts.js";
 
@@ -47,7 +47,7 @@ export default async function InventoryInsightsPage({ searchParams }) {
   } catch (e) {
     error = e.message;
   }
-  const stores = await getActiveStores().catch(() => []);
+  const stores = await fetchActiveStoresFresh().catch(() => []);
 
   if (error) {
     return (

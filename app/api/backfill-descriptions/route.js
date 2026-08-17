@@ -1,0 +1,197 @@
+import { supabaseAdmin } from "../../lib/supabase.js";
+import { generateDescription } from "../../lib/generateDescription.js";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+// Gradual backfill of `editorial_description`.
+//
+// ~99% of visible products have no stored description, so the PDP was calling
+// OpenAI inline on almost every product click. That call is now streamed
+// behind Suspense (app/components/ProductDescription.js), and this route
+// drains the backlog newest-first so the streaming path becomes a rare
+// fallback rather than the norm. At ~100/run hourly, ~7,950 rows clear in
+// three to four days; after that it just tops up new arrivals.
+//
+// Deliberately NOT a step inside /api/cron: the sync already claims 240s of
+// cron's 300s budget (SYNC_DEADLINE_MS), with the tail reserved for the
+// stale-delete → snapshot → enrich dispatch. There is no headroom there for a
+// hundred OpenAI calls. Cron dispatches this fire-and-forget instead, exactly
+// like the existing enrich trigger, so no new Vercel cron entry is needed.
+
+const BATCH_SIZE = 100;
+const MAX_ATTEMPTS = 3;
+const CONCURRENCY = 5;
+// Measured from THIS request's start, not cron's: this route is dispatched
+// asynchronously and has its own independent 300s budget.
+const DEADLINE_MS = 240_000;
+const OPENAI_TIMEOUT_MS = 30_000;
+
+const ZERO_PRICE = "€0.00";
+
+async function generateOne(row) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  try {
+    return await generateDescription(
+      {
+        name: row.name,
+        vendor: row.brand ?? null,
+        rawDescription: row.description ?? null,
+        tags: [],
+        price: row.price,
+        storeName: row.store_name,
+      },
+      { signal: controller.signal },
+    );
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Simple fixed-size worker pool. Keeps OpenAI concurrency bounded without
+// pulling in a dependency; each worker pulls the next index until the queue or
+// the deadline is exhausted.
+async function runPool(rows, worker, startMs) {
+  let next = 0;
+  const results = [];
+  const workers = Array.from({ length: Math.min(CONCURRENCY, rows.length) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= rows.length) return;
+      if (Date.now() - startMs > DEADLINE_MS) return;
+      results.push(await worker(rows[i]));
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+export async function POST(request) {
+  const authHeader = request.headers.get("authorization");
+  if (
+    !process.env.CRON_SECRET ||
+    authHeader !== `Bearer ${process.env.CRON_SECRET}`
+  ) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const startMs = Date.now();
+
+  // Visibility predicate matches `withVisibility` (available + hidden + the
+  // '€0.00' NOT-FOR-SALE carve-out): never spend tokens on a product the feed
+  // will not show. NULL price stays eligible — unknown, not unsellable.
+  const { data: candidates, error: selectError } = await supabaseAdmin
+    .from("products")
+    .select("id, handle, store_domain, store_name, name, brand, price, description")
+    .eq("available", true)
+    .eq("hidden", false)
+    .or(`price.is.null,price.neq."${ZERO_PRICE}"`)
+    .is("editorial_description", null)
+    .lt("description_attempts", MAX_ATTEMPTS)
+    .order("synced_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(BATCH_SIZE);
+
+  if (selectError) {
+    console.error(
+      JSON.stringify({
+        event: "description_backfill_error",
+        stage: "select",
+        reason: selectError.message,
+      }),
+    );
+    return Response.json({ error: selectError.message }, { status: 500 });
+  }
+
+  const rows = candidates ?? [];
+  if (rows.length === 0) {
+    console.log(
+      JSON.stringify({
+        event: "description_backfill",
+        claimed: 0,
+        generated: 0,
+        failed: 0,
+        remaining: 0,
+        ms: Date.now() - startMs,
+      }),
+    );
+    return Response.json({ ok: true, claimed: 0, generated: 0, remaining: 0 });
+  }
+
+  // CLAIM BEFORE SPENDING. Increment the attempt counter on the selected ids
+  // before any OpenAI call, so an overlapping or retried invocation selects a
+  // different set. The write-side only-if-NULL guard below prevents duplicate
+  // WRITES; it does nothing about duplicate CALLS, which are the actual cost.
+  // A failed claim aborts the run rather than generating unclaimed.
+  const ids = rows.map((r) => r.id);
+  const { error: claimError } = await supabaseAdmin.rpc(
+    "increment_description_attempts",
+    { p_ids: ids },
+  );
+  if (claimError) {
+    console.error(
+      JSON.stringify({
+        event: "description_backfill_error",
+        stage: "claim",
+        reason: claimError.message,
+      }),
+    );
+    return Response.json({ error: claimError.message }, { status: 500 });
+  }
+
+  let generated = 0;
+  let failed = 0;
+
+  await runPool(
+    rows,
+    async (row) => {
+      const text = await generateOne(row);
+      if (!text) {
+        failed++;
+        return;
+      }
+      // Only-if-NULL, mirroring the editorial write protection: a PDP visitor
+      // may have generated and cached one for this row while the batch was in
+      // flight, and that write must not be clobbered.
+      const { error } = await supabaseAdmin
+        .from("products")
+        .update({ editorial_description: text })
+        .eq("id", row.id)
+        .is("editorial_description", null);
+      if (error) failed++;
+      else generated++;
+    },
+    startMs,
+  );
+
+  const { count: remaining } = await supabaseAdmin
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("available", true)
+    .eq("hidden", false)
+    .or(`price.is.null,price.neq."${ZERO_PRICE}"`)
+    .is("editorial_description", null)
+    .lt("description_attempts", MAX_ATTEMPTS);
+
+  console.log(
+    JSON.stringify({
+      event: "description_backfill",
+      claimed: rows.length,
+      generated,
+      failed,
+      remaining: remaining ?? null,
+      ms: Date.now() - startMs,
+    }),
+  );
+
+  return Response.json({
+    ok: true,
+    claimed: rows.length,
+    generated,
+    failed,
+    remaining: remaining ?? null,
+  });
+}

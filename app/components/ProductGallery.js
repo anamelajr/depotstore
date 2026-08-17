@@ -149,9 +149,30 @@ export default function ProductGallery({ images, alt }) {
             data-index={i}
             className="relative flex-none w-full aspect-[3/4] snap-start snap-always"
           >
+            {/* Slide 1: bare `src` at width=1600, NO srcSet — identical to
+                DesktopProductGallery's first image and to the document
+                preload, so every viewport resolves to exactly ONE first-image
+                fetch. (Slightly over-fetched on small phones; that is the
+                accepted price of guaranteed dedup across the two galleries,
+                both of which ship in the same HTML.)
+                Slides 2+ are lazy and responsive. Because this whole gallery
+                sits in a `lg:hidden` container, its lazy slides never
+                intersect on desktop — which is what stops desktop from
+                downloading the mobile set on top of its own. */}
             <img
-              src={shopifyImageUrl(src, 1400)}
+              src={shopifyImageUrl(src, i === 0 ? 1600 : 1400)}
+              srcSet={
+                i === 0
+                  ? undefined
+                  : [800, 1200, 1400]
+                      .map((w) => `${shopifyImageUrl(src, w)} ${w}w`)
+                      .join(", ")
+              }
+              sizes={i === 0 ? undefined : "100vw"}
               alt={i === 0 ? alt : ""}
+              loading={i === 0 ? "eager" : "lazy"}
+              fetchPriority={i === 0 ? "high" : undefined}
+              decoding="async"
               className="h-full w-full object-cover"
             />
           </div>

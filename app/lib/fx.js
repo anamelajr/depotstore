@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { supabaseAdmin } from "./supabase.js";
 
 // EUR->GBP/USD rates for the region selector. Read server-side from the
@@ -22,23 +24,33 @@ const FRANKFURTER_URL =
 // `source` is for server-side diagnostics only — never pass the wrapper down.
 // A missing / schema-drifted table is loud (console.warn), not silent, so
 // stale hardcoded rates can't ship looking correct.
-export async function getFxRates() {
+//
+// Three layers, matching app/lib/stores.js: the inner read THROWS (a fallback
+// must never be cached), `unstable_cache` shares the good value across
+// requests for 10 minutes (cron refreshes fx hourly, so 10-min staleness is
+// purely presentational), and `React.cache` dedupes within a request.
+async function fetchFxRatesOrThrow() {
+  const { data, error } = await supabaseAdmin
+    .from("fx_rates")
+    .select("gbp, usd")
+    .eq("id", 1)
+    .single();
+
+  if (error) throw error;
+  if (!data || data.gbp == null || data.usd == null) {
+    throw new Error("fx_rates row 1 missing gbp/usd");
+  }
+
+  return { GBP: Number(data.gbp), USD: Number(data.usd) };
+}
+
+const getCachedFxRates = unstable_cache(fetchFxRatesOrThrow, ["fx-rates-v1"], {
+  revalidate: 600,
+});
+
+const dedupedFxRates = cache(async () => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("fx_rates")
-      .select("gbp, usd")
-      .eq("id", 1)
-      .single();
-
-    if (error) throw error;
-    if (!data || data.gbp == null || data.usd == null) {
-      throw new Error("fx_rates row 1 missing gbp/usd");
-    }
-
-    return {
-      rates: { GBP: Number(data.gbp), USD: Number(data.usd) },
-      source: "db",
-    };
+    return { rates: await getCachedFxRates(), source: "db" };
   } catch (e) {
     console.warn(
       JSON.stringify({
@@ -48,6 +60,10 @@ export async function getFxRates() {
     );
     return { rates: { ...FALLBACK_RATES }, source: "fallback" };
   }
+});
+
+export async function getFxRates() {
+  return dedupedFxRates();
 }
 
 // Fetches live rates from Frankfurter and upserts row 1. Time-bounded with an

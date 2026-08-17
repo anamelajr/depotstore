@@ -1,4 +1,7 @@
-export async function generateDescription(product) {
+// `signal` is optional (default undefined → existing callers unaffected).
+// The backfill route passes one so a single hung OpenAI request cannot eat
+// the whole 300s function budget and starve the rest of its batch.
+export async function generateDescription(product, { signal } = {}) {
   const rawTitle = product?.name;
   if (!rawTitle) return null;
 
@@ -11,6 +14,7 @@ export async function generateDescription(product) {
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,

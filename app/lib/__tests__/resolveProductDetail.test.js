@@ -15,7 +15,8 @@ function makeFrom() {
     const builder = {
       select: () => builder,
       eq: () => builder,
-      update: async () => ({ error: null }),
+      update: () => builder,
+      is: async () => ({ error: null }),
       maybeSingle: async () => ({ data: tableRows[table] ?? null }),
     };
     return builder;
@@ -31,7 +32,8 @@ import {
   stripHtml,
   nonEmpty,
   resolveSizes,
-  resolveProductDetail,
+  resolveProductDetailCore,
+  resolveDescription,
 } from "../resolveProductDetail.js";
 
 describe("stripHtml", () => {
@@ -261,7 +263,7 @@ describe("resolveSizes", () => {
 // Zero-priced pieces are the stores' "NOT FOR SALE" / rental archive. The
 // feed excludes them, so a direct link must resolve to null (the PDP renders
 // "Product not found."), and no description generation should be spent on it.
-describe("resolveProductDetail zero-price gate", () => {
+describe("resolveProductDetailCore zero-price gate", () => {
   const shopifyProduct = (variantPrices) => ({
     title: "Miu Miu FW1999 Leather Long Coat",
     vendor: "Miu Miu",
@@ -290,7 +292,7 @@ describe("resolveProductDetail zero-price gate", () => {
 
   it("returns null when every variant is priced 0.00", async () => {
     stubShopify(shopifyProduct(["0.00", "0.00"]));
-    const result = await resolveProductDetail({
+    const result = await resolveProductDetailCore({
       handle: "miu-miu-fw1999-leather-long-coat",
       storeDomain: "graindesell.shop",
     });
@@ -300,7 +302,7 @@ describe("resolveProductDetail zero-price gate", () => {
 
   it("still resolves a normally priced product", async () => {
     stubShopify(shopifyProduct(["450.00"]));
-    const result = await resolveProductDetail({
+    const result = await resolveProductDetailCore({
       handle: "some-coat",
       storeDomain: "graindesell.shop",
     });
@@ -310,16 +312,67 @@ describe("resolveProductDetail zero-price gate", () => {
   it("keeps a product whose min price is 0.00 out even when a variant is priced", async () => {
     stubShopify(shopifyProduct(["0.00", "450.00"]));
     expect(
-      await resolveProductDetail({ handle: "mixed", storeDomain: "graindesell.shop" })
+      await resolveProductDetailCore({ handle: "mixed", storeDomain: "graindesell.shop" })
     ).toBe(null);
   });
 
   it("does not gate a product with no parseable variant price (null, not zero)", async () => {
     stubShopify(shopifyProduct([]));
-    const result = await resolveProductDetail({
+    const result = await resolveProductDetailCore({
       handle: "no-variants",
       storeDomain: "graindesell.shop",
     });
     expect(result?.price).toBe(null);
+  });
+});
+
+// The core resolves the page shell and MUST NOT call OpenAI — generation is
+// split out so a missing editorial_description streams behind Suspense
+// instead of blocking the document.
+describe("description split", () => {
+  const shopifyProduct = {
+    title: "Helmut Lang Bondage Trousers",
+    vendor: "Helmut Lang",
+    body_html: "<p>raw</p>",
+    tags: [],
+    images: [{ src: "https://cdn/1.jpg" }],
+    variants: [{ price: "300.00", title: "M" }],
+  };
+
+  beforeEach(() => {
+    generateDescription.mockClear();
+    tableRows.stores = { store_name: "grain de sell", display_name: "GRAIN DE SELL", location: "Paris" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ product: shopifyProduct }) })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("core never generates, even when the stored description is null", async () => {
+    tableRows.products = { editorial_description: null, available: true, size: ["M"] };
+    const core = await resolveProductDetailCore({
+      handle: "core-no-desc",
+      storeDomain: "graindesell.shop",
+    });
+    expect(core.description).toBe(null);
+    expect(generateDescription).not.toHaveBeenCalled();
+  });
+
+  it("resolveDescription generates when the row has none", async () => {
+    tableRows.products = { editorial_description: null, available: true, size: ["M"] };
+    const text = await resolveDescription("gen-me", "graindesell.shop");
+    expect(text).toBe("generated");
+    expect(generateDescription).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolveDescription returns the stored description without generating", async () => {
+    tableRows.products = { editorial_description: "stored copy", available: true, size: ["M"] };
+    const text = await resolveDescription("already-has", "graindesell.shop");
+    expect(text).toBe("stored copy");
+    expect(generateDescription).not.toHaveBeenCalled();
   });
 });

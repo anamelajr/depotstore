@@ -76,6 +76,8 @@ async function FeedLoader({ sp }) {
     initialData = {
       products: productsResult.products,
       total: productsResult.total,
+      // Server-derived; the client must not re-derive it from `total`.
+      hasMore: productsResult.hasMore,
       filterKey,
     };
   } catch (err) {

@@ -60,6 +60,7 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
                     imageUrl={p.imageUrl}
                     imageUrl2={p.imageUrl2}
                     alt={p.title ?? p.name ?? ""}
+                    sizes="(min-width: 1024px) 25vw, 50vw"
                   />
                 ) : null}
               </div>

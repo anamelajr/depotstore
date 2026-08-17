@@ -11,8 +11,9 @@ import {
   SECTION_LABEL,
   UTILITY_CAPS,
 } from "./components/home/tokens";
-import { fetchHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
+import { fetchCachedHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
 import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
+import { fetchCachedDailyRotation } from "./lib/fetchDailyRotation.js";
 
 export const dynamic = 'force-dynamic';
 
@@ -20,40 +21,28 @@ export default async function Home() {
   let recentProducts = [];
   let stores = [];
 try {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   const { getActiveStores } = await import("./lib/stores.js");
   stores = await getActiveStores();
-  const STORES = stores;
 
   const homepagePicks = await loadHomepagePicks();
   if (homepagePicks.length > 0) {
     try {
-      recentProducts = await fetchHomepagePicks(homepagePicks);
+      recentProducts = await fetchCachedHomepagePicks(homepagePicks);
     } catch (err) {
       console.warn("[homepage] fetchHomepagePicks failed, falling back:", err.message);
     }
   }
 
   if (recentProducts.length === 0) {
-    // Existing date-seeded rotation — preserves current behavior when
-    // no picks have been curated OR when the picks file is unreadable.
+    // Date-seeded rotation — preserves current behavior when no picks have
+    // been curated OR when the picks file is unreadable. Reads Supabase
+    // directly (see fetchDailyRotation.js) instead of fanning out one
+    // self-HTTP call per store to this site's own /api/products.
     const seed = Math.floor(Date.now() / 86400000);
-    const perStore = await Promise.all(
-      STORES.map(async (store) => {
-        const res = await fetch(
-          `${baseUrl}/api/products?limit=20&store=${store.domain}&sort=newest`,
-          { next: { revalidate: 3600 } }
-        );
-        if (!res.ok) return [];
-        const data = await res.json().catch(() => ({}));
-        const products = data.products ?? [];
-        if (products.length === 0) return [];
-        // Pick one product per store using daily seed
-        const idx = seed % products.length;
-        return [products[idx]];
-      })
-    );
-    recentProducts = perStore.flat().filter(Boolean).slice(0, 8);
+    recentProducts = await fetchCachedDailyRotation({
+      storeDomains: stores.map((s) => s.domain),
+      seed,
+    });
   }
 } catch {
   // ignore
@@ -97,7 +86,13 @@ try {
                 key={`${p.productUrl ?? "unknown"}-${p.name}`}
                 className="w-[45vw] max-w-[220px] shrink-0 md:w-auto md:max-w-none"
               >
-                <ProductCard product={p} />
+                {/* Row is a 45vw swipe rail on mobile, 3-up from md, 4-up
+                    from lg — without this the srcSet has no basis to pick a
+                    candidate and falls back to 100vw. */}
+                <ProductCard
+                  product={p}
+                  imageSizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 45vw"
+                />
               </div>
             ))}
           </div>
