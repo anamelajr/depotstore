@@ -13,7 +13,11 @@ import ClampedDescription from "../../components/ClampedDescription";
 import Link from "next/link";
 import ReactDOM from "react-dom";
 import { Suspense } from "react";
-import { shopifyImageUrl } from "../../lib/shopifyImage.js";
+import {
+  pdpSlide1Src,
+  pdpSlide1SrcSet,
+  PDP_SLIDE1_SIZES,
+} from "../../lib/shopifyImage.js";
 
 export default async function ProductPage({ params, searchParams }) {
   const { handle } = await params;
@@ -31,13 +35,17 @@ export default async function ProductPage({ params, searchParams }) {
   const storeFeedHref = `/feed?store=${encodeURIComponent(storeDomain)}`;
 
   // Start the LCP image fetch with the document instead of waiting for the
-  // gallery markup to be parsed. Must be the exact URL both galleries request
-  // for slide 1 (plain src at width=1600, no srcSet) or the preload is a
-  // second download rather than a head start.
+  // gallery markup to be parsed. It must declare the SAME srcSet and sizes
+  // both galleries declare for slide 1 — the browser resolves the preload's
+  // candidate list exactly as it resolves an <img>'s, so a matching trio is a
+  // head start and a mismatched one is a second download. All three read the
+  // contract from shopifyImage.js; don't inline a width here.
   if (images[0]) {
-    ReactDOM.preload(shopifyImageUrl(images[0], 1600), {
+    ReactDOM.preload(pdpSlide1Src(images[0]), {
       as: "image",
       fetchPriority: "high",
+      imageSrcSet: pdpSlide1SrcSet(images[0]),
+      imageSizes: PDP_SLIDE1_SIZES,
     });
   }
 

@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { shopifyImageUrl } from "../lib/shopifyImage.js";
+import {
+  shopifyImageUrl,
+  pdpSlide1Src,
+  pdpSlide1SrcSet,
+  PDP_SLIDE1_SIZES,
+} from "../lib/shopifyImage.js";
 
 // Mobile swipe gallery. Desktop uses DesktopProductGallery — this component
 // only ever renders inside the page's `lg:hidden` wrapper.
@@ -149,26 +154,33 @@ export default function ProductGallery({ images, alt }) {
             data-index={i}
             className="relative flex-none w-full aspect-[3/4] snap-start snap-always"
           >
-            {/* Slide 1: bare `src` at width=1600, NO srcSet — identical to
-                DesktopProductGallery's first image and to the document
-                preload, so every viewport resolves to exactly ONE first-image
-                fetch. (Slightly over-fetched on small phones; that is the
-                accepted price of guaranteed dedup across the two galleries,
-                both of which ship in the same HTML.)
+            {/* Slide 1 renders the shared PDP hero contract
+                (pdpSlide1Src/SrcSet + PDP_SLIDE1_SIZES). Dedup with
+                DesktopProductGallery and the document preload — both of which
+                ship in this same HTML — no longer rests on all three
+                hardcoding width=1600; it rests on all three declaring the
+                SAME sizes against the SAME ladder, so each resolves the media
+                condition to the same candidate and the browser fetches once.
+                Change `sizes` here and you must change it in all four places
+                (both galleries, the preload, the feed's hover warm) or the
+                hero downloads twice.
+                The win over the old bare-1600: this gallery is the mobile one,
+                where 100vw now selects ~800 instead of a forced 1600 — about a
+                quarter of the pixels on the LCP image.
                 Slides 2+ are lazy and responsive. Because this whole gallery
                 sits in a `lg:hidden` container, its lazy slides never
                 intersect on desktop — which is what stops desktop from
                 downloading the mobile set on top of its own. */}
             <img
-              src={shopifyImageUrl(src, i === 0 ? 1600 : 1400)}
+              src={i === 0 ? pdpSlide1Src(src) : shopifyImageUrl(src, 1400)}
               srcSet={
                 i === 0
-                  ? undefined
+                  ? pdpSlide1SrcSet(src)
                   : [800, 1200, 1400]
                       .map((w) => `${shopifyImageUrl(src, w)} ${w}w`)
                       .join(", ")
               }
-              sizes={i === 0 ? undefined : "100vw"}
+              sizes={i === 0 ? PDP_SLIDE1_SIZES : "100vw"}
               alt={i === 0 ? alt : ""}
               loading={i === 0 ? "eager" : "lazy"}
               fetchPriority={i === 0 ? "high" : undefined}
