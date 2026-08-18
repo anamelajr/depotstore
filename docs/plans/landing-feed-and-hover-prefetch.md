@@ -42,13 +42,32 @@ Verified facts the plan relies on:
 
 - New export `fetchCachedDefaultFeedPage()`:
   - Inner fn: `fetchProductsPage({ store: null, categorySlugs: [], search: null,
-    brand: null, sort: null, limit: LOAD_SIZE, offset: 0 })` — **no signal**
-    (nothing live to abort; same rationale as `stores.js:115-119`).
+    brand: null, sort: null, limit: LOAD_SIZE, offset: 0, signal })` where
+    `signal` comes from the inner fn's **own AbortController bounded at 8000ms**
+    (aligned with the PostgREST statement-timeout cap). Deliberately NOT the
+    FeedLoader's 4s race signal: the fill must be allowed to outlive the render
+    race so an abandoned cold miss still populates the entry for the next
+    visitor. The 8s inner bound only guards the network-black-hole case the DB
+    statement timeout can't cover; clear the timer in `finally`.
   - Throw if `products.length === 0` (transient failure must not blank the feed
     for a whole cache window; `unstable_cache` won't cache a throw).
   - Wrap: `unstable_cache(inner, ["feed-default-page1-v1-ls30"], { revalidate: 120 })`.
-    Key bakes in LOAD_SIZE. 120s staleness on hidden/sold flips is acceptable
-    (PDP re-checks; SOLD renders as overlay).
+    Key bakes in LOAD_SIZE.
+  - **Staleness contract (documented residual, mirrors stores/fx/dailyRotation):**
+    `unstable_cache` is stale-while-revalidate — under sustained refresh
+    failure it serves the old entry indefinitely (the exact property
+    `resolveProductDetail.js:114-130` documents and why the PDP allowlist gate
+    does NOT use it). That is acceptable here because this is *render* data,
+    not authorization: repo precedent accepts SWR-indefinite for render reads
+    (`stores.js`, `fx.js`, `fetchDailyRotation.js`) and fails closed only on
+    authorization. A product hidden or sold inside the window renders as an
+    ordinary card (NOT a SOLD overlay — `withVisibility` excludes sold from
+    the feed entirely, so the stale entry simply still contains it); the
+    accuracy boundary is the PDP, which is deliberately uncached and returns
+    404/fail-closed. Normal staleness ≤120s; during a sustained Supabase
+    outage the stale grid keeps serving (clicks fail closed at the PDP),
+    which beats the uncached alternative of an empty feed. State this in the
+    wrapper's comment block.
 
 **`app/feed/page.js`** — in `FeedLoader`, compute
 `isDefaultFeed = store === ALL_STORES_VALUE && categorySlugs.length === 0 && !search && !brand && urlSort === "interleaved"`,
@@ -57,6 +76,23 @@ then inside the existing `Promise.all` swap the products call:
 Keep the 4s abort race and try/catch → `initialData = null` → client-fetch
 fallback unchanged. Do NOT cache filtered/sorted variants (combinatorial keys,
 low hit rate).
+
+**Load More dedupe (`app/feed/FeedClient.js`):** offset pagination against the
+mutable catalog can already duplicate/skip rows across the page boundary today
+(two reads at different times); the 120s cache widens that window. Fix the
+visible symptom: when appending a Load More page, filter out products whose
+`handle|storeDomain` identity (the MAPPED field names — `mapProductRow` emits
+`storeDomain`, not `store_domain`) is already in `products` before `setProducts`.
+**Offset invariant:** `handleLoadMore` currently derives the next offset from
+`products.length` (`FeedClient.js:458`) — that breaks once rendered length ≠
+server rows consumed. Track the next server offset explicitly (e.g. a
+`serverOffsetRef`/state advanced by the RAW `data.products.length` of each
+fetched page, pre-dedupe, seeded from the initial page's raw length) and have
+`handleLoadMore` use it; otherwise a partially-duplicate page overlaps the next
+request and an all-duplicate page sets an unchanged state value and stalls Load
+More permanently while `hasMore` is still true. Skipped rows remain an accepted,
+pre-existing property of offset pagination — do NOT redesign feed pagination
+(cursor/keyset) in this round.
 
 ### A2. Full prefetch on the three landing→feed links
 
@@ -77,8 +113,29 @@ behavior, bounded by the 4s race.
 ### B1. New module `app/lib/idleImagePrefetch.js` (client, no React)
 
 Shared scheduler: `schedulePrefetch({ src, srcSet, sizes }) → cancelFn`.
-- Module state: `done` Set keyed by `src`, FIFO queue, `inFlight` counter,
-  `MAX_IN_FLIGHT = 3`.
+- **Keyed job map, not a bare done-set.** Key = **`` `${src}|${sizes ?? ""}` ``**
+  — NOT bare `src`: with a srcSet, the fetched candidate is selected from
+  viewport/DPR/`sizes`, so the same image on a surface with different `sizes`
+  (feed 33vw vs MoreFromStore 25vw) needs a distinct prefetch; keying by bare
+  `src` would suppress it and leave that surface's first hover cold. DPR/resize
+  drift between prefetch and hover remains an accepted miss (falls back to
+  today's behavior).
+- Job lifecycle: `queued → running → done` (load OR error both → done). One
+  module map from key → state. `schedulePrefetch` for a key that is already
+  queued/running/done is a **no-op** returning an inert cancel — dedupe applies
+  from the moment of scheduling, not completion, so two same-key cards can't
+  double-queue. `cancelFn` is idempotent and only removes a *queued* job
+  (deleting its key so a later re-entry can reschedule); a *running* fetch is
+  never aborted — it finishes and marks done. `inFlight` counter with
+  `MAX_IN_FLIGHT = 3` gates queued→running.
+- **Page-load gate:** the scheduler must not start its first drain until the
+  window `load` event has fired (`document.readyState === "complete"`, else a
+  one-shot `load` listener). Per-card `primaryDone` only proves *one* primary
+  finished — a small card can finish while the actual LCP image is still
+  transferring, and `requestIdleCallback` measures CPU idleness, not network
+  idleness. Web-Vitals LCP is only measured on hard loads, where the `load`
+  gate holds the entire drain out of the LCP window; soft navs are already
+  post-`load` and need no extra gate.
 - Skip entirely when `navigator.connection?.saveData` or `effectiveType`
   matches `/2g/`.
 - Drain via `requestIdleCallback(cb, { timeout: 1500 })`, `setTimeout(cb, 300)`
@@ -97,15 +154,17 @@ Shared scheduler: `schedulePrefetch({ src, srcSet, sizes }) → cancelFn`.
   `primaryRef`. (Gating on `loaded` would let the top-row cards queue prefetches
   inside the LCP window — the line-48 gotcha.)
 - New effect (deps `[hoverCapable, primaryDone, primed, imageUrl2]`): bail
-  unless `hoverCapable && primaryDone && !primed && imageUrl2 && imageUrl2 !== imageUrl`
-  and not already scheduled (local ref; module `done` set dedupes across
-  remounts e.g. scroll restore). Create `IntersectionObserver` (threshold 0) on
-  `hoverTargetRef.current` (the aspect wrapper — works under
-  `content-visibility: auto` ancestors). On intersect →
+  unless `hoverCapable && primaryDone && !primed && imageUrl2 && imageUrl2 !== imageUrl`.
+  Create `IntersectionObserver` (threshold 0) on `hoverTargetRef.current` (the
+  aspect wrapper — works under `content-visibility: auto` ancestors). Observer
+  logic is just **schedule on intersect, cancel on un-intersect**:
   `schedulePrefetch({ src: shopifyImageUrl(imageUrl2, width), srcSet: srcSet2,
-  sizes: srcSet2 ? sizes : undefined })`; on un-intersect before start → cancel
-  (bounds fast-fling waste on 600-card restored grids); after start →
-  unobserve/disconnect. Cleanup: cancel + disconnect.
+  sizes: srcSet2 ? sizes : undefined })`. The scheduler's job map makes this
+  race-free with no local bookkeeping: cancel only dequeues a still-queued job
+  (bounding fast-fling waste on 600-card restored grids) and is a no-op once
+  running; re-entry after a cancel reschedules because cancel cleared the key;
+  re-entry after completion is a no-op via the done state — including across
+  remounts (scroll restore). Cleanup: cancel + disconnect.
 - **Keep mount-on-pointerenter unchanged** (`primed`/`showSecond`/`loaded2`
   crossfade) — the prefetch only warms the HTTP cache; hover mount becomes a
   cache-hit decode. No neighbor-hover warm-up (viewport+idle already covers it).
@@ -125,7 +184,13 @@ via `hoverCapable`).
 ## Verification
 
 Unit (vitest): `app/lib/__tests__/idleImagePrefetch.test.js` — queue/cap/dedupe/
-cancel/save-data with stubbed `Image`/`requestIdleCallback`/`navigator.connection`.
+cancel/save-data with stubbed `Image`/`requestIdleCallback`/`navigator.connection`;
+dedupe distinguishes same `src` with different `sizes`; nothing drains before the
+stubbed `load` event fires; scheduling an already-queued/running/done key is a
+no-op; cancel of a queued job allows reschedule, cancel of a running job doesn't
+abort it. Also: Load More append drops rows whose `handle|storeDomain` already exists in
+the grid; the next server offset advances by the raw fetched-page length even
+when a page is partially or fully deduped (no stall on an all-duplicate page).
 Also assert `fetchCachedDefaultFeedPage` throws on empty/error result.
 
 Local (copy `.env.local` from main checkout — see memory note; read-path only,
