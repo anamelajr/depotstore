@@ -60,6 +60,11 @@ const entry = {
     {
       type: "image",
       src: "03.webp",
+      // w/h are optional in the block schema; supplying the measured
+      // intrinsics is what promotes this to an optimized next/image with a
+      // reserved box (no CLS) instead of a raw <img>.
+      w: 2560,
+      h: 1856,
       width: "full-bleed",
       alt: "Full-length Rick Owens runway look with elongated black silhouette and heavy boots",
     },
@@ -85,6 +90,8 @@ const entry = {
     {
       type: "image",
       src: "04.jpg",
+      w: 1000,
+      h: 818,
       width: "full-bleed",
       alt: "Close-up of Rick Owens leather, draped jersey, raw seams, and dark textured materials",
     },

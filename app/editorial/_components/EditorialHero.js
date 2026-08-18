@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const eyebrowCls =
   "font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-600";
 const titleCls =
@@ -6,14 +8,23 @@ const subtitleCls =
   "font-mono text-[11px] leading-[1.6] text-zinc-700 whitespace-pre-line";
 const bylineCls = "font-mono text-[9px] text-zinc-500";
 
-function HeroImage({ src, slug, alt, ratio = "aspect-[4/5]" }) {
+// `relative` is not decoration: a `fill` image is absolutely positioned, so
+// without a positioned ancestor it escapes the aspect box and sizes itself
+// against the page. It is part of the conversion, not optional.
+//
+// `sizes` is threaded per layout rather than defaulted — a wrong `sizes` on a
+// fill image is the difference between shipping a half-width derivative and
+// shipping the full-width one.
+function HeroImage({ src, slug, alt, ratio = "aspect-[4/5]", sizes = "100vw" }) {
   return (
-    <div className={`${ratio} w-full overflow-hidden bg-zinc-900`}>
-      <img
+    <div className={`relative ${ratio} w-full overflow-hidden bg-zinc-900`}>
+      <Image
         src={`/editorial/${slug}/${src}`}
         alt={alt || ""}
-        className="h-full w-full object-cover"
-        loading="eager"
+        fill
+        sizes={sizes}
+        priority
+        className="object-cover"
       />
     </div>
   );
@@ -59,6 +70,7 @@ export default function EditorialHero({ entry }) {
             slug={slug}
             src={hero.images[0]}
             alt={hero.imageAlt?.[0]}
+            sizes="(min-width: 768px) 50vw, 100vw"
           />
         </div>
       </section>
@@ -73,6 +85,7 @@ export default function EditorialHero({ entry }) {
             slug={slug}
             src={hero.images[0]}
             alt={hero.imageAlt?.[0]}
+            sizes="(min-width: 768px) 50vw, 100vw"
           />
           <div className="pt-2 md:pt-6">
             <HeroText hero={hero} byline={hero.byline} date={date} />
@@ -93,6 +106,7 @@ export default function EditorialHero({ entry }) {
           src={hero.images[0]}
           alt={hero.imageAlt?.[0]}
           ratio="aspect-[16/9]"
+          sizes="100vw"
         />
       </section>
     );
@@ -107,12 +121,14 @@ export default function EditorialHero({ entry }) {
             src={hero.images[0]}
             alt={hero.imageAlt?.[0]}
             ratio="aspect-[3/4]"
+            sizes="50vw"
           />
           <HeroImage
             slug={slug}
             src={hero.images[1]}
             alt={hero.imageAlt?.[1]}
             ratio="aspect-[3/4]"
+            sizes="50vw"
           />
         </div>
         <div className="max-w-2xl">

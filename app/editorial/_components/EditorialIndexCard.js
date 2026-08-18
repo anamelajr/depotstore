@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 function formatDate(iso) {
   if (!iso) return "";
@@ -17,12 +18,17 @@ export default function EditorialIndexCard({ entry }) {
       href={`/editorial/${slug}`}
       className="block group"
     >
-      <div className="aspect-[4/5] w-full overflow-hidden bg-zinc-900">
-        <img
+      {/* `relative` is required by `fill` — the image is absolutely
+          positioned and would otherwise escape this aspect box. */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-zinc-900">
+        <Image
           src={`/editorial/${slug}/${hero.images[0]}`}
           alt={hero.imageAlt?.[0] || ""}
-          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
-          loading="lazy"
+          fill
+          // Reads off the index grid in app/editorial/page.js:
+          // 1 col → 2 cols at md → 3 cols at lg.
+          sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+          className="object-cover transition-transform duration-700 group-hover:scale-[1.02]"
         />
       </div>
       <div className="mt-5">
