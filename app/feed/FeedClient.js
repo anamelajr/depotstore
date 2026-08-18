@@ -177,6 +177,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     // priority is correct again.
     suppressPriorityRef.current = false;
     setLoadMoreOffset(null); // cancel pending Load More for the old filter
+    setLoadMoreError(false); // an old filter's append failure isn't this grid's
     setProducts(initialData.products);
     serverOffsetRef.current = initialData.products.length;
     setTotal(initialData.total);
@@ -265,6 +266,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     if (serverMatch && restoreCountRef.current === null) return;
 
     setLoadMoreOffset(null); // cancel any pending Load More for the old filter
+    setLoadMoreError(false); // an old filter's append failure isn't this grid's
 
     // Read, don't consume: the ref is cleared in `finally` once the batch has
     // actually settled, so a re-run of this effect before then still restores.
