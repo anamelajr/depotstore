@@ -72,6 +72,10 @@ try {
             <Link
               href="/feed"
               replace
+              // Full route+data prefetch (not just to loading.js). Cheap
+              // because the default feed page is now server-cached; the router
+              // dedupes the three identical /feed prefetches on this page.
+              prefetch={true}
               className={`${UTILITY_CAPS} transition-opacity hover:opacity-60`}
             >
               <T k="home.viewAll" />

@@ -73,7 +73,8 @@ export default function SearchBrowseRow() {
             className="h-3.5 w-px"
             style={{ backgroundColor: HAIRLINE }}
           />
-          <Link href="/feed" className={`${ITEM} transition-opacity hover:opacity-60`}>
+          {/* See app/page.js — full prefetch, deduped with the other /feed links. */}
+          <Link href="/feed" prefetch={true} className={`${ITEM} transition-opacity hover:opacity-60`}>
             <T k="home.browseCategory" />
             <Chevron />
           </Link>

@@ -33,6 +33,8 @@ export default function Hero() {
           {/* Retargeted to /archives when the real archives phase lands. */}
           <Link
             href="/feed"
+            // See app/page.js — full prefetch, deduped with the other /feed links.
+            prefetch={true}
             className={`${UTILITY_CAPS} mt-8 flex w-fit items-center gap-4 transition-opacity hover:opacity-60`}
           >
             <T k="home.exploreArchives" />
