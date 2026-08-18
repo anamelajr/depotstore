@@ -52,6 +52,8 @@ export const MESSAGES = {
     "feed.filter": "Filters",
     "feed.sort": "Sort",
     "feed.loadMore": "Load More",
+    "feed.loadMoreFailed": "Couldn't load more",
+    "feed.retry": "Retry",
     "feed.countOf": "of",
     "feed.countItems": "products",
     // Sort option labels
@@ -203,6 +205,8 @@ export const MESSAGES = {
     "feed.filter": "Filtrer",
     "feed.sort": "Trier",
     "feed.loadMore": "Voir plus d'articles",
+    "feed.loadMoreFailed": "Chargement impossible",
+    "feed.retry": "Réessayer",
     "feed.countOf": "sur",
     "feed.countItems": "articles",
     // Sort option labels
