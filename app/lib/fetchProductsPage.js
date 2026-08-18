@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+
 import { resolveCategoryFilter } from "./categories.js";
 import { expandSearchAliases } from "./searchAliases.js";
 import {
@@ -7,6 +9,7 @@ import {
   PRODUCT_ROW_SELECT_WITH_CATEGORY,
   mapProductRow,
 } from "./productQueries.js";
+import { LOAD_SIZE } from "./feed-utils.js";
 
 // Default client is dynamically imported so this module stays importable in
 // test/build environments without NEXT_PUBLIC_SUPABASE_URL set at
@@ -285,3 +288,60 @@ export async function fetchProductsPage({
     hasMore: data.length > limit,
   };
 }
+
+// ── Cached default first page ──────────────────────────────────────────────
+// The unfiltered, default-sorted first feed page is what every landing→feed
+// click lands on, and it was paying a live interleaved-RPC round-trip every
+// time (`/feed` is force-dynamic). It's the one variant with a hit rate worth
+// caching; filtered/sorted variants stay live (combinatorial keys, low reuse).
+//
+// STALENESS CONTRACT (documented residual, mirrors stores.js / fx.js /
+// fetchDailyRotation.js): `unstable_cache` is stale-while-revalidate — under
+// sustained refresh failure it serves the old entry indefinitely, the exact
+// property resolveProductDetail.js documents as the reason the PDP allowlist
+// gate does NOT use it. That's acceptable here because this is *render* data,
+// not authorization. A product hidden or sold inside the window renders as an
+// ordinary card (not a SOLD overlay — withVisibility excludes sold from the
+// feed entirely, so the stale entry simply still contains it); the accuracy
+// boundary is the PDP, which is deliberately uncached and fails closed with a
+// 404. Normal staleness is ≤120s; during a sustained Supabase outage the stale
+// grid keeps serving, which beats the uncached alternative of an empty feed.
+const DEFAULT_PAGE_FETCH_TIMEOUT_MS = 8000;
+
+async function fetchDefaultFeedPageOrThrow() {
+  // Deliberately NOT the FeedLoader's 4s race signal: the fill must be allowed
+  // to outlive the render race so an abandoned cold miss still populates the
+  // entry for the next visitor. This 8s bound (aligned with the PostgREST
+  // statement-timeout cap) only guards the network-black-hole case the DB
+  // statement timeout can't cover.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEFAULT_PAGE_FETCH_TIMEOUT_MS);
+  try {
+    const result = await fetchProductsPage({
+      store: null,
+      categorySlugs: [],
+      search: null,
+      brand: null,
+      sort: null,
+      limit: LOAD_SIZE,
+      offset: 0,
+      signal: controller.signal,
+    });
+    // Never cache a blank feed: a transient failure would otherwise blank the
+    // grid for a whole revalidate window. unstable_cache won't cache a throw.
+    if (!result.products || result.products.length === 0) {
+      throw new Error("default feed page returned empty");
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Cache key bakes in LOAD_SIZE: changing the page size must not serve entries
+// built at the old size.
+export const fetchCachedDefaultFeedPage = unstable_cache(
+  fetchDefaultFeedPageOrThrow,
+  [`feed-default-page1-v1-ls${LOAD_SIZE}`],
+  { revalidate: 120 },
+);
