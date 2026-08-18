@@ -1,11 +1,16 @@
-import Link from "next/link";
+import PrefetchLink from "../../components/PrefetchLink.js";
 import HoverSwapImage from "../../components/HoverSwapImage.js";
 import Price from "../../components/Price.js";
+import {
+  pdpSlide1Src,
+  pdpSlide1SrcSet,
+  PDP_SLIDE1_SIZES,
+} from "../../lib/shopifyImage.js";
 
 function EditorialProductCard({ product }) {
   const href =
     product.handle && product.storeDomain
-      ? `/product/${product.handle}?store=${product.storeDomain}&available=${product.available !== false}`
+      ? `/product/${product.handle}?store=${product.storeDomain}`
       : null;
   const displayTitle = product.title ?? product.name ?? "Untitled";
   const card = (
@@ -48,9 +53,21 @@ function EditorialProductCard({ product }) {
   );
   if (!href) return card;
   return (
-    <Link href={href} className="block focus:outline-none">
+    <PrefetchLink
+      href={href}
+      heroImage={
+        product.imageUrl
+          ? {
+              src: pdpSlide1Src(product.imageUrl),
+              srcSet: pdpSlide1SrcSet(product.imageUrl),
+              sizes: PDP_SLIDE1_SIZES,
+            }
+          : null
+      }
+      className="block focus:outline-none"
+    >
       {card}
-    </Link>
+    </PrefetchLink>
   );
 }
 

@@ -39,7 +39,7 @@ function keyFor(src, sizes) {
   return `${src}|${sizes ?? ""}`;
 }
 
-function saveDataDisabled() {
+export function saveDataDisabled() {
   if (typeof navigator === "undefined") return false;
   const c = navigator.connection;
   if (!c) return false;

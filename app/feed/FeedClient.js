@@ -81,6 +81,11 @@ export default function FeedClient({ stores = [], initialData = null }) {
 
   // Load More: offset to fetch next batch from (null = idle)
   const [loadMoreOffset, setLoadMoreOffset] = useState(null);
+  // Deliberately NOT the shared `error` state. That one is rendered *instead
+  // of* the grid, so routing an append failure into it blanked every card the
+  // user had already loaded. This one renders beneath the grid and leaves it
+  // standing.
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   // Next server offset to request, advanced by the RAW row count of each
   // fetched page (pre-dedupe). It must NOT be derived from `products.length`:
@@ -172,6 +177,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     // priority is correct again.
     suppressPriorityRef.current = false;
     setLoadMoreOffset(null); // cancel pending Load More for the old filter
+    setLoadMoreError(false); // an old filter's append failure isn't this grid's
     setProducts(initialData.products);
     serverOffsetRef.current = initialData.products.length;
     setTotal(initialData.total);
@@ -260,6 +266,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     if (serverMatch && restoreCountRef.current === null) return;
 
     setLoadMoreOffset(null); // cancel any pending Load More for the old filter
+    setLoadMoreError(false); // an old filter's append failure isn't this grid's
 
     // Read, don't consume: the ref is cleared in `finally` once the batch has
     // actually settled, so a re-run of this effect before then still restores.
@@ -393,7 +400,15 @@ export default function FeedClient({ stores = [], initialData = null }) {
       })
       .catch((err) => {
         if (err.name !== "AbortError") {
-          setError("Failed to load products.");
+          if (filterKeyRef.current !== requestFilterKey) return;
+          setLoadMoreError(true);
+          // Reset to null so a retry can re-request the SAME offset. Without
+          // this, handleLoadMore sets loadMoreOffset to the value it already
+          // holds (the failure never advanced serverOffsetRef), the state
+          // doesn't change, the effect never re-runs, and Load More is dead
+          // for the rest of the session. Re-requesting the same offset skips
+          // nothing — it was never consumed.
+          setLoadMoreOffset(null);
         }
       })
       .finally(() => setLoadingMore(false));
@@ -469,6 +484,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
   }, [router, searchParams]);
 
   const handleLoadMore = useCallback(() => {
+    setLoadMoreError(false);
     setLoadMoreOffset(serverOffsetRef.current);
   }, []);
 
@@ -587,6 +603,11 @@ export default function FeedClient({ stores = [], initialData = null }) {
                 <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
                   {products.length.toLocaleString(numberLocale)} {t("feed.countOf")} {total.toLocaleString(numberLocale)} {t("feed.countItems")}
                 </p>
+                {loadMoreError && (
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-red-600">
+                    {t("feed.loadMoreFailed")}
+                  </p>
+                )}
                 {hasMore && (
                   <button
                     type="button"
@@ -594,7 +615,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
                     disabled={loadingMore}
                     className="w-full border border-zinc-300 py-4 px-6 font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-500 transition-all duration-200 hover:border-zinc-900 hover:text-zinc-950 disabled:opacity-40 disabled:cursor-not-allowed active:bg-zinc-100"
                   >
-                    {loadingMore ? "—" : t("feed.loadMore")}
+                    {loadingMore ? "—" : loadMoreError ? t("feed.retry") : t("feed.loadMore")}
                   </button>
                 )}
               </div>

@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 function paragraphs(body) {
   return body
     .split(/\n{2,}/)
@@ -40,15 +42,46 @@ function ImageBlock({ block, slug }) {
       : block.width === "wide"
         ? "max-w-3xl mx-auto"
         : "max-w-xl mx-auto";
+  // The big one: these are the raw full-bleed article photos, the real bytes
+  // and CLS offender on an editorial page.
+  //
+  // next/image needs intrinsic dimensions, and the block schema didn't carry
+  // any. Rather than force every future block to declare them, `w`/`h` are
+  // OPTIONAL: present → an optimized, correctly-reserved <Image>; absent →
+  // today's <img>, verbatim, so dimension-less content keeps working exactly
+  // as it does now. The schema stays additive, which also leaves admin's
+  // fs + new Function reads untouched.
+  const sizes =
+    block.width === "full-bleed"
+      ? "100vw"
+      : block.width === "wide"
+        ? "(min-width: 768px) 768px, 100vw"
+        : "(min-width: 640px) 576px, 100vw";
   return (
     <figure className={wrapperCls}>
       <div className="w-full overflow-hidden bg-zinc-900">
-        <img
-          src={src}
-          alt={block.alt || ""}
-          className="block w-full h-auto"
-          loading="lazy"
-        />
+        {block.w && block.h ? (
+          <Image
+            src={src}
+            alt={block.alt || ""}
+            width={block.w}
+            height={block.h}
+            sizes={sizes}
+            loading="lazy"
+            className="block w-full h-auto"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element -- deliberate:
+          // without intrinsic dimensions next/image can't reserve a box, and
+          // this branch exists to keep dimension-less content rendering
+          // exactly as it does today.
+          <img
+            src={src}
+            alt={block.alt || ""}
+            className="block w-full h-auto"
+            loading="lazy"
+          />
+        )}
       </div>
       {block.caption ? (
         <figcaption className="mt-2 font-mono text-[10px] text-zinc-600 tracking-[0.05em] px-1">
@@ -76,12 +109,18 @@ function ImagePairBlock({ block, slug }) {
   return (
     <div className="mx-auto max-w-3xl grid grid-cols-2 gap-3 md:gap-4">
       {block.images.map((img, i) => (
-        <div key={i} className="aspect-[4/5] overflow-hidden bg-zinc-900">
-          <img
+        // `relative` is required by `fill`: the image is absolutely
+        // positioned and escapes this aspect box without it.
+        <div key={i} className="relative aspect-[4/5] overflow-hidden bg-zinc-900">
+          <Image
             src={`/editorial/${slug}/${img.src}`}
             alt={img.alt || ""}
-            className="h-full w-full object-cover"
+            fill
+            // Half of the max-w-3xl (768px) grid, minus the gap, until the
+            // viewport is narrower than the container.
+            sizes="(min-width: 768px) 376px, 50vw"
             loading="lazy"
+            className="object-cover"
           />
         </div>
       ))}

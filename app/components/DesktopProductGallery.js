@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import BackToFeedLink from "./BackToFeedLink";
-import { shopifyImageUrl } from "../lib/shopifyImage.js";
+import {
+  shopifyImageUrl,
+  pdpSlide1Src,
+  pdpSlide1SrcSet,
+  PDP_SLIDE1_SIZES,
+} from "../lib/shopifyImage.js";
 
 // Saint Laurent-style stacked desktop gallery: one full-height section per
 // image, native scroll, sticky vertical counter, click-to-zoom overlay with a
@@ -124,13 +129,21 @@ function GallerySection({ src, alt, index, onZoom, registerRef, eager }) {
             "opacity 500ms cubic-bezier(0.22,1,0.36,1), transform 500ms cubic-bezier(0.22,1,0.36,1)",
         }}
       >
-        {/* Slide 1 deliberately carries a bare `src` at width=1600 and NO
-            srcSet, matching ProductGallery's first slide and the document
-            preload exactly. A srcSet here would let the browser pick a
-            different candidate than the preload fetched, reinstating the
-            double download this is meant to collapse. */}
+        {/* Slide 1 renders the shared PDP hero contract
+            (pdpSlide1Src/SrcSet + PDP_SLIDE1_SIZES), byte-identical to
+            ProductGallery's first slide and to the document preload. The three
+            no longer dedup by all hardcoding width=1600 — they dedup because
+            they declare the SAME sizes against the SAME ladder, so all three
+            resolve to the same candidate. A *different* srcSet or sizes here
+            (not the absence of one) is what would reinstate the double
+            download. The ladder is also the feed card's, which is what makes a
+            feed→PDP click a browser-cache hit at matching viewport×DPR.
+            Slides 2+ keep their bare 1600: they are below the fold, lazy, and
+            zoomable. */}
         <img
-          src={shopifyImageUrl(src, 1600)}
+          src={index === 0 ? pdpSlide1Src(src) : shopifyImageUrl(src, 1600)}
+          srcSet={index === 0 ? pdpSlide1SrcSet(src) : undefined}
+          sizes={index === 0 ? PDP_SLIDE1_SIZES : undefined}
           alt={index === 0 ? alt : ""}
           loading={eager ? "eager" : "lazy"}
           fetchPriority={eager ? "high" : undefined}

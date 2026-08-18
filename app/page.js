@@ -14,41 +14,114 @@ import {
 import { fetchCachedHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js";
 import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 import { fetchCachedDailyRotation } from "./lib/fetchDailyRotation.js";
+import { getActiveStores } from "./lib/stores.js";
+import { Suspense } from "react";
 
 export const dynamic = 'force-dynamic';
 
-export default async function Home() {
-  let recentProducts = [];
-  let stores = [];
-try {
-  const { getActiveStores } = await import("./lib/stores.js");
-  stores = await getActiveStores();
+// Both data sections race against this before giving up and rendering their
+// empty/placeholder state, mirroring the feed loader's shape. The cached
+// fetchers ignore the signal (they have no live request of their own) — the
+// race exists to unblock render on a cold miss, not to cancel work.
+const SECTION_TIMEOUT_MS = 4000;
 
-  const homepagePicks = await loadHomepagePicks();
+function withTimeout(work) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SECTION_TIMEOUT_MS);
+  return Promise.race([
+    work(controller.signal),
+    new Promise((_, reject) => {
+      controller.signal.addEventListener(
+        "abort",
+        () => reject(new Error("homepage section timeout")),
+        { once: true },
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Two async sections instead of one sequential await chain in the page body.
+// Each is Suspense-wrapped, so Hero / SearchBrowseRow / FeaturedArchives —
+// none of which need data — stream immediately instead of waiting behind a
+// Supabase round-trip.
+async function loadCuratedProducts() {
+  // The real parallelization win: the store list and the curated picks file
+  // are independent, and used to run strictly one after the other.
+  const [stores, homepagePicks] = await Promise.all([
+    getActiveStores(),
+    // Deliberately still the fs-reading loader, never a static import of
+    // homepage-edit.json — a syntax error in that file must degrade to the
+    // rotation below, not crash the homepage.
+    loadHomepagePicks(),
+  ]);
+
   if (homepagePicks.length > 0) {
     try {
-      recentProducts = await fetchCachedHomepagePicks(homepagePicks);
+      const picked = await fetchCachedHomepagePicks(homepagePicks);
+      if (picked.length > 0) return picked;
     } catch (err) {
       console.warn("[homepage] fetchHomepagePicks failed, falling back:", err.message);
     }
   }
 
-  if (recentProducts.length === 0) {
-    // Date-seeded rotation — preserves current behavior when no picks have
-    // been curated OR when the picks file is unreadable. Reads Supabase
-    // directly (see fetchDailyRotation.js) instead of fanning out one
-    // self-HTTP call per store to this site's own /api/products.
-    const seed = Math.floor(Date.now() / 86400000);
-    recentProducts = await fetchCachedDailyRotation({
-      storeDomains: stores.map((s) => s.domain),
-      seed,
-    });
-  }
-} catch {
-  // ignore
+  // Date-seeded rotation — preserves current behavior when no picks have
+  // been curated OR when the picks file is unreadable. Reads Supabase
+  // directly (see fetchDailyRotation.js) instead of fanning out one
+  // self-HTTP call per store to this site's own /api/products.
+  const seed = Math.floor(Date.now() / 86400000);
+  return fetchCachedDailyRotation({
+    storeDomains: stores.map((s) => s.domain),
+    seed,
+  });
 }
 
+async function CuratedSection() {
+  let recentProducts = [];
+  try {
+    recentProducts = await withTimeout(() => loadCuratedProducts());
+  } catch {
+    // Empty row — the page body's previous catch-all behavior, unchanged.
+  }
 
+  return (
+    <div className="-mx-6 flex gap-4 overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-3 md:gap-6 md:overflow-visible md:px-0 lg:grid-cols-4">
+      {recentProducts.map((p) => (
+        <div
+          key={`${p.productUrl ?? "unknown"}-${p.name}`}
+          className="w-[45vw] max-w-[220px] shrink-0 md:w-auto md:max-w-none"
+        >
+          {/* Row is a 45vw swipe rail on mobile, 3-up from md, 4-up
+              from lg — without this the srcSet has no basis to pick a
+              candidate and falls back to 100vw. */}
+          <ProductCard
+            product={p}
+            imageSizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 45vw"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Same getActiveStores call as CuratedSection's — React.cache dedupes it
+// within the request, so the two sections cost one round-trip between them.
+async function AcrossParis() {
+  let stores = [];
+  try {
+    stores = await withTimeout(() => getActiveStores());
+  } catch {
+    // Map with no pins beats no map: the section keeps its height either way.
+  }
+  return <ParisMap stores={stores} />;
+}
+
+// Matches ParisMap's own 480px box and its #f4f4f5 ground exactly, so
+// streaming the map in swaps one grey rectangle for another — no shift.
+function MapPlaceholder() {
+  return <div style={{ height: "480px", width: "100%", background: "#f4f4f5" }} />;
+}
+
+export default async function Home() {
   return (
     <div
       className="min-h-screen overflow-x-clip font-mono antialiased text-zinc-950"
@@ -84,22 +157,15 @@ try {
           {/* One DOM for both breakpoints — a horizontal swipe row on mobile,
               the untouched grid from md up. Dual blocks would double-render
               eight ProductCards and their images. */}
-          <div className="-mx-6 flex gap-4 overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-3 md:gap-6 md:overflow-visible md:px-0 lg:grid-cols-4">
-            {recentProducts.map((p) => (
-              <div
-                key={`${p.productUrl ?? "unknown"}-${p.name}`}
-                className="w-[45vw] max-w-[220px] shrink-0 md:w-auto md:max-w-none"
-              >
-                {/* Row is a 45vw swipe rail on mobile, 3-up from md, 4-up
-                    from lg — without this the srcSet has no basis to pick a
-                    candidate and falls back to 100vw. */}
-                <ProductCard
-                  product={p}
-                  imageSizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 45vw"
-                />
-              </div>
-            ))}
-          </div>
+          {/* Reserves the row's height (4:5 card + its text block) so the
+              map section below doesn't jump when the products stream in. */}
+          <Suspense
+            fallback={
+              <div className="h-[calc(45vw*1.25+72px)] max-h-[347px] w-full md:h-[380px]" />
+            }
+          >
+            <CuratedSection />
+          </Suspense>
         </div>
       </section>
 
@@ -109,7 +175,9 @@ try {
           <h2 className={`${SECTION_LABEL} mb-6 md:mb-10`}>
             <T k="home.acrossParis" />
           </h2>
-          <ParisMap stores={stores} />
+          <Suspense fallback={<MapPlaceholder />}>
+            <AcrossParis />
+          </Suspense>
         </div>
       </section>
 

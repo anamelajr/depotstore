@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHoverCapable } from "../lib/useHoverCapable.js";
-import { shopifyImageUrl } from "../lib/shopifyImage.js";
+import { shopifyImageUrl, shopifySrcSet } from "../lib/shopifyImage.js";
 import { schedulePrefetch } from "../lib/idleImagePrefetch.js";
 
 // Single home for the hover-swap behavior so it works identically under all
@@ -26,10 +26,12 @@ function isShopifyCdnUrl(url) {
   return typeof url === "string" && url.startsWith("https://cdn.shopify.com/");
 }
 
-function srcSetFor(url) {
-  if (!isShopifyCdnUrl(url)) return undefined;
-  return [400, 600, 800, 1200, 1600].map((w) => `${shopifyImageUrl(url, w)} ${w}w`).join(", ");
-}
+// The ladder lives in shopifyImage.js and is shared with the PDP hero (see
+// pdpSlide1SrcSet). That identity is load-bearing, not cosmetic: a feed card
+// and the product page it links to only share a cached download when their
+// candidate lists match rung-for-rung, so this must never fork back into a
+// local array.
+const srcSetFor = shopifySrcSet;
 
 // priority is tri-state: false | "eager" | "high".
 //   false   — lazy, normal fetch priority (every below-the-fold card).

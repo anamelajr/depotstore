@@ -93,18 +93,30 @@ export function resolveSizes(dbRow, product) {
   return null;
 }
 
+// This is the widest tail-latency risk on the site: an unbounded fetch to a
+// third-party merchant domain sitting on the critical path of every PDP
+// render. 5s is generous for a JSON product read and still bounded.
+const SHOPIFY_FETCH_TIMEOUT_MS = 5000;
+
+// Returning `null` here means ONE thing: the merchant authoritatively says
+// this product does not exist. The caller turns that into the "Product not
+// found" page, so it must never stand in for "we couldn't reach the merchant".
+// Everything else — timeout, DNS/reset/TLS (surfaced as TypeError by fetch),
+// any non-404 status, malformed JSON — throws into the route's error boundary,
+// which offers a retry. A Shopify 503 rendering as a permanent "not found" for
+// a product that plainly exists is the failure this classification prevents.
 async function fetchShopifyProduct(handle, storeDomain) {
-  try {
-    const res = await fetch(
-      `https://${storeDomain}/products/${handle}.json?country=FR`,
-      { next: { revalidate: 300 } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.product ?? null;
-  } catch {
-    return null;
+  const res = await fetch(
+    `https://${storeDomain}/products/${handle}.json?country=FR`,
+    { next: { revalidate: 300 }, signal: AbortSignal.timeout(SHOPIFY_FETCH_TIMEOUT_MS) }
+  );
+  // 410 Gone is as authoritative as 404 — a delisted product.
+  if (res.status === 404 || res.status === 410) return null;
+  if (!res.ok) {
+    throw new Error(`Shopify responded ${res.status} for ${storeDomain}/${handle}`);
   }
+  const data = await res.json();
+  return data?.product ?? null;
 }
 
 // ── Authorization gate cache ────────────────────────────────────────────
@@ -333,7 +345,12 @@ export const resolveDescription = cache(async (handle, storeDomain) => {
   if (!core) return null;
   if (core.description) return core.description;
 
-  const generated = await generateDescription(core.descriptionInput);
+  // Bound the OpenAI call too: the description streams into an open Suspense
+  // slot, so a hung request would pin that slot (and the response) open
+  // indefinitely. Timeout → null → the existing no-description fallback.
+  const generated = await generateDescription(core.descriptionInput, {
+    signal: AbortSignal.timeout(15_000),
+  });
   if (!generated) return null;
 
   scheduleCacheBack(async () => {
