@@ -60,3 +60,32 @@ export function extractBrandTags(title) {
   return Array.from(new Set(matches));
 }
 
+
+// ── Load More append ──────────────────────────────────────────────────────
+// Offset pagination against a catalog that mutates hourly can return a row the
+// grid already shows (rows inserted or removed between the two reads); the
+// 120s cache on the default first page widens that window. Identity uses the
+// MAPPED field names — `mapProductRow` emits `storeDomain`, not `store_domain`.
+//
+// Skipped rows remain an accepted, pre-existing property of offset pagination:
+// this fixes the visible duplicate, not the pagination model.
+function productIdentity(p) {
+  return `${p?.handle}|${p?.storeDomain}`;
+}
+
+export function appendDedupedProducts(prev, rows) {
+  if (!rows || rows.length === 0) return prev;
+  const seen = new Set(prev.map(productIdentity));
+  const fresh = rows.filter((p) => !seen.has(productIdentity(p)));
+  if (fresh.length === rows.length) return [...prev, ...rows];
+  return [...prev, ...fresh];
+}
+
+// The next server offset advances by the RAW fetched-page length, BEFORE
+// dedupe. Deriving it from the rendered `products.length` breaks once dedupe
+// drops rows: a partially-duplicate page would overlap the next request, and
+// an all-duplicate page would re-request the same offset forever — Load More
+// stalls permanently while `hasMore` is still true.
+export function nextServerOffset(requestedOffset, rows) {
+  return requestedOffset + (rows ? rows.length : 0);
+}

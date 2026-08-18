@@ -11,7 +11,7 @@ import FilterChip from "../components/feed/FilterChip";
 import MobileSearchStrip from "../components/MobileSearchStrip";
 import MobileFeedActionBar from "../components/MobileFeedActionBar";
 import MobileFilterPanel from "../components/MobileFilterPanel";
-import { ALL_STORES_VALUE, LOAD_SIZE, buildFeedUrl } from "../lib/feed-utils";
+import { ALL_STORES_VALUE, LOAD_SIZE, buildFeedUrl, appendDedupedProducts, nextServerOffset } from "../lib/feed-utils";
 import { SORT_MAP } from "../lib/sort-options";
 import { useLanguage } from "../components/LanguageProvider";
 
@@ -81,6 +81,14 @@ export default function FeedClient({ stores = [], initialData = null }) {
 
   // Load More: offset to fetch next batch from (null = idle)
   const [loadMoreOffset, setLoadMoreOffset] = useState(null);
+
+  // Next server offset to request, advanced by the RAW row count of each
+  // fetched page (pre-dedupe). It must NOT be derived from `products.length`:
+  // once the append below drops rows already in the grid, rendered length
+  // diverges from server rows consumed, and a partially-duplicate page would
+  // overlap the next request while an all-duplicate page would re-request the
+  // same offset forever — Load More stalls while `hasMore` is still true.
+  const serverOffsetRef = useRef(serverMatch ? initialData.products.length : 0);
 
   // Whether grid items may skip offscreen rendering work. On by default (fresh
   // loads want it from the first frame); turned off for the restore frame so
@@ -165,6 +173,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
     suppressPriorityRef.current = false;
     setLoadMoreOffset(null); // cancel pending Load More for the old filter
     setProducts(initialData.products);
+    serverOffsetRef.current = initialData.products.length;
     setTotal(initialData.total);
     setServerHasMore(initialData.hasMore === true);
     setError(null);
@@ -287,6 +296,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
       })
       .then((data) => {
         setProducts(data.products || []);
+        serverOffsetRef.current = (data.products || []).length;
         setTotal(data.total ?? 0);
         setServerHasMore(data.hasMore === true);
         setError(null);
@@ -296,6 +306,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
         if (err.name !== "AbortError") {
           setError("Failed to load products.");
           setProducts([]);
+          serverOffsetRef.current = 0;
           setTotal(0);
           setServerHasMore(false);
         }
@@ -371,7 +382,10 @@ export default function FeedClient({ stores = [], initialData = null }) {
         // overwrites `products` wholesale on the server-driven path, so an
         // unguarded append would leave old-filter cards in the new grid.
         if (filterKeyRef.current !== requestFilterKey) return;
-        setProducts((prev) => [...prev, ...(data.products || [])]);
+        const rows = data.products || [];
+        // Raw page length, before dedupe — see serverOffsetRef.
+        serverOffsetRef.current = nextServerOffset(loadMoreOffset, rows);
+        setProducts((prev) => appendDedupedProducts(prev, rows));
         // `total` is intentionally NOT updated here: past offset 0 the API
         // returns null for it, and the displayed count should stay the number
         // the user was shown for this filter.
@@ -455,8 +469,8 @@ export default function FeedClient({ stores = [], initialData = null }) {
   }, [router, searchParams]);
 
   const handleLoadMore = useCallback(() => {
-    setLoadMoreOffset(products.length);
-  }, [products.length]);
+    setLoadMoreOffset(serverOffsetRef.current);
+  }, []);
 
   const activeFilterCount =
     localCategories.length +

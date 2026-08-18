@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import FeedClient from "./FeedClient";
 import { getActiveStores, FALLBACK_STORES } from "../lib/stores.js";
-import { fetchProductsPage } from "../lib/fetchProductsPage.js";
+import { fetchProductsPage, fetchCachedDefaultFeedPage } from "../lib/fetchProductsPage.js";
 import { ALL_STORES_VALUE, LOAD_SIZE } from "../lib/feed-utils";
 import { SORT_MAP } from "../lib/sort-options";
 
@@ -42,6 +42,13 @@ async function FeedLoader({ sp }) {
   const categorySlugs = categoriesKey ? categoriesKey.split(",").filter(Boolean) : [];
   const filterKey = `${store}|${categoriesKey}|${search}|${urlSort}|${brand}`;
 
+  const isDefaultFeed =
+    store === ALL_STORES_VALUE &&
+    categorySlugs.length === 0 &&
+    !search &&
+    !brand &&
+    urlSort === "interleaved";
+
   let stores = FALLBACK_STORES;
   let initialData = null;
   const controller = new AbortController();
@@ -53,16 +60,22 @@ async function FeedLoader({ sp }) {
         // required, not belt-and-braces: an un-aborted stalled query keeps the
         // HTTP response open long past the deadline even once the race rejects.
         getActiveStores({ signal: controller.signal }),
-        fetchProductsPage({
-          store: store !== ALL_STORES_VALUE ? store : null,
-          categorySlugs,
-          search: search || null,
-          brand: brand || null,
-          sort: SORT_MAP[urlSort] || null,
-          limit: LOAD_SIZE,
-          offset: 0,
-          signal: controller.signal,
-        }),
+        // The unfiltered default view is the landing→feed destination and the
+        // only variant worth caching; everything else stays live. The cached
+        // call ignores `signal` (it has no live request of its own to abort) —
+        // the 4s race below still unblocks render on a cold miss.
+        isDefaultFeed
+          ? fetchCachedDefaultFeedPage()
+          : fetchProductsPage({
+              store: store !== ALL_STORES_VALUE ? store : null,
+              categorySlugs,
+              search: search || null,
+              brand: brand || null,
+              sort: SORT_MAP[urlSort] || null,
+              limit: LOAD_SIZE,
+              offset: 0,
+              signal: controller.signal,
+            }),
       ]),
       new Promise((_, reject) => {
         controller.signal.addEventListener(
