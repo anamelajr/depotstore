@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHoverCapable } from "../lib/useHoverCapable.js";
 import { shopifyImageUrl } from "../lib/shopifyImage.js";
+import { schedulePrefetch } from "../lib/idleImagePrefetch.js";
 
 // Single home for the hover-swap behavior so it works identically under all
 // four cards regardless of their server/client status. The three Server
@@ -41,12 +42,22 @@ export default function HoverSwapImage({ imageUrl, imageUrl2, alt, width = 800, 
   const hoverCapable = useHoverCapable();
   // The hover image used to mount at hydration on every desktop card — ~30
   // extra CDN requests per feed page for an image most visitors never see.
-  // It now waits for a real pointerenter (see the effect below).
+  // It now waits for a real pointerenter (see the effect below). Its BYTES are
+  // warmed earlier though: once the card's own primary image has finished and
+  // the card is in the viewport, an idle-time off-DOM prefetch
+  // (idleImagePrefetch.js) fetches the exact URL the hover <img> will request,
+  // so the pointerenter mount hits the HTTP cache. Lifecycle: primary loads →
+  // primaryDone → in viewport → idle prefetch → pointerenter mounts →
+  // crossfade.
   const [primed, setPrimed] = useState(false);
   // Priority images start visible: their whole point is that the SSR HTML
   // paints them, so the LCP must not wait on hydration to clear opacity-0.
   const [loaded, setLoaded] = useState(Boolean(priority));
   const [loaded2, setLoaded2] = useState(false);
+  // "The primary image actually finished" — deliberately NOT `loaded`, which
+  // starts true for priority cards (see above) so the hover-image prefetch
+  // would queue inside the LCP window for the very cards that carry the LCP.
+  const [primaryDone, setPrimaryDone] = useState(false);
   const hoverTargetRef = useRef(null);
 
   // hoverCapable gate is the PRIMARY desktop-only mechanism: mobile/touch
@@ -72,8 +83,52 @@ export default function HoverSwapImage({ imageUrl, imageUrl2, alt, width = 800, 
     hoverTargetRef.current = el.parentElement;
     // Images already in the HTTP cache decode before React attaches onLoad,
     // so the event never fires and the fade would be stuck at opacity-0.
-    if (el.complete && el.naturalWidth > 0) setLoaded(true);
+    if (el.complete && el.naturalWidth > 0) {
+      setLoaded(true);
+      setPrimaryDone(true);
+    }
   }, []);
+
+  // ── Idle prefetch of the hover image ──
+  // The hover <img> still mounts on pointerenter (below); this only warms the
+  // HTTP cache ahead of it, so that mount becomes a cache-hit decode instead
+  // of a cold CDN round-trip the user is already waiting on.
+  //
+  // Schedule on intersect, cancel on un-intersect — the scheduler's job map
+  // makes that race-free with no local bookkeeping: cancel only dequeues a
+  // still-queued job (bounding fast-fling waste on restored 600-card grids)
+  // and is a no-op once running; re-entry after a cancel reschedules because
+  // cancel cleared the key; re-entry after completion is a no-op via the done
+  // state, including across remounts (scroll restore).
+  useEffect(() => {
+    if (!hoverCapable || !primaryDone || primed) return;
+    if (!imageUrl2 || imageUrl2 === imageUrl) return;
+    // The aspect wrapper, not the img: it still has layout under a
+    // `content-visibility: auto` ancestor.
+    const el = hoverTargetRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+
+    let cancel = null;
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          cancel = schedulePrefetch({
+            src: shopifyImageUrl(imageUrl2, width),
+            srcSet: srcSet2,
+            sizes: srcSet2 ? sizes : undefined,
+          });
+        } else if (cancel) {
+          cancel();
+          cancel = null;
+        }
+      }
+    });
+    observer.observe(el);
+    return () => {
+      if (cancel) cancel();
+      observer.disconnect();
+    };
+  }, [hoverCapable, primaryDone, primed, imageUrl2, imageUrl, width, srcSet2, sizes]);
 
   const hoverRef = useCallback((el) => {
     if (el && el.complete && el.naturalWidth > 0) setLoaded2(true);
@@ -115,8 +170,8 @@ export default function HoverSwapImage({ imageUrl, imageUrl2, alt, width = 800, 
         decoding="async"
         // onError also clears the gate: a dead URL degrades to today's
         // broken-image-over-grey rather than freezing on the blur.
-        onLoad={() => setLoaded(true)}
-        onError={() => setLoaded(true)}
+        onLoad={() => { setLoaded(true); setPrimaryDone(true); }}
+        onError={() => { setLoaded(true); setPrimaryDone(true); }}
         className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ease-out ${loaded ? "opacity-100" : "opacity-0"}`}
       />
       {showSecond ? (
