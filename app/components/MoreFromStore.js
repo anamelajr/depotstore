@@ -1,4 +1,4 @@
-import Link from "next/link";
+import PrefetchLink from "./PrefetchLink.js";
 import { supabase } from "../lib/supabase.js";
 import HoverSwapImage from "./HoverSwapImage.js";
 import Price from "./Price.js";
@@ -8,6 +8,11 @@ import {
   PRODUCT_ROW_SELECT,
   mapProductRow,
 } from "../lib/productQueries.js";
+import {
+  pdpSlide1Src,
+  pdpSlide1SrcSet,
+  PDP_SLIDE1_SIZES,
+} from "../lib/shopifyImage.js";
 
 async function fetchMore(storeDomain) {
   const { data, error } = await withVisibility(
@@ -50,7 +55,7 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
       <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-6">
         {products.map((p) => {
           const href = p.handle && p.storeDomain
-            ? `/product/${p.handle}?store=${p.storeDomain}&available=${p.available !== false}`
+            ? `/product/${p.handle}?store=${p.storeDomain}`
             : null;
           const card = (
             <div className="group block">
@@ -79,13 +84,22 @@ export default async function MoreFromStore({ storeDomain, currentHandle, storeN
           );
           if (!href) return <div key={`${p.storeDomain}-${p.handle}`}>{card}</div>;
           return (
-            <Link
+            <PrefetchLink
               key={`${p.storeDomain}-${p.handle}`}
               href={href}
+              heroImage={
+                p.imageUrl
+                  ? {
+                      src: pdpSlide1Src(p.imageUrl),
+                      srcSet: pdpSlide1SrcSet(p.imageUrl),
+                      sizes: PDP_SLIDE1_SIZES,
+                    }
+                  : null
+              }
               className="block focus:outline-none"
             >
               {card}
-            </Link>
+            </PrefetchLink>
           );
         })}
       </div>

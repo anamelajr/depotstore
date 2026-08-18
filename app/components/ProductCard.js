@@ -1,10 +1,15 @@
 "use client";
 
 import { track } from "@vercel/analytics";
-import Link from "next/link";
+import PrefetchLink from "./PrefetchLink.js";
 import HoverSwapImage from "./HoverSwapImage.js";
 import Price from "./Price.js";
 import { useLanguage } from "./LanguageProvider";
+import {
+  pdpSlide1Src,
+  pdpSlide1SrcSet,
+  PDP_SLIDE1_SIZES,
+} from "../lib/shopifyImage.js";
 
 // `priority` is passed straight through to HoverSwapImage: false for the vast
 // majority of cards, "eager"/"high" for the handful a grid renders above the
@@ -39,8 +44,11 @@ export default function ProductCard({ product, imageSizes, priority = false }) {
   const displayTitle = title ?? name ?? t("product.untitled");
   const isSold = !available;
 
+  // No `&available=` here any more: nothing ever read it, and it fragmented
+  // the prefetch key — a sold-out flip between hover and click would have
+  // wasted the warmed route entry.
   const internalUrl = handle && storeDomain
-    ? `/product/${handle}?store=${storeDomain}&available=${!isSold}`
+    ? `/product/${handle}?store=${storeDomain}`
     : null;
 
   const handleClick = () => {
@@ -134,12 +142,24 @@ export default function ProductCard({ product, imageSizes, priority = false }) {
   if (!internalUrl) return card;
 
   return (
-    <Link
+    <PrefetchLink
       href={internalUrl}
+      // Must stay byte-identical to the PDP hero's own src/srcSet/sizes (all
+      // three read the same contract) or the warm fetches a candidate the
+      // product page never asks for and the click pays twice.
+      heroImage={
+        imageUrl
+          ? {
+              src: pdpSlide1Src(imageUrl),
+              srcSet: pdpSlide1SrcSet(imageUrl),
+              sizes: PDP_SLIDE1_SIZES,
+            }
+          : null
+      }
       className="block h-full focus:outline-none"
       onClick={handleClick}
     >
       {card}
-    </Link>
+    </PrefetchLink>
   );
 }
