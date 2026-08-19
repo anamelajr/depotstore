@@ -139,7 +139,12 @@ function GallerySection({ src, alt, index, onZoom, registerRef, eager }) {
             download. The ladder is also the feed card's, which is what makes a
             feed→PDP click a browser-cache hit at matching viewport×DPR.
             Slides 2+ keep their bare 1600: they are below the fold, lazy, and
-            zoomable. */}
+            zoomable.
+            The height is DEFINITE (h-[86%], not max-h): rendered size is
+            layout-owned, so neither the srcSet candidate the browser picks nor
+            the store's original-photo resolution may ever affect how large the
+            image displays — that intrinsic-size dependence is exactly the
+            per-product size drift this guards against. */}
         <img
           src={index === 0 ? pdpSlide1Src(src) : shopifyImageUrl(src, 1600)}
           srcSet={index === 0 ? pdpSlide1SrcSet(src) : undefined}
@@ -148,7 +153,7 @@ function GallerySection({ src, alt, index, onZoom, registerRef, eager }) {
           loading={eager ? "eager" : "lazy"}
           fetchPriority={eager ? "high" : undefined}
           decoding="async"
-          className="max-h-[86%] max-w-[72%] object-contain"
+          className="h-[86%] max-w-[72%] object-contain"
         />
       </button>
     </section>
@@ -365,7 +370,7 @@ function ZoomOverlay({ images, alt, initialIndex, closing, onRequestClose, onClo
                 src={shopifyImageUrl(src, 2048)}
                 alt={i === activeIndex ? alt : ""}
                 loading={Math.abs(i - initialIndex) <= 1 ? "eager" : "lazy"}
-                className="max-h-[88vh] max-w-[86%] object-contain"
+                className="h-[88vh] max-w-[86%] object-contain"
               />
             </div>
           ))}

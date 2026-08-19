@@ -42,8 +42,13 @@ export function shopifySrcSet(url) {
 // media condition to the same candidate and the browser fetches once.
 //
 // 40vw on desktop is the honest measure of DesktopProductGallery's slide:
-// object-contain at 3/4 inside max-h-86vh ⇒ ~0.65 × viewport height wide,
-// ≈ 40vw at typical window proportions. Mobile is a true full-bleed slide.
+// the img box is layout-owned — a DEFINITE h-[86%] of (100vh − nav) capped at
+// max-w-[72%] of the gallery grid column (100vw − max(460px, 40vw) ≈ 55–60vw).
+// A 3/4 photo at that height is ≈ 40vw at typical window proportions; the cap
+// bounds worst-case visible width at ≈ 43vw wide / ≈ 40vw at the breakpoint —
+// within one ladder rung of the declared slot at desktop DPR 1–2. Mobile is a
+// true full-bleed slide. (The height being definite, not max-, is what keeps
+// rendered size independent of the chosen candidate / original resolution.)
 export const PDP_SLIDE1_SIZES = "(min-width: 1024px) 40vw, 100vw";
 
 export function pdpSlide1SrcSet(url) {

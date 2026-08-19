@@ -125,3 +125,13 @@ Rejected alternatives: `<Link prefetch={true}>` fires full dynamic prefetch on v
 ## Verification wrap-up
 
 `npm install` in the worktree first. Full pass on `npm run build && npm start` against prod Supabase (reads safe; never hit `/api/cron` / `/api/enrich`). Run existing tests (`npm test`) — i18n parity and any gallery/link component tests must stay green. Browser-pane walkthrough: landing → feed → hover → click (instant) → back → mobile emulation → editorial article → archives page → /stores.
+
+## Follow-up (2026-08-19): desktop slide sizing regression
+
+The slide-1 srcSet contract exposed a latent layout bug: the desktop gallery
+img had no definite box (`max-h-[86%] max-w-[72%]` are maxima), so rendered
+size was intrinsic-driven — smaller chosen candidates and small store originals
+(the CDN never upscales) made products render at visibly different sizes.
+Fixed by making the height definite (`h-[86%]`, and `h-[88vh]` on the zoom
+overlay) so size is layout-owned; the sizes/srcSet contract is untouched.
+See `docs/plans/pdp-uniform-desktop-image-size.md`.
