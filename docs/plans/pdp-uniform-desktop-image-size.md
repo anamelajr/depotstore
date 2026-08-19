@@ -39,6 +39,28 @@ stays byte-identical.
      uniform 86%-height, width varies only with photo aspect). If the 72%
      width cap bites (very wide photo), `object-contain` letterboxes inside the
      img box, still centered by the flex parent — visually identical to before.
+   - **Uniformity invariant, precisely:** the invariant is *per-viewport
+     determinism* — at a given window size, every product with the same photo
+     aspect ratio renders at the same size, decided by layout alone. On
+     typical landscape windows the height rule (86%) governs. Near the lg
+     breakpoint the width cap governs instead: at 1024px viewport the gallery
+     column is `1024 − 460 = 564px`, cap `406px`, so an ordinary 3/4 portrait
+     caps at ≈76% height rather than 86% — same for every product, and
+     identical to pre-PR-#120 behavior (the cap predates the perf work; images
+     were always large enough to hit it). Aspect-ratio-driven size differences
+     between a portrait and a landscape photo are likewise pre-existing and
+     accepted. What is *fixed* is size varying with the chosen srcSet
+     candidate or the store's original-photo resolution.
+   - **Why `sizes` (40vw) stays with the bigger box:** `max-w-[72%]` resolves
+     against the gallery grid column (`100vw − max(460px, 40vw)` ≈ 55–60vw),
+     not the viewport — worst-case visible width is ≈43vw wide / ≈40vw at the
+     breakpoint. Against the ladder (400/600/800/1200/1600) at desktop DPR 1–2
+     the worst shortfall is ≈4–6% linear (e.g. 1920px DPR 2 width-capped:
+     needs ~1659 device px, top rung supplies 1600) — invisible. The 1600 top
+     rung has been slide 1's supply ceiling since before PR #120 (bare
+     `width=1600`), so this plan does not regress sharpness anywhere; DPR 3 is
+     phone territory, served by the 100vw mobile gallery. The four-place
+     contract stays untouched.
    - Small originals now browser-upscale to the frame instead of rendering
      tiny. That is exactly the pre-PR visual (they were upscaled-by-request at
      the CDN then… actually they hit the caps; either way: uniform frame).
@@ -87,6 +109,12 @@ stays byte-identical.
    load (dedup contract intact), and the chosen candidate unchanged from
    before this fix.
 4. Check a third product from another store + the zoom overlay + narrow
-   desktop window (~1024px) for the width-cap/letterbox path.
+   desktop window (~1024px) for the width-cap path. Acceptance (measure
+   `img.getBoundingClientRect()`): at a wide window (≥1440px), portrait
+   photos render at 86% of section height; at ~1024px the width cap governs —
+   all 3/4 portraits render at the *same* capped size (≈406px wide), which is
+   the pass condition there (NOT 86% height — the cap predates PR #120).
+   Across all widths: two products from different stores with same-aspect
+   photos must render identically. No visible blur at DPR 2.
 5. Push branch, verify on the Vercel preview (per CLAUDE.md workflow: no
    direct push to main; merge only on explicit user instruction).
