@@ -20,7 +20,7 @@ export async function generateDescription(product, { signal } = {}) {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-5.6-sol",
+        model: "gpt-5.6-terra",
         // GPT-5.6 spends reasoning tokens out of max_completion_tokens
         // before writing any output; too small a cap yields empty content.
         reasoning_effort: "low",
