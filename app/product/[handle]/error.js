@@ -11,7 +11,7 @@ import Link from "next/link";
 // DB-row-only page would be a product page with no product photos.
 export default function ProductError({ reset }) {
   return (
-    <div className="min-h-screen bg-white text-zinc-900 flex flex-col items-center justify-center gap-6 px-6 text-center">
+    <div className="min-h-screen text-zinc-900 flex flex-col items-center justify-center gap-6 px-6 text-center">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-900">
         Something went wrong
       </p>

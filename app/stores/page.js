@@ -18,7 +18,7 @@ export default async function StoresPage() {
   const stores = await getActiveStores();
 
   return (
-    <div className="min-h-screen bg-white text-zinc-950">
+    <div className="min-h-screen text-zinc-950">
       <div className="mx-auto max-w-4xl px-8 py-16 sm:py-20">
         <h1 className="mb-6 font-mono text-[10px] font-normal uppercase tracking-[0.22em] text-zinc-400">
           <T k="stores.label" />

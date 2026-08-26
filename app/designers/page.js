@@ -28,7 +28,6 @@ export default function DesignersPage() {
       className="font-mono"
       style={{
         minHeight: "100vh",
-        backgroundColor: "#ffffff",
         color: "rgb(9 9 11)",
         padding: "48px 24px 80px",
       }}

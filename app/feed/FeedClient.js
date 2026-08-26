@@ -504,7 +504,7 @@ export default function FeedClient({ stores = [], initialData = null }) {
 
   return (
     <div className="min-h-screen font-mono antialiased overflow-x-clip">
-      <div className="min-h-screen bg-white text-zinc-950">
+      <div className="min-h-screen text-zinc-950">
 
         {/* Mobile panels */}
         <MobileFilterPanel

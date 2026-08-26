@@ -26,7 +26,7 @@ export default async function ProductPage({ params, searchParams }) {
   const detail = await resolveProductDetailCore({ handle, storeDomain });
 
   if (!detail) {
-    return <div className="min-h-screen bg-white text-zinc-900 flex items-center justify-center">Product not found.</div>;
+    return <div className="min-h-screen text-zinc-900 flex items-center justify-center">Product not found.</div>;
   }
 
   const { images, sizes, price, brand, title, storeName, storeLocation, description, available } = detail;
@@ -70,7 +70,7 @@ export default async function ProductPage({ params, searchParams }) {
   );
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900">
+    <div className="min-h-screen text-zinc-900">
 
       {/* Desktop — full-width stacked gallery + full-height sticky panel */}
       <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(460px,40%)]">

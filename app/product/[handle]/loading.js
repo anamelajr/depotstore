@@ -10,7 +10,7 @@ function Bar({ className = "" }) {
 
 export default function ProductLoading() {
   return (
-    <div className="min-h-screen bg-white text-zinc-900">
+    <div className="min-h-screen text-zinc-900">
       {/* Desktop — matches the lg:grid-cols-[minmax(0,1fr)_minmax(460px,40%)] shell */}
       <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(460px,40%)]">
         <div className="animate-pulse bg-zinc-100" style={{ aspectRatio: "4 / 5" }} />

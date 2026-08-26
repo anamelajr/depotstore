@@ -132,17 +132,17 @@ export const MESSAGES = {
     // Stores page
     "stores.label": "Stores — Paris",
     // Footer
-    "footer.tagline": "Paris. Archive. One feed.",
     "footer.newsletter": "Newsletter",
-    "footer.explore": "Explore",
     "footer.feed": "Feed",
     "footer.stores": "Stores",
+    "footer.designers": "Designers",
+    "footer.editorial": "Editorial",
+    "footer.about": "About",
     "footer.saved": "Saved",
-    "footer.connect": "Connect",
     "footer.contact": "Contact",
     // Newsletter form
     "newsletter.label": "New drops, straight to your inbox.",
-    "newsletter.placeholder": "your@email.com",
+    "newsletter.placeholder": "Email",
     "newsletter.signUp": "Sign up",
     "newsletter.success": "You're in. —",
     "newsletter.error": "Something went wrong. Try again.",
@@ -284,17 +284,17 @@ export const MESSAGES = {
     // Stores page
     "stores.label": "Boutiques — Paris",
     // Footer
-    "footer.tagline": "Paris. Archives. Un fil.",
     "footer.newsletter": "Newsletter",
-    "footer.explore": "Explorer",
     "footer.feed": "Fil",
     "footer.stores": "Boutiques",
+    "footer.designers": "Créateurs",
+    "footer.editorial": "Éditorial",
+    "footer.about": "À propos",
     "footer.saved": "Mes favoris",
-    "footer.connect": "Contact",
     "footer.contact": "Nous écrire",
     // Newsletter form
     "newsletter.label": "Les nouvelles pièces, directement dans votre boîte.",
-    "newsletter.placeholder": "votre@email.com",
+    "newsletter.placeholder": "E-mail",
     "newsletter.signUp": "S'inscrire",
     "newsletter.success": "C'est noté. —",
     "newsletter.error": "Une erreur est survenue. Réessayez.",
