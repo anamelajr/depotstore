@@ -66,6 +66,22 @@ Keep: `footer.newsletter`, `footer.feed`, `footer.stores`, `footer.saved`, `foot
    - Mobile viewport (`resize_window` mobile preset): links wrap cleanly, input full width.
 3. Screenshot the result for the user.
 
+## Addendum: site-wide ground unification (2026-08-26)
+
+After the initial implementation, the footer's `bg-white` visibly seamed against the
+homepage's warm ground (`#faf9f7`, `app/components/home/tokens.js`). Approved follow-up,
+same PR, own commit:
+
+- `--background` in `globals.css` becomes `#faf9f7` — the single site ground.
+- Footer drops `bg-white` (transparent, sits on body).
+- Page wrappers on feed/about/stores/product drop their explicit `bg-white` and inherit
+  the body ground. Saved/designers already inherited. Editorial keeps its deliberate
+  `#f5f2ed`. Component-level whites (nav, filter panels, sort menus, cards, overlays)
+  are untouched.
+- Newsletter input widened: footer container `max-w-4xl` → `max-w-5xl`, input's
+  `max-w-2xl` cap removed — input spans the full container (~71% of a 1440px viewport,
+  centered), matching the reference proportions.
+
 ## Workflow
 
 Branch is already `claude/footer-redesign-68e7e2` in this worktree. Commit there; do not push to main. Merge only on explicit user instruction.

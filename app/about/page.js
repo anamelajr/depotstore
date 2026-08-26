@@ -13,7 +13,7 @@ export async function generateMetadata() {
 
 export default function AboutPage() {
   return (
-    <main className="min-h-screen bg-white text-zinc-950">
+    <main className="min-h-screen text-zinc-950">
       <div className="mx-auto max-w-2xl px-6 py-24 sm:py-32">
 
         {/* Back link */}

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #faf9f7;
   --foreground: #171717;
   --nav-height: 56px;
 }

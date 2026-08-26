@@ -6,8 +6,8 @@ const CONTACT_EMAIL = "hello@depot.paris";
 
 export default function Footer() {
   return (
-    <footer className="bg-white text-zinc-950 px-6 py-16 sm:px-10 sm:py-20">
-      <div className="mx-auto max-w-4xl">
+    <footer className="text-zinc-950 px-6 py-16 sm:px-10 sm:py-20">
+      <div className="mx-auto max-w-5xl">
         <div id="newsletter" className="scroll-mt-[80px]">
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
             <T k="footer.newsletter" />
@@ -15,7 +15,7 @@ export default function Footer() {
           <p className="mt-3 text-sm text-zinc-600">
             <T k="newsletter.label" />
           </p>
-          <div className="mt-4 max-w-2xl">
+          <div className="mt-4">
             <NewsletterForm />
           </div>
         </div>
