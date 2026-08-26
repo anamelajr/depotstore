@@ -27,9 +27,10 @@ Removed: wordmark, tagline, two-column Explore/Connect grid, bottom © bar.
 ### 2. `app/components/NewsletterForm.js` — restyle
 
 - Remove the visible label (copy moves to Footer) and the visible SIGN UP button.
-- Input: flat gray reference style — `w-full bg-zinc-100 px-4 py-3 font-mono text-sm text-zinc-950 placeholder:text-zinc-400 placeholder:uppercase placeholder:tracking-widest outline-none focus:bg-zinc-50` (or a focus ring via `focus:ring-1 ring-zinc-300`; pick one, keep it subtle). Placeholder key changes meaning: reuse `newsletter.placeholder` but update its value to `Email` / `E-mail` (uppercased via CSS).
+- Input: flat gray reference style — `w-full bg-zinc-100 px-4 py-3 font-mono text-sm text-zinc-950 placeholder:text-zinc-400 placeholder:uppercase placeholder:tracking-widest`. **A clearly visible keyboard focus indicator is required** (a subtle background shift alone is not acceptable): `outline-none focus:ring-1 focus:ring-zinc-500` (or keep the default outline). Placeholder key changes meaning: reuse `newsletter.placeholder` but update its value to `Email` / `E-mail` (uppercased via CSS).
 - Add `aria-label` from `newsletter.label` (or `footer.newsletter`) so the label-less input stays accessible.
-- Keep a submit button in the DOM but visually hidden (`sr-only`) so Enter submits and screen readers get an action; keep `disabled` during loading and dim the input (`disabled:opacity-50` on input via `status === "loading"`).
+- Keep a submit button in the DOM (`sr-only`) so Enter submits and screen readers get an action, **but it must become visible when it receives keyboard focus** — `sr-only focus:not-sr-only` plus visible focused styling (e.g. the small bordered-button style the current form uses), with its localized `newsletter.signUp` label. A permanently invisible tab stop is not acceptable. (This means `newsletter.signUp` stays in messages.js — remove it from the "Remove" list in §3.)
+- Keep `disabled` during loading and dim the input (`disabled:opacity-50` on input via `status === "loading"`).
 - Success/error states unchanged: success replaces form with `newsletter.success` line; error shows the small red `newsletter.error` line.
 - No changes to the fetch/`/api/subscribe` logic.
 
@@ -44,9 +45,9 @@ Update:
 - `newsletter.placeholder`: en "Email" / fr "E-mail" (was your@email.com)
 
 Remove (only used by the code being deleted — verified by grep):
-- `footer.tagline`, `footer.explore`, `footer.connect`, `newsletter.signUp`
+- `footer.tagline`, `footer.explore`, `footer.connect`
 
-Keep: `footer.newsletter`, `footer.feed`, `footer.stores`, `footer.saved`, `footer.contact`, `newsletter.label`, `newsletter.placeholder`, `newsletter.success`, `newsletter.error`.
+Keep: `footer.newsletter`, `footer.feed`, `footer.stores`, `footer.saved`, `footer.contact`, `newsletter.label`, `newsletter.placeholder`, `newsletter.signUp` (used by the focus-revealed submit button), `newsletter.success`, `newsletter.error`.
 
 ## Not touched
 
@@ -57,11 +58,11 @@ Keep: `footer.newsletter`, `footer.feed`, `footer.stores`, `footer.saved`, `foot
 ## Verification
 
 1. `npm test` (or the project's test runner) — the i18n parity test (`app/lib/i18n/__tests__/messages.test.js`) must pass with the added/removed keys.
-2. Run the dev server via preview_start (needs `.env.local` in the worktree — copy from main checkout if missing, per memory note) and check:
+2. Run the dev server via preview_start (needs `.env.local` in the worktree — copy from main checkout if missing, per memory note). **Before starting the server, remove or comment out `BEEHIIV_API_KEY` and `BEEHIIV_PUBLICATION_ID` in the worktree's `.env.local`** — `/api/subscribe` forwards every submit to the live Beehiiv API with `send_welcome_email: true`, so a form test with production credentials creates a real subscriber and sends a welcome email. With the vars absent, Beehiiv rejects the upstream call, the route returns 500, and the form's error state renders — which verifies the full client wiring with zero production mutation. Never verify the submit path against production credentials. Then check:
    - Footer renders on `/` and `/feed`: NEWSLETTER eyebrow + copy + flat gray input + single uppercase link row, nothing else.
    - All 7 links navigate correctly; Contact opens mailto.
    - Language toggle: all footer strings swap to French (new keys threaded through `<T>`).
-   - Type an email and press Enter → form submits (watch the network tab for POST `/api/subscribe`; a real submit hits Beehiiv prod, so use a test address or stop at confirming the request fires).
+   - Type an email and press Enter → POST `/api/subscribe` fires (network tab) and, with Beehiiv creds absent per above, the error line renders. Also Tab from the input: the input shows a visible focus ring, and the next Tab reveals the submit button (`focus:not-sr-only`) — no invisible tab stop.
    - Mobile viewport (`resize_window` mobile preset): links wrap cleanly, input full width.
 3. Screenshot the result for the user.
 
