@@ -8,54 +8,76 @@ export default function Footer() {
   return (
     <footer className="bg-white text-zinc-950 px-6 py-16 sm:px-10 sm:py-20">
       <div className="mx-auto max-w-4xl">
-        <p className="text-[clamp(28px,5vw,40px)] font-bold uppercase leading-none tracking-tight">
-          DÉPÔT
-        </p>
-        <p className="mt-3 font-mono text-[11px] text-zinc-500">
-          <T k="footer.tagline" />
-        </p>
-
-        <div id="newsletter" className="mt-12 max-w-sm scroll-mt-[80px]">
+        <div id="newsletter" className="scroll-mt-[80px]">
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
             <T k="footer.newsletter" />
           </p>
-          <div className="mt-3">
+          <p className="mt-3 text-sm text-zinc-600">
+            <T k="newsletter.label" />
+          </p>
+          <div className="mt-4 max-w-2xl">
             <NewsletterForm />
           </div>
         </div>
 
-        <div className="mt-12 grid grid-cols-2 gap-8 max-w-sm">
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              <T k="footer.explore" />
-            </p>
-            <ul className="mt-3 space-y-2 font-mono text-[12px] text-zinc-800">
-              <li><Link href="/feed" className="hover:text-zinc-500 transition-colors"><T k="footer.feed" /></Link></li>
-              <li><Link href="/stores" className="hover:text-zinc-500 transition-colors"><T k="footer.stores" /></Link></li>
-              <li><Link href="/saved" className="hover:text-zinc-500 transition-colors"><T k="footer.saved" /></Link></li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              <T k="footer.connect" />
-            </p>
-            <ul className="mt-3 space-y-2 font-mono text-[12px] text-zinc-800">
-              <li>
-                <a
-                  href={`mailto:${CONTACT_EMAIL}`}
-                  className="hover:text-zinc-500 transition-colors"
-                >
-                  <T k="footer.contact" />
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-14 border-t border-zinc-200 pt-6 flex justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-          <span>© 2026 Dépôt</span>
-          <span>Paris</span>
-        </div>
+        <ul className="mt-12 flex flex-wrap gap-x-6 gap-y-3">
+          <li>
+            <Link
+              href="/feed"
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.feed" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/stores"
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.stores" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/designers"
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.designers" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/editorial"
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.editorial" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/about"
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.about" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/saved"
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.saved" />
+            </Link>
+          </li>
+          <li>
+            <a
+              href={`mailto:${CONTACT_EMAIL}`}
+              className="font-mono text-[12px] uppercase tracking-widest text-zinc-800 hover:text-zinc-500 transition-colors"
+            >
+              <T k="footer.contact" />
+            </a>
+          </li>
+        </ul>
       </div>
     </footer>
   );

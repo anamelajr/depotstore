@@ -37,21 +37,20 @@ export default function NewsletterForm() {
 
   return (
     <form onSubmit={handleSubmit}>
-      <label className="mb-4 block text-sm text-zinc-600">
-        {t("newsletter.label")}
-      </label>
       <input
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder={t("newsletter.placeholder")}
+        aria-label={t("newsletter.label")}
         required
-        className="w-full border-b border-zinc-300 bg-transparent py-3 font-mono text-sm text-zinc-950 placeholder:text-zinc-400 outline-none transition-colors focus:border-zinc-900"
+        disabled={status === "loading"}
+        className="w-full bg-zinc-100 px-4 py-3 font-mono text-sm text-zinc-950 placeholder:text-zinc-400 placeholder:uppercase placeholder:tracking-widest outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
       />
       <button
         type="submit"
         disabled={status === "loading"}
-        className="mt-3 w-fit border border-zinc-300 px-5 py-2 font-mono text-[12px] uppercase tracking-widest text-zinc-600 transition-colors hover:border-zinc-900 hover:text-zinc-950 disabled:opacity-50"
+        className="sr-only mt-3 border border-zinc-300 px-5 py-2 font-mono text-[12px] uppercase tracking-widest text-zinc-600 transition-colors hover:border-zinc-900 hover:text-zinc-950 disabled:opacity-50 focus:not-sr-only"
       >
         {status === "loading" ? "..." : t("newsletter.signUp")}
       </button>
