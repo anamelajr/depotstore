@@ -2,5 +2,5 @@
 // empty full-height ground instead of a frozen previous page. Deliberately
 // contentless — a spinner here would flash on fast navigations.
 export default function RootLoading() {
-  return <div className="min-h-screen bg-white" />;
+  return <div className="min-h-screen" />;
 }
