@@ -7,6 +7,7 @@ import { useLanguage } from "./LanguageProvider";
 
 export default function LayoutClient({
   children,
+  footer = null,
   stores = [],
   initialCurrency = "EUR",
   rates,
@@ -20,6 +21,7 @@ export default function LayoutClient({
         <Nav onAboutOpen={() => setIsAboutOpen(true)} stores={stores} />
       </Suspense>
       <div className="min-h-screen">{children}</div>
+      {footer}
       {isAboutOpen && (
         <div
           className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"

@@ -133,6 +133,8 @@ export const MESSAGES = {
     "stores.label": "Stores — Paris",
     // Footer
     "footer.newsletter": "Newsletter",
+    "footer.browse": "Browse",
+    "footer.depot": "Dépôt",
     "footer.feed": "Feed",
     "footer.stores": "Stores",
     "footer.designers": "Designers",
@@ -285,6 +287,8 @@ export const MESSAGES = {
     "stores.label": "Boutiques — Paris",
     // Footer
     "footer.newsletter": "Newsletter",
+    "footer.browse": "Parcourir",
+    "footer.depot": "Dépôt",
     "footer.feed": "Fil",
     "footer.stores": "Boutiques",
     "footer.designers": "Créateurs",

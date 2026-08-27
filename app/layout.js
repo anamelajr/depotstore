@@ -94,10 +94,10 @@ export default async function RootLayout({ children }) {
             stores={stores}
             initialCurrency={initialCurrency}
             rates={rates}
+            footer={<Footer />}
           >
             {children}
           </LayoutClient>
-          <Footer />
         </LanguageProvider>
       </body>
       <Analytics />
