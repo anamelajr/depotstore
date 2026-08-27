@@ -6,8 +6,9 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import LayoutClient from "./components/LayoutClient";
 import Footer from "./components/Footer";
 import { LanguageProvider } from "./components/LanguageProvider";
-import { getActiveStores } from "./lib/stores.js";
-import { getFxRates } from "./lib/fx.js";
+import { getActiveStores, FALLBACK_STORES } from "./lib/stores.js";
+import { getFxRates, FALLBACK_RATES } from "./lib/fx.js";
+import { withTimeout, LAYOUT_GUARD_TIMEOUT_MS } from "./lib/withTimeout.js";
 import { getLanguage } from "./lib/i18n/language.js";
 import { t } from "./lib/i18n/messages.js";
 import "./globals.css";
@@ -64,13 +65,41 @@ export default async function RootLayout({ children }) {
   // (no flash). `source` is server-side diagnostics only — pass the nested
   // `rates` down, never the wrapper (CurrencyProvider/formatPrice expect
   // { GBP, USD }).
+  //
+  // The two network members also get a defensive 6s race. It is deliberately
+  // later than the 4s aborts inside the cached fetchers, so in a routine stall
+  // those fire first and degrade through their own logged catches; these fire
+  // ONLY if that machinery failed to reject at all. Each .catch is attached
+  // BEFORE Promise.all — an uncaught rejection here would crash the root
+  // layout instead of degrading, which is strictly worse than fallback
+  // nav/rates, so nothing is rethrown.
+  const storesPromise = withTimeout(
+    () => getActiveStores(),
+    LAYOUT_GUARD_TIMEOUT_MS,
+  ).catch((e) => {
+    console.error(
+      JSON.stringify({
+        event: "layout_stores_fallback",
+        reason: e?.message ?? String(e),
+      }),
+    );
+    return FALLBACK_STORES;
+  });
+  const fxPromise = withTimeout(
+    () => getFxRates(),
+    LAYOUT_GUARD_TIMEOUT_MS,
+  ).catch((e) => {
+    console.error(
+      JSON.stringify({
+        event: "layout_fx_fallback",
+        reason: e?.message ?? String(e),
+      }),
+    );
+    return { rates: { ...FALLBACK_RATES }, source: "fallback" };
+  });
+
   const [stores, { rates, source }, cookieStore, initialLanguage] =
-    await Promise.all([
-      getActiveStores(),
-      getFxRates(),
-      cookies(),
-      getLanguage(),
-    ]);
+    await Promise.all([storesPromise, fxPromise, cookies(), getLanguage()]);
 
   const cookieCurrency = cookieStore.get("depot_currency")?.value;
   const initialCurrency = ALLOWED_CURRENCIES.includes(cookieCurrency)

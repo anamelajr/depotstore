@@ -29,13 +29,30 @@ const FRANKFURTER_URL =
 // must never be cached), `unstable_cache` shares the good value across
 // requests for 10 minutes (cron refreshes fx hourly, so 10-min staleness is
 // purely presentational), and `React.cache` dedupes within a request.
-async function fetchFxRatesOrThrow() {
-  const { data, error } = await supabaseAdmin
-    .from("fx_rates")
-    .select("gbp, usd")
-    .eq("id", 1)
-    .single();
+const FX_READ_TIMEOUT_MS = 4000;
 
+async function fetchFxRatesOrThrow() {
+  // Bound the live cold-miss request itself: this read gates the root
+  // layout's first paint, and a hung connection would block the document.
+  // Mirrors the abort in refreshFxRates below and in stores.js.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FX_READ_TIMEOUT_MS);
+  let data, error;
+  try {
+    ({ data, error } = await supabaseAdmin
+      .from("fx_rates")
+      .select("gbp, usd")
+      .eq("id", 1)
+      .abortSignal(controller.signal)
+      .single());
+  } finally {
+    clearTimeout(timer);
+  }
+
+  // Distinct message so operators can tell a timeout from other failures.
+  if (controller.signal.aborted) {
+    throw new Error(`fx read timed out after ${FX_READ_TIMEOUT_MS}ms`);
+  }
   if (error) throw error;
   if (!data || data.gbp == null || data.usd == null) {
     throw new Error("fx_rates row 1 missing gbp/usd");
