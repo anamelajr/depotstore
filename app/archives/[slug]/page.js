@@ -92,7 +92,7 @@ export default async function ArchivePage({ params }) {
             </span>
 
             <h1
-              className="mt-[18px] text-[34px] font-medium uppercase leading-[1.1] tracking-[0.04em] text-white md:mt-7 md:text-[72px] md:font-bold md:leading-[1.04] md:tracking-[0.01em]"
+              className="mt-[18px] text-[34px] font-medium uppercase leading-[1.1] tracking-[0.04em] text-white md:-ml-[5px] md:mt-7 md:text-[72px] md:font-normal md:leading-[1.04] md:tracking-[0.01em]"
               style={{ fontFamily: HERO_MONO }}
             >
               {archive.name}
