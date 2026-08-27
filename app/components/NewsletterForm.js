@@ -45,7 +45,7 @@ export default function NewsletterForm() {
         aria-label={t("newsletter.label")}
         required
         disabled={status === "loading"}
-        className="w-full bg-transparent border-b border-[#3a3833] pb-3 font-mono text-[13px] uppercase tracking-[0.14em] text-white placeholder:text-white placeholder:uppercase placeholder:tracking-[0.14em] outline-none focus:border-white disabled:opacity-50"
+        className="w-full bg-transparent border-b border-[#3a3833] pb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-white placeholder:text-zinc-500 placeholder:uppercase placeholder:tracking-[0.14em] outline-none focus:border-white disabled:opacity-50"
       />
       <button
         type="submit"
