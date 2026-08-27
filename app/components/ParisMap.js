@@ -116,10 +116,15 @@ export default function ParisMap({ stores = [] }) {
           // attribution; kept clear of the custom zoom control's corner. No
           // customAttribution — the Positron style's own sources already carry
           // the linked OSM + CARTO credit, and adding ours prints it twice.
-          map.addControl(
-            new maplibregl.AttributionControl({ compact: false }),
-            "bottom-left",
-          );
+          // Dev-only carve-out: hidden while iterating locally so the design
+          // can be judged clean; any production build always shows it — the
+          // credit is a license requirement, not a style choice.
+          if (process.env.NODE_ENV === "production") {
+            map.addControl(
+              new maplibregl.AttributionControl({ compact: false }),
+              "bottom-left",
+            );
+          }
 
           // Only one popup pinned at a time: marker clicks stopPropagation,
           // so the map's closeOnClick can't dismiss a previous pin — do it
