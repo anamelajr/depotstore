@@ -50,8 +50,52 @@ export default function ParisMap({ stores = [] }) {
       observer.observe(el);
     }
 
+    // Positron restyled into the site's editorial palette: every label,
+    // boundary and icon layer dropped, fills flattened onto the #f4f4f5
+    // ground, streets as white threads, the Seine one shade darker. The
+    // transform keys off layer *type* plus id substrings so minor upstream
+    // id churn degrades to "slightly off shade", never to a broken style.
+    function toDepotStyle(style) {
+      const WATER = "#d6d6da";
+      const GROUND = "#f4f4f5";
+      const GREEN = "#ededee";
+      const ROAD = "#ffffff";
+      const RAIL = "#e8e8ea";
+      style.layers = style.layers
+        .filter((l) => l.type !== "symbol")
+        .filter((l) => !/boundary|admin/.test(l.id))
+        .map((l) => {
+          const layer = { ...l, paint: { ...(l.paint || {}) } };
+          const isWater = /water|river|ocean/.test(l.id);
+          if (l.type === "background") {
+            layer.paint["background-color"] = GROUND;
+          } else if (l.type === "fill") {
+            layer.paint["fill-color"] = isWater
+              ? WATER
+              : /green|park|wood|grass|cemetery|landcover/.test(l.id)
+                ? GREEN
+                : GROUND;
+            delete layer.paint["fill-outline-color"];
+          } else if (l.type === "line") {
+            layer.paint["line-color"] = isWater
+              ? WATER
+              : /rail|transit/.test(l.id)
+                ? RAIL
+                : ROAD;
+          }
+          return layer;
+        });
+      return style;
+    }
+
     function loadMap() {
-      import("maplibre-gl").then((mod) => {
+      Promise.all([
+        import("maplibre-gl"),
+        fetch("https://tiles.openfreemap.org/styles/positron").then((r) => {
+          if (!r.ok) throw new Error(`style fetch ${r.status}`);
+          return r.json();
+        }),
+      ]).then(([mod, styleJson]) => {
         import("maplibre-gl/dist/maplibre-gl.css");
         const maplibregl = mod.default ?? mod;
 
@@ -59,19 +103,25 @@ export default function ParisMap({ stores = [] }) {
         // extent (512px vs 256px tiles): zoom 12 here ≈ the old Leaflet 13.
         const map = new maplibregl.Map({
           container: mapRef.current,
-          style: "https://tiles.openfreemap.org/styles/positron",
+          style: toDepotStyle(styleJson),
           center: [2.347, 48.857],
           zoom: 12,
           attributionControl: false,
         });
         map.scrollZoom.disable();
 
-        // OSM data is ODbL — attribution is required; the Positron style
-        // supplies its own credits, shown collapsed behind the ⓘ toggle.
-        map.addControl(
-          new maplibregl.AttributionControl({ compact: true }),
-          "bottom-left"
-        );
+        // OSM data is ODbL — attribution must stay discoverable. Collapsed
+        // to the bare ⓘ toggle; credits show only on demand.
+        const attribution = new maplibregl.AttributionControl({
+          compact: true,
+        });
+        map.addControl(attribution, "bottom-left");
+        // The control re-expands itself when style data arrives, so collapse
+        // once loading settles rather than synchronously here.
+        map.once("idle", () => {
+          attribution._container.classList.remove("maplibregl-compact-show");
+          attribution._container.removeAttribute("open");
+        });
 
         mapStores.forEach((store) => {
           const dot = document.createElement("div");
