@@ -50,22 +50,29 @@ export default function ParisMap({ stores = [] }) {
       observer.observe(el);
     }
 
-    // Positron restyled into the site's editorial palette: every label,
-    // boundary and icon layer dropped, fills flattened onto the #f4f4f5
-    // ground, streets as white threads, the Seine one shade darker. The
-    // transform keys off layer *type* plus id substrings so minor upstream
-    // id churn degrades to "slightly off shade", never to a broken style.
+    // Positron restyled into the site's editorial palette. Fills flatten
+    // onto the #f4f4f5 ground, streets read as white threads, the Seine one
+    // shade darker. Positron's symbol layers are KEPT — they carry the whole
+    // zoom choreography (area names at mid-zoom, street names and POIs on
+    // zoom-in) — retinted grey, with the city name forced uppercase. Only
+    // admin boundary lines are dropped. The transform keys off layer *type*
+    // plus id substrings so minor upstream id churn degrades to "slightly
+    // off shade", never to a broken style.
     function toDepotStyle(style) {
       const WATER = "#d6d6da";
       const GROUND = "#f4f4f5";
       const GREEN = "#ededee";
       const ROAD = "#ffffff";
       const RAIL = "#e8e8ea";
+      const TEXT = "#71717a";
       style.layers = style.layers
-        .filter((l) => l.type !== "symbol")
-        .filter((l) => !/boundary|admin/.test(l.id))
+        .filter((l) => !(l.type === "line" && /boundary|admin/.test(l.id)))
         .map((l) => {
-          const layer = { ...l, paint: { ...(l.paint || {}) } };
+          const layer = {
+            ...l,
+            paint: { ...(l.paint || {}) },
+            layout: { ...(l.layout || {}) },
+          };
           const isWater = /water|river|ocean/.test(l.id);
           if (l.type === "background") {
             layer.paint["background-color"] = GROUND;
@@ -82,6 +89,13 @@ export default function ParisMap({ stores = [] }) {
               : /rail|transit/.test(l.id)
                 ? RAIL
                 : ROAD;
+          } else if (l.type === "symbol") {
+            layer.paint["text-color"] = TEXT;
+            layer.paint["text-halo-color"] = GROUND;
+            if (/city|capital/.test(l.id)) {
+              layer.layout["text-transform"] = "uppercase";
+              layer.layout["text-letter-spacing"] = 0.2;
+            }
           }
           return layer;
         });
@@ -122,17 +136,6 @@ export default function ParisMap({ stores = [] }) {
           attribution._container.classList.remove("maplibregl-compact-show");
           attribution._container.removeAttribute("open");
         });
-
-        // The lone label the restyle keeps: "Paris", pinned as a DOM marker
-        // at the city-center anchor Positron used, so it needs no glyph
-        // layers and always renders in the site's own type.
-        const parisLabel = document.createElement("div");
-        parisLabel.textContent = "Paris";
-        parisLabel.style.cssText =
-          "font-family:var(--font-general-sans),sans-serif;font-size:17px;font-weight:600;color:#0a0a0a;letter-spacing:0.02em;pointer-events:none;user-select:none;";
-        new maplibregl.Marker({ element: parisLabel })
-          .setLngLat([2.3522, 48.8566])
-          .addTo(map);
 
         mapStores.forEach((store) => {
           const dot = document.createElement("div");
