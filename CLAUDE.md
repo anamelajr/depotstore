@@ -202,6 +202,8 @@ Standard: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`.
 
 - `NEXT_PUBLIC_BASE_URL` — defaults to `http://localhost:3000`.
+- `NEXT_PUBLIC_CARTO_BASEMAPS_KEY` — free-tier CARTO basemaps key (`ParisMap.js`);
+  unset degrades to keyless tiles stamped "API KEY REQUIRED", never breaks the map.
 - `DEPOT_ARCHIVE_DB` — laptop-only path to the local inventory archive. When set,
   `/admin/inventory` reads full local history via
   `inventoryArchive/localReaders.js`; unset (Vercel), it reads Supabase and never
