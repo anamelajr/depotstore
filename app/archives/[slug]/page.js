@@ -1,3 +1,4 @@
+import { Hanken_Grotesk } from "next/font/google";
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import Image from "next/image";
@@ -14,6 +15,18 @@ import { t } from "../../lib/i18n/messages.js";
 // app/editorial/[slug]/page.js: without it, generateStaticParams would freeze
 // inventory into the build artifact.
 export const revalidate = 3600;
+
+// The hero's faces come from the approved design canvas, not the site tokens:
+// the site's `font-mono` utility actually maps to General Sans (globals.css),
+// while the canvas sets the designer name in a true monospace and the
+// supporting copy in Hanken Grotesk.
+const hanken = Hanken_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  display: "swap",
+});
+
+const HERO_MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function generateStaticParams() {
   return getLiveArchives().map((a) => ({ slug: a.slug }));
@@ -62,36 +75,59 @@ export default async function ArchivePage({ params }) {
       className="min-h-screen overflow-x-clip font-mono antialiased text-zinc-950"
       style={{ backgroundColor: GROUND }}
     >
-      {/* Hero band — copy left, portrait bleeding to the band's top, right and
-          bottom. Literal bg class, not bg-[${HERO_GROUND}]: a dynamic value
-          never reaches Tailwind's JIT scanner (see Hero.js). */}
-      <section className="relative w-full bg-[#eceae4]">
-        {/* Three tracks on md+: copy | portrait | empty band ground. The
-            trailing spacer pulls the figure off the right edge so it reads
-            as central-right (~62% of the page), matching the reference. */}
-        <div className="grid grid-cols-[11fr_9fr] md:min-h-[320px] md:grid-cols-[44fr_34fr_22fr]">
-          <div className="flex flex-col justify-center px-6 py-8 md:py-10 md:pl-[4.5vw] md:pr-10">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+      {/* Hero band — ink ground matching the footer's #121212 (literal bg
+          class: a dynamic value never reaches Tailwind's JIT scanner, see
+          Hero.js). Desktop pairs the copy column with a grayscale portrait
+          fading into the ink; mobile drops the portrait entirely and lets the
+          typography carry a compact band. Geometry transcribed from the
+          approved canvas artboards (Option C, desktop + mobile). */}
+      <section className="relative w-full bg-[#121212] text-white">
+        <div className="mx-auto grid w-full max-w-[1210px] grid-cols-1 px-6 md:min-h-[600px] md:grid-cols-[minmax(0,57fr)_43fr]">
+          <div className="flex flex-col items-start justify-center pb-10 pt-11 md:py-12 md:pr-16">
+            <span
+              className="text-[10px] uppercase tracking-[0.18em] text-zinc-400"
+              style={{ fontFamily: HERO_MONO }}
+            >
               <T k="archive.eyebrow" />
             </span>
 
             <h1
-              className="mt-3 md:mt-6 text-[clamp(17px,5vw,20px)] md:text-[clamp(20px,1.95vw,30px)] font-light leading-[1.25] tracking-[0.06em] text-zinc-950"
-              style={{ fontFamily: "var(--font-satoshi), sans-serif" }}
+              className="mt-[18px] text-[34px] font-medium uppercase leading-[1.1] tracking-[0.04em] text-white md:-ml-[4px] md:mt-7 md:text-[58px] md:font-light md:leading-[1.04] md:tracking-[0.01em]"
+              style={{ fontFamily: HERO_MONO }}
             >
               {archive.name}
-              <br />
-              {archive.years}
             </h1>
 
-            <p className="mt-3 md:mt-5 max-w-[32ch] text-[11px] md:text-[12px] leading-[1.55] md:leading-[1.6] text-zinc-600">
+            {/* House + years pairs: one line on desktop, one pair per line on
+                mobile. Falls back to the bare year ranges for archives without
+                a tenureLine. */}
+            <div
+              className={`${hanken.className} mt-3.5 text-[9px] uppercase tracking-[0.15em] text-white md:mt-6 md:text-[11px]`}
+            >
+              {(archive.tenureLine ?? archive.years).split(" · ").map((part, i) => (
+                <span key={part} className="block md:inline">
+                  {i === 0 ? null : (
+                    <span aria-hidden="true" className="hidden md:inline">
+                      {"  ·  "}
+                    </span>
+                  )}
+                  {part}
+                </span>
+              ))}
+            </div>
+
+            <div aria-hidden="true" className="mt-5 h-px w-12 bg-[#262626] md:mt-7 md:w-14" />
+
+            <p
+              className={`${hanken.className} mt-5 max-w-[34ch] text-[12px] font-light leading-[1.65] text-[#F7F7FB] md:mt-7 md:max-w-[40ch] md:leading-[1.7]`}
+            >
               {archive.description}
             </p>
 
             {archive.editorialSlug ? (
               <Link
                 href={`/editorial/${archive.editorialSlug}`}
-                className={`${UTILITY_CAPS} mt-5 md:mt-8 flex w-fit items-center gap-3 transition-opacity hover:opacity-60`}
+                className={`${UTILITY_CAPS} mt-7 flex w-fit items-center gap-3 !text-white transition-opacity hover:opacity-60 md:mt-9`}
               >
                 <T k="archive.viewStory" />
                 <span aria-hidden="true" className="text-[15px] leading-none">
@@ -101,32 +137,25 @@ export default async function ArchivePage({ params }) {
             ) : null}
           </div>
 
-          {/* The asset is a transparent-background cutout (see reference
-              mockup): contained on the band ground and bottom-anchored, so its
-              crop line reads as the figure bleeding off the band's bottom edge.
-              On md+ the cutout bleeds the band's full height, top to bottom.
-
-              On mobile the figure sits beside the copy rather than under it —
-              a stacked full-width portrait pushed the first product ~770px down
-              the page. No aspect ratio: the band's height is copy-driven with a
-              floor, and the inner wrapper pushes the cutout past the viewport's
-              right edge (clipped by the page's overflow-x-clip) so it reads as
-              cropped rather than shrunk. md:inset-0 restores the exact desktop
-              geometry. */}
-          <div className="relative min-h-[220px] md:min-h-full">
-            <div className="absolute inset-y-0 left-0 -right-[34%] md:inset-0">
+          {/* Portrait column, md+ only. The transparent cutout is grayscaled,
+              bottom-anchored just shy of the band's full height, and a gradient
+              dissolves its base into the ink so the crop line never shows. */}
+          <div className="relative hidden md:block">
+            <div className="absolute inset-x-0 bottom-0 top-[6.5%]">
               <Image
                 src={archive.image}
                 alt={archive.imageAlt}
                 fill
                 priority
-                sizes="(max-width: 768px) 50vw, 34vw"
-                className="object-contain object-right-bottom pt-6 md:object-bottom md:pt-0"
+                sizes="(max-width: 768px) 0px, 43vw"
+                className="object-contain object-right-bottom [filter:grayscale(1)_brightness(0.92)_contrast(1.08)]"
               />
             </div>
+            <div
+              aria-hidden="true"
+              className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#121212] from-[8%] to-transparent"
+            />
           </div>
-
-          <div aria-hidden="true" className="hidden md:block" />
         </div>
       </section>
 
