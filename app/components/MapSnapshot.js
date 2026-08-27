@@ -23,8 +23,11 @@ export default function MapSnapshot({ stores = [], occluded = false }) {
   return (
     <div
       // Once the live map has faded in this whole layer is painted over;
-      // hiding it from a11y stops the duplicate attribution links.
+      // aria-hidden stops the duplicate attribution links for screen readers,
+      // and inert removes them from keyboard tab order too — without it a
+      // keyboard user could Tab onto invisible links behind the live canvas.
       aria-hidden={occluded ? "true" : undefined}
+      inert={occluded || undefined}
       style={{
         position: "absolute",
         inset: 0,

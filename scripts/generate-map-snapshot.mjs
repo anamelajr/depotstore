@@ -107,7 +107,7 @@ const page = (maplibreJs, maplibreCss) => `<!doctype html>
       return { url };
     },
   });
-  window.__mapIdle = new Promise((resolve) => map.on("idle", resolve));
+  map.on("idle", () => { window.__mapIdle_done = true; });
   map.on("error", (e) => { window.__mapError = String(e && e.error && e.error.message || e); });
 </script>`;
 
@@ -137,10 +137,17 @@ async function main() {
     });
     const tab = await ctx.newPage();
     await tab.goto(`http://127.0.0.1:${port}/`, { waitUntil: "load" });
-    await tab.waitForFunction("window.__mapIdle !== undefined");
-    await tab.evaluate("window.__mapIdle");
-    const err = await tab.evaluate("window.__mapError || null");
-    if (err) throw new Error(`MapLibre reported an error: ${err}`);
+    // Race idle against any recorded MapLibre error and a hard deadline —
+    // awaiting __mapIdle alone would hang forever on a bad key or network
+    // outage, and this script's contract is to fail loudly.
+    const outcome = await tab.waitForFunction(
+      "window.__mapError ? 'error' : window.__mapIdle_done ? 'idle' : false",
+      { timeout: 120000 },
+    );
+    if ((await outcome.jsonValue()) === "error") {
+      const err = await tab.evaluate("window.__mapError");
+      throw new Error(`MapLibre reported an error: ${err}`);
+    }
     // A beat past "idle" so the last symbol/label raster settles.
     await tab.waitForTimeout(750);
 

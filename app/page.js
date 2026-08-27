@@ -148,8 +148,14 @@ export default async function Home() {
   // time would compete with the hero/LCP work this change is trying to
   // protect, and those four already fetch in parallel once tiles start.
   // (Verified against the live style.json — there is no fonts.cartocdn.com.)
-  preconnect("https://basemaps.cartocdn.com");
-  preconnect("https://tiles.basemaps.cartocdn.com");
+  // crossOrigin matters: MapLibre fetches these as anonymous CORS requests
+  // (no credentials), and a preconnect without it warms the *credentialed*
+  // connection pool — one the browser can't reuse for CORS fetches, which
+  // would defeat the whole preconnect.
+  preconnect("https://basemaps.cartocdn.com", { crossOrigin: "anonymous" });
+  preconnect("https://tiles.basemaps.cartocdn.com", {
+    crossOrigin: "anonymous",
+  });
 
   return (
     <div
