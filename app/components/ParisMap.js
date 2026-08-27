@@ -164,6 +164,12 @@ export default function ParisMap({ stores = [] }) {
             // One interaction contract: hover opens transiently, click/tap
             // pins. mouseleave only closes what hover opened.
             let pinned = false;
+            // Any close path (closeOnClick, Escape, our own remove) lands
+            // here — without the reset, a stale pinned=true stops later
+            // hover-opened cards from closing on mouseleave.
+            popup.on("close", () => {
+              pinned = false;
+            });
             const open = () => {
               if (!popup.isOpen()) popup.addTo(map);
             };
@@ -179,14 +185,22 @@ export default function ParisMap({ stores = [] }) {
               // Without this the map's own click handler dismisses the popup
               // (closeOnClick) in the same gesture that opened it.
               e.stopPropagation();
-              pinned = true;
-              open();
+              if (pinned && popup.isOpen()) {
+                close();
+              } else {
+                pinned = true;
+                open();
+              }
             });
             dot.addEventListener("keydown", (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                pinned = true;
-                open();
+                if (pinned && popup.isOpen()) {
+                  close();
+                } else {
+                  pinned = true;
+                  open();
+                }
               } else if (e.key === "Escape") {
                 close();
               }
@@ -201,6 +215,9 @@ export default function ParisMap({ stores = [] }) {
           const zoomControl = {
             onAdd() {
               const container = document.createElement("div");
+              // The corner wrappers ship pointer-events:none; only the
+              // .maplibregl-ctrl class restores interactivity.
+              container.className = "maplibregl-ctrl";
               container.style.cssText =
                 "display:flex;flex-direction:column;gap:1px;";
 
