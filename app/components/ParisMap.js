@@ -121,6 +121,10 @@ export default function ParisMap({ stores = [] }) {
             "bottom-left",
           );
 
+          // Only one popup pinned at a time: marker clicks stopPropagation,
+          // so the map's closeOnClick can't dismiss a previous pin — do it
+          // here when pinning the next one.
+          let activePinned = null;
           mapStores.forEach((store) => {
             const dot = document.createElement("div");
             dot.style.cssText =
@@ -169,9 +173,16 @@ export default function ParisMap({ stores = [] }) {
             // hover-opened cards from closing on mouseleave.
             popup.on("close", () => {
               pinned = false;
+              if (activePinned === popup) activePinned = null;
             });
             const open = () => {
               if (!popup.isOpen()) popup.addTo(map);
+            };
+            const pin = () => {
+              if (activePinned && activePinned !== popup) activePinned.remove();
+              pinned = true;
+              activePinned = popup;
+              open();
             };
             const close = () => {
               pinned = false;
@@ -188,8 +199,7 @@ export default function ParisMap({ stores = [] }) {
               if (pinned && popup.isOpen()) {
                 close();
               } else {
-                pinned = true;
-                open();
+                pin();
               }
             });
             dot.addEventListener("keydown", (e) => {
@@ -198,8 +208,7 @@ export default function ParisMap({ stores = [] }) {
                 if (pinned && popup.isOpen()) {
                   close();
                 } else {
-                  pinned = true;
-                  open();
+                  pin();
                 }
               } else if (e.key === "Escape") {
                 close();
