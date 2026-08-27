@@ -1,3 +1,4 @@
+import { Hanken_Grotesk } from "next/font/google";
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import Image from "next/image";
@@ -14,6 +15,18 @@ import { t } from "../../lib/i18n/messages.js";
 // app/editorial/[slug]/page.js: without it, generateStaticParams would freeze
 // inventory into the build artifact.
 export const revalidate = 3600;
+
+// The hero's faces come from the approved design canvas, not the site tokens:
+// the site's `font-mono` utility actually maps to General Sans (globals.css),
+// while the canvas sets the designer name in a true monospace and the
+// supporting copy in Hanken Grotesk.
+const hanken = Hanken_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  display: "swap",
+});
+
+const HERO_MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function generateStaticParams() {
   return getLiveArchives().map((a) => ({ slug: a.slug }));
@@ -71,11 +84,17 @@ export default async function ArchivePage({ params }) {
       <section className="relative w-full bg-[#121212] text-white">
         <div className="mx-auto grid w-full max-w-[1210px] grid-cols-1 px-6 md:min-h-[600px] md:grid-cols-[minmax(0,57fr)_43fr]">
           <div className="flex flex-col items-start justify-center pb-10 pt-11 md:py-12 md:pr-16">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+            <span
+              className="text-[10px] uppercase tracking-[0.18em] text-zinc-400"
+              style={{ fontFamily: HERO_MONO }}
+            >
               <T k="archive.eyebrow" />
             </span>
 
-            <h1 className="mt-[18px] text-[34px] font-medium uppercase leading-[1.1] tracking-[0.04em] text-white md:mt-7 md:text-[72px] md:font-bold md:leading-[1.04] md:tracking-[0.01em]">
+            <h1
+              className="mt-[18px] text-[34px] font-medium uppercase leading-[1.1] tracking-[0.04em] text-white md:mt-7 md:text-[72px] md:font-bold md:leading-[1.04] md:tracking-[0.01em]"
+              style={{ fontFamily: HERO_MONO }}
+            >
               {archive.name}
             </h1>
 
@@ -83,8 +102,7 @@ export default async function ArchivePage({ params }) {
                 mobile. Falls back to the bare year ranges for archives without
                 a tenureLine. */}
             <div
-              className="mt-3.5 text-[9px] uppercase tracking-[0.15em] text-white md:mt-6 md:text-[11px]"
-              style={{ fontFamily: "var(--font-satoshi), sans-serif" }}
+              className={`${hanken.className} mt-3.5 text-[9px] uppercase tracking-[0.15em] text-white md:mt-6 md:text-[11px]`}
             >
               {(archive.tenureLine ?? archive.years).split(" · ").map((part, i) => (
                 <span key={part} className="block md:inline">
@@ -101,8 +119,7 @@ export default async function ArchivePage({ params }) {
             <div aria-hidden="true" className="mt-5 h-px w-12 bg-[#262626] md:mt-7 md:w-14" />
 
             <p
-              className="mt-5 max-w-[34ch] text-[12px] font-light leading-[1.65] text-[#F7F7FB] md:mt-7 md:max-w-[40ch] md:leading-[1.7]"
-              style={{ fontFamily: "var(--font-satoshi), sans-serif" }}
+              className={`${hanken.className} mt-5 max-w-[34ch] text-[12px] font-light leading-[1.65] text-[#F7F7FB] md:mt-7 md:max-w-[40ch] md:leading-[1.7]`}
             >
               {archive.description}
             </p>
