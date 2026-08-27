@@ -162,8 +162,9 @@ any change.
   ancestor that breaks `position: sticky` descendants. Use `overflow-x-clip`.
 - **Font variables are two-layer:** `next/font/local` exposes `--font-satoshi` /
   `--font-general-sans`; `@theme inline` maps Tailwind's font tokens onto them
-  (dropping `inline` fails silently). Raw-HTML injection (Leaflet in
-  `ParisMap.js`) must reference the next/font variable directly.
+  (dropping `inline` fails silently). DOM injected outside React (the MapLibre
+  popup card and zoom control in `ParisMap.js`) must reference the next/font
+  variable directly.
 - **Admin is local-only** — `/admin/*` and `/api/admin/*` 404 in production via
   `middleware.js`; publish-to-preview refuses when `HEAD == main` unless
   `{ newSession: true }`. Admin routes read editorial modules with `fs.readFile`
@@ -202,8 +203,11 @@ Standard: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`.
 
 - `NEXT_PUBLIC_BASE_URL` — defaults to `http://localhost:3000`.
-- `NEXT_PUBLIC_CARTO_BASEMAPS_KEY` — free-tier CARTO basemaps key (`ParisMap.js`);
-  unset degrades to keyless tiles stamped "API KEY REQUIRED", never breaks the map.
+- `NEXT_PUBLIC_CARTO_BASEMAPS_KEY` — free-tier CARTO basemaps key (`ParisMap.js`).
+  The vector style URL is keyless; when set, a `transformRequest` appends `?key=`
+  to every `basemaps.cartocdn.com` request (style, TileJSON, MVT, sprites,
+  glyphs) — appending it to the style URL alone would never reach the tiles.
+  Unset, the map still renders keyless; it never breaks.
 - `DEPOT_ARCHIVE_DB` — laptop-only path to the local inventory archive. When set,
   `/admin/inventory` reads full local history via
   `inventoryArchive/localReaders.js`; unset (Vercel), it reads Supabase and never

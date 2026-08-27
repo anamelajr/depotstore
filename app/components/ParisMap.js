@@ -7,7 +7,7 @@ export default function ParisMap({ stores = [] }) {
   const mapInstanceRef = useRef(null);
 
   const mapStores = stores
-    .filter((s) => s.lat != null && s.lng != null)
+    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
     .map((s) => ({
       name: s.storeName,
       location: s.location || "",
@@ -15,19 +15,22 @@ export default function ParisMap({ stores = [] }) {
       lng: s.lng,
     }));
 
-  // Leaflet + its CSS + the CartoDB tiles are a large below-the-fold payload
-  // that used to load on every homepage hydration, competing with the
+  // MapLibre + its CSS + the CARTO vector tiles are a large below-the-fold
+  // payload that used to load on every homepage hydration, competing with the
   // above-the-fold work for bandwidth on a map most visitors never scroll to.
   // Gate the dynamic import on a one-shot IntersectionObserver with a generous
   // 400px margin, so the map is still ready by the time it's actually on
   // screen. mapInstanceRef stays the init guard (StrictMode double-effect,
-  // remounts); the observer only decides *when*.
+  // remounts); the observer only decides *when*. `cancelled` covers the window
+  // the ref can't: the import is async, so a cleanup that runs mid-import must
+  // stop the init that resolves after it.
   useEffect(() => {
     if (mapInstanceRef.current) return;
     const el = mapRef.current;
     if (!el) return;
 
     let observer = null;
+    let cancelled = false;
     const init = () => {
       if (mapInstanceRef.current) return;
       loadMap();
@@ -50,113 +53,233 @@ export default function ParisMap({ stores = [] }) {
     }
 
     function loadMap() {
-      import("leaflet").then((L) => {
-        import("leaflet/dist/leaflet.css");
+      import("maplibre-gl")
+        .then((mod) => {
+          if (cancelled || mapInstanceRef.current || !mapRef.current) return;
+          const maplibregl = mod.default ?? mod;
+          import("maplibre-gl/dist/maplibre-gl.css");
 
-        const map = L.map(mapRef.current, {
-          center: [48.857, 2.347],
-          zoom: 13,
-          zoomControl: false,
-          scrollWheelZoom: false,
-          // CARTO's free basemap tier requires visible CARTO + OSM attribution.
-          attributionControl: true,
-        });
-        map.attributionControl.setPrefix(false);
-        // Keep the required credit clear of the custom zoom control's corner.
-        map.attributionControl.setPosition("bottomleft");
+          // CARTO's Positron GL style is served keyless; the free-tier key
+          // (5M tiles/month) is attached per-request below because the style
+          // pulls tiles/sprites/glyphs from separate hosts. Keyless still
+          // renders — degradation is graceful, never a broken map.
+          const cartoKey = process.env.NEXT_PUBLIC_CARTO_BASEMAPS_KEY;
 
-        // Keyless requests are served with an "API KEY REQUIRED" watermark
-        // baked into the tiles; the key is free-tier (5M tiles/month).
-        const cartoKey = process.env.NEXT_PUBLIC_CARTO_BASEMAPS_KEY;
-        L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" +
-            (cartoKey ? `?key=${cartoKey}` : ""),
-          {
-            attribution:
-              '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+          let map;
+          try {
+            map = new maplibregl.Map({
+              container: mapRef.current,
+              style:
+                "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+              center: [2.347, 48.857],
+              zoom: 12,
+              scrollZoom: false,
+              dragRotate: false,
+              pitchWithRotate: false,
+              touchPitch: false,
+              attributionControl: false,
+              ...(cartoKey
+                ? {
+                    transformRequest: (url) => {
+                      try {
+                        const u = new URL(url);
+                        if (u.hostname.endsWith("basemaps.cartocdn.com")) {
+                          u.searchParams.set("key", cartoKey);
+                          return { url: u.toString() };
+                        }
+                      } catch {
+                        // Non-absolute URL (bundled asset) — leave untouched.
+                      }
+                      return { url };
+                    },
+                  }
+                : {}),
+            });
+          } catch {
+            // MapLibre throws at construction when WebGL is unavailable.
+            // Leave the container's #f4f4f5 ground showing.
+            return;
           }
-        ).addTo(map);
 
-        mapStores.forEach((store) => {
-          const circle = L.circleMarker([store.lat, store.lng], {
-            radius: 6,
-            fillColor: "#0a0a0a",
-            color: "#0a0a0a",
-            weight: 1,
-            opacity: 0.9,
-            fillOpacity: 0.9,
-          }).addTo(map);
+          // Assign before anything else can throw, so cleanup can always
+          // reach the map.
+          mapInstanceRef.current = map;
+          if (cancelled) {
+            map.remove();
+            mapInstanceRef.current = null;
+            return;
+          }
 
-          circle.bindTooltip(
-            `<div style="font-family:var(--font-general-sans),sans-serif;font-size:11px;line-height:1.6;background:#ffffff;color:#3f3f46;border:1px solid #d4d4d8;padding:8px 12px;border-radius:0;">
-              <strong style="font-size:12px;">${store.name}</strong><br/>
-              ${store.location}
-            </div>`,
-            {
-              permanent: false,
-              direction: "top",
-              opacity: 1,
+          map.touchZoomRotate.disableRotation();
+
+          // CARTO's free basemap tier requires visible CARTO + OSM
+          // attribution; kept clear of the custom zoom control's corner. No
+          // customAttribution — the Positron style's own sources already carry
+          // the linked OSM + CARTO credit, and adding ours prints it twice.
+          // Dev-only carve-out: hidden while iterating locally so the design
+          // can be judged clean; any production build always shows it — the
+          // credit is a license requirement, not a style choice.
+          if (process.env.NODE_ENV === "production") {
+            map.addControl(
+              new maplibregl.AttributionControl({ compact: false }),
+              "bottom-left",
+            );
+          }
+
+          // Only one popup pinned at a time: marker clicks stopPropagation,
+          // so the map's closeOnClick can't dismiss a previous pin — do it
+          // here when pinning the next one.
+          let activePinned = null;
+          mapStores.forEach((store) => {
+            const dot = document.createElement("div");
+            dot.style.cssText =
+              "width:12px;height:12px;border-radius:50%;background:#0a0a0a;" +
+              "border:1px solid #0a0a0a;opacity:0.9;cursor:pointer;";
+            dot.setAttribute("role", "button");
+            dot.setAttribute("tabindex", "0");
+            dot.setAttribute("aria-label", store.name);
+
+            // Built from DOM nodes + textContent: store name/location come
+            // from Supabase rows, and setHTML does not sanitize.
+            const card = document.createElement("div");
+            card.style.cssText =
+              "font-family:var(--font-general-sans),sans-serif;font-size:11px;" +
+              "line-height:1.6;background:#ffffff;color:#3f3f46;" +
+              "border:1px solid #d4d4d8;padding:8px 12px;border-radius:0;";
+            const nameEl = document.createElement("strong");
+            nameEl.style.fontSize = "12px";
+            nameEl.textContent = store.name;
+            card.appendChild(nameEl);
+            card.appendChild(document.createElement("br"));
+            card.appendChild(document.createTextNode(store.location));
+
+            const popup = new maplibregl.Popup({
+              closeButton: false,
+              closeOnClick: true,
+              anchor: "bottom",
+              offset: 10,
               className: "depot-tooltip",
-            }
-          );
-        });
+            })
+              .setDOMContent(card)
+              .setLngLat([store.lng, store.lat]);
 
-        // Custom zoom control
-        const ZoomControl = L.Control.extend({
-          onAdd: function () {
-            const container = L.DomUtil.create("div");
-            container.style.cssText = "display:flex;flex-direction:column;gap:1px;";
+            // Deliberately NOT bound via marker.setPopup(): that installs
+            // MapLibre's own click-to-toggle on the element, which would
+            // close a hover-opened card on the click meant to pin it.
+            new maplibregl.Marker({ element: dot })
+              .setLngLat([store.lng, store.lat])
+              .addTo(map);
 
-            const btnStyle = `
+            // One interaction contract: hover opens transiently, click/tap
+            // pins. mouseleave only closes what hover opened.
+            let pinned = false;
+            // Any close path (closeOnClick, Escape, our own remove) lands
+            // here — without the reset, a stale pinned=true stops later
+            // hover-opened cards from closing on mouseleave.
+            popup.on("close", () => {
+              pinned = false;
+              if (activePinned === popup) activePinned = null;
+            });
+            const open = () => {
+              if (!popup.isOpen()) popup.addTo(map);
+            };
+            const pin = () => {
+              if (activePinned && activePinned !== popup) activePinned.remove();
+              pinned = true;
+              activePinned = popup;
+              open();
+            };
+            const close = () => {
+              pinned = false;
+              popup.remove();
+            };
+            dot.addEventListener("mouseenter", open);
+            dot.addEventListener("mouseleave", () => {
+              if (!pinned) popup.remove();
+            });
+            dot.addEventListener("click", (e) => {
+              // Without this the map's own click handler dismisses the popup
+              // (closeOnClick) in the same gesture that opened it.
+              e.stopPropagation();
+              if (pinned && popup.isOpen()) {
+                close();
+              } else {
+                pin();
+              }
+            });
+            dot.addEventListener("keydown", (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (pinned && popup.isOpen()) {
+                  close();
+                } else {
+                  pin();
+                }
+              } else if (e.key === "Escape") {
+                close();
+              }
+            });
+
+            dot.addEventListener("blur", () => {
+              if (!pinned) popup.remove();
+            });
+          });
+
+          // Custom zoom control — a plain IControl object (onAdd/onRemove).
+          const zoomControl = {
+            onAdd() {
+              const container = document.createElement("div");
+              // The corner wrappers ship pointer-events:none; only the
+              // .maplibregl-ctrl class restores interactivity.
+              container.className = "maplibregl-ctrl";
+              container.style.cssText =
+                "display:flex;flex-direction:column;gap:1px;";
+
+              const btnStyle = `
         width:32px;height:32px;background:#ffffff;color:#71717a;
         border:1px solid #d4d4d8;display:flex;align-items:center;
         justify-content:center;cursor:pointer;font-family:var(--font-general-sans),sans-serif;
         font-size:16px;line-height:1;transition:color 0.2s,border-color 0.2s;
       `;
 
-            const zoomIn = L.DomUtil.create("button", "", container);
-            zoomIn.innerHTML = "+";
-            zoomIn.style.cssText = btnStyle;
-            zoomIn.onmouseover = () => {
-              zoomIn.style.color = "#0a0a0a";
-              zoomIn.style.borderColor = "#71717a";
-            };
-            zoomIn.onmouseout = () => {
-              zoomIn.style.color = "#71717a";
-              zoomIn.style.borderColor = "#d4d4d8";
-            };
-            L.DomEvent.on(zoomIn, "click", (e) => {
-              L.DomEvent.stopPropagation(e);
-              map.zoomIn();
-            });
+              const makeBtn = (label, onClick) => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.textContent = label;
+                btn.style.cssText = btnStyle;
+                btn.addEventListener("mouseover", () => {
+                  btn.style.color = "#0a0a0a";
+                  btn.style.borderColor = "#71717a";
+                });
+                btn.addEventListener("mouseout", () => {
+                  btn.style.color = "#71717a";
+                  btn.style.borderColor = "#d4d4d8";
+                });
+                btn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  onClick();
+                });
+                container.appendChild(btn);
+              };
 
-            const zoomOut = L.DomUtil.create("button", "", container);
-            zoomOut.innerHTML = "−";
-            zoomOut.style.cssText = btnStyle;
-            zoomOut.onmouseover = () => {
-              zoomOut.style.color = "#0a0a0a";
-              zoomOut.style.borderColor = "#71717a";
-            };
-            zoomOut.onmouseout = () => {
-              zoomOut.style.color = "#71717a";
-              zoomOut.style.borderColor = "#d4d4d8";
-            };
-            L.DomEvent.on(zoomOut, "click", (e) => {
-              L.DomEvent.stopPropagation(e);
-              map.zoomOut();
-            });
+              makeBtn("+", () => map.zoomIn());
+              makeBtn("\u2212", () => map.zoomOut());
 
-            return container;
-          },
-        });
+              this._container = container;
+              return container;
+            },
+            onRemove() {
+              this._container.remove();
+            },
+          };
 
-        new ZoomControl({ position: "bottomright" }).addTo(map);
-
-        mapInstanceRef.current = map;
-      });
+          map.addControl(zoomControl, "bottom-right");
+        })
+        .catch(() => {});
     }
 
     return () => {
+      cancelled = true;
       if (observer) observer.disconnect();
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
@@ -165,9 +288,9 @@ export default function ParisMap({ stores = [] }) {
     };
   }, []);
 
-  // isolation traps Leaflet's internal z-indexes (panes 200–700, control
-  // corners 1000) in their own stacking context — without it they paint over
-  // the mobile nav (sticky z-50) while the map scrolls beneath it.
+  // isolation traps MapLibre's internal z-indexes (canvas, marker and control
+  // layers) in their own stacking context — without it they paint over the
+  // mobile nav (sticky z-50) while the map scrolls beneath it.
   return (
     <div
       ref={mapRef}
@@ -180,4 +303,3 @@ export default function ParisMap({ stores = [] }) {
     />
   );
 }
-
