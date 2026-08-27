@@ -29,6 +29,18 @@ body {
   box-shadow: none;
 }
 
+/* Leaflet 1.9 ships `mix-blend-mode: plus-lighter` on tiles as a Chromium
+   gap workaround, but on fractional-DPR mobile screens Chrome overlaps
+   adjacent tiles by a subpixel and the additive blend saturates the overlap
+   to white — a hairline grid slicing the map. Normal blending instead lets
+   any subpixel gap show the map wrapper's #f4f4f5 ground, invisible against
+   the light_all basemap. Extra `div` keeps this above leaflet.css's identical
+   selector: that sheet is dynamically imported after this one, so an equal
+   specificity would lose the cascade tie. */
+div.leaflet-container img.leaflet-tile {
+  mix-blend-mode: normal;
+}
+
 /* Feed grid — offscreen card skipping.
    `contain-intrinsic-size` is always on so the browser records each card's
    real "last remembered size" while it renders; the `auto` keyword is what

@@ -58,13 +58,20 @@ export default function ParisMap({ stores = [] }) {
           zoom: 13,
           zoomControl: false,
           scrollWheelZoom: false,
-          attributionControl: false,
+          // CARTO's free basemap tier requires visible CARTO + OSM attribution.
+          attributionControl: true,
         });
+        map.attributionControl.setPrefix(false);
 
+        // Keyless requests are served with an "API KEY REQUIRED" watermark
+        // baked into the tiles; the key is free-tier (5M tiles/month).
+        const cartoKey = process.env.NEXT_PUBLIC_CARTO_BASEMAPS_KEY;
         L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+          "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" +
+            (cartoKey ? `?key=${cartoKey}` : ""),
           {
-            attribution: "© CartoDB",
+            attribution:
+              '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
           }
         ).addTo(map);
 
