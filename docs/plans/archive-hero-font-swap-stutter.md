@@ -52,14 +52,19 @@ memory `worktree-env-local-missing`):
 3. Capture the two frames of the stutter deterministically:
    - **Frame A ("what paints first")**: via `javascript_tool`, read the
      computed `font-family` on the description `<p>` and re-apply it with the
-     primary `'Hanken Grotesk'` entry removed, leaving only the generated
-     fallback — this is pixel-identical to the pre-swap paint. Screenshot.
+     **first (scoped) family stripped** — next/font emits a scoped name like
+     `'__Hanken_Grotesk_<hash>'`, NOT the literal `'Hanken Grotesk'`, so drop
+     the leading entry of the list whatever it is, leaving the generated
+     `__Hanken_Grotesk_Fallback_*`. Screenshot.
    - **Frame B ("a split second later")**: reload untouched (font cached →
      final state). Screenshot.
 4. Repeat both at desktop width for a second pair.
-5. Optionally confirm the live swap really occurs on a cold load (DevTools-less
-   check: `document.fonts` status + a throttled reload) — evidence, not needed
-   for the fix.
+5. **Required, once:** observe the real swap on a genuinely cold load — a
+   fresh Playwright browser context (fresh profile ⇒ empty font cache), assert
+   the Hanken woff2s actually transfer over the network, and watch
+   `document.fonts` / take rapid screenshots around first paint. Browser font
+   cache is independent of the dev server, so restarts/cache-busted reloads do
+   NOT make a load cold.
 
 ### Step 2 — Fix
 
@@ -68,11 +73,18 @@ option: `display: "swap"` → `display: "optional"`.
 
 - `optional` gives the font ~100ms: if Hanken isn't ready at paint (cold
   mobile load), the page keeps the metric-matched fallback for that view — **no
-  mid-view transformation, ever**. Warm/cached loads (every visit after the
-  first) render true Hanken from frame one.
+  mid-view transformation, ever**. Warm loads render true Hanken from frame one.
+- **The fallback is a supported production state, not a transient.** With
+  `optional` the browser may skip or abort the download entirely on slow /
+  data-saver connections, so some users can keep the fallback across visits —
+  "cached after first visit" is likely but not guaranteed. Frame A in the
+  compare artifact IS this state; the user signing off on the artifact is the
+  design acceptance of the fallback's appearance and wrapping. If they reject
+  it, the escalation path is the root-layout self-hosted alternative noted
+  under out-of-scope.
 - `adjustFontFallback` stays default-on, so the fallback's metrics are already
-  size-adjusted to Hanken — the "degraded" first-visit state is the same Frame
-  A the user will have just seen, which is close, static, and unobjectionable.
+  size-adjusted to Hanken — close, static, same line-wrapping by construction
+  of the size-adjust.
 - No other call sites: `Hanken_Grotesk` appears only in this file (verify with
   a grep before editing).
 
@@ -101,8 +113,22 @@ Commit on the current branch `claude/archive-visual-stutter-mobile-411847`
 ## Verification
 
 - Browser-pane screenshots pre/post fix at mobile and desktop widths.
-- Cold-load check: with the Hanken files freshly fetched (dev server restart or
-  cache-busted reload), the hero must not visibly change after first paint.
+- **Verify against the production build, on the reported path** — dev and prod
+  differ in font preload emission/timing. `npm run build` + the `Next.js prod`
+  launch config, then in a fresh Playwright context (empty font cache — server
+  restarts and cache-busted reloads are NOT cold) at mobile viewport: navigate
+  by clicking the real archive link from `/` (the home band), plus one direct
+  cold open. Confirm the woff2s transfer on the network and the hero does not
+  visibly change after first paint in either case.
+- **Deterministic slow-font case (the one that actually regressed):** on
+  localhost the woff2 nearly always beats the ~100ms `optional` window, so an
+  unthrottled check proves nothing. In Playwright, intercept the Hanken woff2
+  request and hold it 1–2s (past the block period); assert the fallback has
+  painted, then release the request and assert across subsequent frames that
+  the rendered font and hero geometry do NOT change. Fresh contexts for the
+  direct-load and client-navigation variants.
+- Real-device (iOS Safari) confirmation is the user's spot check on the
+  preview deploy, noted in the handoff.
 - `npm test` passes.
 
 ## Explicitly out of scope
