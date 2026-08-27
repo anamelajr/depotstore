@@ -123,6 +123,17 @@ export default function ParisMap({ stores = [] }) {
           attribution._container.removeAttribute("open");
         });
 
+        // The lone label the restyle keeps: "Paris", pinned as a DOM marker
+        // at the city-center anchor Positron used, so it needs no glyph
+        // layers and always renders in the site's own type.
+        const parisLabel = document.createElement("div");
+        parisLabel.textContent = "Paris";
+        parisLabel.style.cssText =
+          "font-family:var(--font-general-sans),sans-serif;font-size:17px;font-weight:600;color:#0a0a0a;letter-spacing:0.02em;pointer-events:none;user-select:none;";
+        new maplibregl.Marker({ element: parisLabel })
+          .setLngLat([2.3522, 48.8566])
+          .addTo(map);
+
         mapStores.forEach((store) => {
           const dot = document.createElement("div");
           dot.style.cssText =
