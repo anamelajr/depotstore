@@ -29,14 +29,14 @@ export default function NewsletterForm() {
 
   if (status === "success") {
     return (
-      <p className="text-[13px] text-zinc-600 tracking-wide">
+      <p className="font-mono text-[13px] uppercase tracking-[0.14em] text-white">
         {t("newsletter.success")}
       </p>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="relative">
       <input
         type="email"
         value={email}
@@ -45,17 +45,17 @@ export default function NewsletterForm() {
         aria-label={t("newsletter.label")}
         required
         disabled={status === "loading"}
-        className="w-full bg-zinc-100 px-4 py-3 font-mono text-sm text-zinc-950 placeholder:text-zinc-400 placeholder:uppercase placeholder:tracking-widest outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
+        className="w-full bg-transparent border-b border-[#3a3833] pb-3 font-mono text-[13px] uppercase tracking-[0.14em] text-white placeholder:text-white placeholder:uppercase placeholder:tracking-[0.14em] outline-none focus:border-white disabled:opacity-50"
       />
       <button
         type="submit"
         disabled={status === "loading"}
-        className="sr-only mt-3 border border-zinc-300 px-5 py-2 font-mono text-[12px] uppercase tracking-widest text-zinc-600 transition-colors hover:border-zinc-900 hover:text-zinc-950 disabled:opacity-50 focus:not-sr-only"
+        className="sr-only left-0 mt-3 border border-[#3a3833] px-5 py-2 font-mono text-[12px] uppercase tracking-widest text-white transition-colors hover:border-white disabled:opacity-50 focus:not-sr-only"
       >
         {status === "loading" ? "..." : t("newsletter.signUp")}
       </button>
       {status === "error" && (
-        <p className="mt-2 text-[11px] text-red-600">
+        <p className="mt-2 text-[11px] text-red-400">
           {t("newsletter.error")}
         </p>
       )}
