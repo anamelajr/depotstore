@@ -23,29 +23,26 @@ body {
   font-family: var(--font-satoshi), sans-serif;
 }
 
-.depot-tooltip .leaflet-tooltip {
+/* The injected store card carries its own border/background, so strip
+   MapLibre's default popup chrome and tip. */
+.depot-tooltip .maplibregl-popup-content {
   background: transparent;
   border: none;
   box-shadow: none;
+  padding: 0;
+  border-radius: 0;
 }
-
-/* Leaflet 1.9 ships `mix-blend-mode: plus-lighter` on tiles as a Chromium
-   gap workaround, but on fractional-DPR mobile screens Chrome overlaps
-   adjacent tiles by a subpixel and the additive blend saturates the overlap
-   to white — a hairline grid slicing the map. Normal blending instead lets
-   any subpixel gap show the map wrapper's #f4f4f5 ground, invisible against
-   the light_all basemap. Extra `div` keeps this above leaflet.css's identical
-   selector: that sheet is dynamically imported after this one, so an equal
-   specificity would lose the cascade tie. */
-div.leaflet-container img.leaflet-tile {
-  mix-blend-mode: normal;
+.depot-tooltip .maplibregl-popup-tip {
+  display: none;
 }
 
 /* OSM + CARTO attribution must stay visible (CARTO free-tier terms), but it
-   can be discreet: strip Leaflet's white pill and shrink to a whisper that
-   matches the basemap's muted greys. `div` prefix outranks leaflet.css's
-   later-loaded equal-specificity rules, as above. */
-div.leaflet-container .leaflet-control-attribution {
+   can be discreet: strip MapLibre's white pill and shrink to a whisper that
+   matches the basemap's muted greys. The `div` prefix outranks
+   maplibre-gl.css's later-loaded equal-specificity rules — that sheet is
+   dynamically imported after this one, so an equal specificity would lose the
+   cascade tie. */
+div.maplibregl-map .maplibregl-ctrl-attrib {
   background: transparent;
   font-family: var(--font-general-sans), sans-serif;
   font-size: 9px;
@@ -54,11 +51,11 @@ div.leaflet-container .leaflet-control-attribution {
   padding: 0 6px 5px 0;
   margin: 0;
 }
-div.leaflet-container .leaflet-control-attribution a {
+div.maplibregl-map .maplibregl-ctrl-attrib a {
   color: #a1a1aa;
   text-decoration: none;
 }
-div.leaflet-container .leaflet-control-attribution a:hover {
+div.maplibregl-map .maplibregl-ctrl-attrib a:hover {
   color: #71717a;
   text-decoration: underline;
 }
