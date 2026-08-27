@@ -15,13 +15,14 @@ export default function ParisMap({ stores = [] }) {
       lng: s.lng,
     }));
 
-  // Leaflet + its CSS + the CartoDB tiles are a large below-the-fold payload
-  // that used to load on every homepage hydration, competing with the
-  // above-the-fold work for bandwidth on a map most visitors never scroll to.
-  // Gate the dynamic import on a one-shot IntersectionObserver with a generous
-  // 400px margin, so the map is still ready by the time it's actually on
-  // screen. mapInstanceRef stays the init guard (StrictMode double-effect,
-  // remounts); the observer only decides *when*.
+  // MapLibre + its CSS + the OpenFreeMap vector tiles are a large
+  // below-the-fold payload that used to load on every homepage hydration,
+  // competing with the above-the-fold work for bandwidth on a map most
+  // visitors never scroll to. Gate the dynamic import on a one-shot
+  // IntersectionObserver with a generous 400px margin, so the map is still
+  // ready by the time it's actually on screen. mapInstanceRef stays the init
+  // guard (StrictMode double-effect, remounts); the observer only decides
+  // *when*.
   useEffect(() => {
     if (mapInstanceRef.current) return;
     const el = mapRef.current;
@@ -50,98 +51,103 @@ export default function ParisMap({ stores = [] }) {
     }
 
     function loadMap() {
-      import("leaflet").then((L) => {
-        import("leaflet/dist/leaflet.css");
+      import("maplibre-gl").then((mod) => {
+        import("maplibre-gl/dist/maplibre-gl.css");
+        const maplibregl = mod.default ?? mod;
 
-        const map = L.map(mapRef.current, {
-          center: [48.857, 2.347],
-          zoom: 13,
-          zoomControl: false,
-          scrollWheelZoom: false,
+        // MapLibre zoom levels run one lower than Leaflet's for the same
+        // extent (512px vs 256px tiles): zoom 12 here ≈ the old Leaflet 13.
+        const map = new maplibregl.Map({
+          container: mapRef.current,
+          style: "https://tiles.openfreemap.org/styles/positron",
+          center: [2.347, 48.857],
+          zoom: 12,
           attributionControl: false,
         });
+        map.scrollZoom.disable();
 
-        L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-          {
-            attribution: "© CartoDB",
-          }
-        ).addTo(map);
+        // OSM data is ODbL — attribution is required; the Positron style
+        // supplies its own credits, shown collapsed behind the ⓘ toggle.
+        map.addControl(
+          new maplibregl.AttributionControl({ compact: true }),
+          "bottom-left"
+        );
 
         mapStores.forEach((store) => {
-          const circle = L.circleMarker([store.lat, store.lng], {
-            radius: 6,
-            fillColor: "#0a0a0a",
-            color: "#0a0a0a",
-            weight: 1,
-            opacity: 0.9,
-            fillOpacity: 0.9,
-          }).addTo(map);
+          const dot = document.createElement("div");
+          dot.style.cssText =
+            "width:12px;height:12px;border-radius:50%;background:#0a0a0a;border:1px solid #0a0a0a;opacity:0.9;cursor:pointer;";
 
-          circle.bindTooltip(
+          const popup = new maplibregl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 12,
+            anchor: "bottom",
+            className: "depot-tooltip",
+          }).setHTML(
             `<div style="font-family:var(--font-general-sans),sans-serif;font-size:11px;line-height:1.6;background:#ffffff;color:#3f3f46;border:1px solid #d4d4d8;padding:8px 12px;border-radius:0;">
               <strong style="font-size:12px;">${store.name}</strong><br/>
               ${store.location}
-            </div>`,
-            {
-              permanent: false,
-              direction: "top",
-              opacity: 1,
-              className: "depot-tooltip",
-            }
+            </div>`
           );
+
+          const marker = new maplibregl.Marker({ element: dot })
+            .setLngLat([store.lng, store.lat])
+            .addTo(map);
+
+          dot.addEventListener("mouseenter", () => {
+            popup.setLngLat(marker.getLngLat()).addTo(map);
+          });
+          dot.addEventListener("mouseleave", () => {
+            popup.remove();
+          });
         });
 
         // Custom zoom control
-        const ZoomControl = L.Control.extend({
-          onAdd: function () {
-            const container = L.DomUtil.create("div");
-            container.style.cssText = "display:flex;flex-direction:column;gap:1px;";
+        const buildZoomControl = () => {
+          const container = document.createElement("div");
+          // The maplibregl-ctrl class is what restores pointer-events inside
+          // the control corner (the corner itself is pointer-events:none).
+          container.className = "maplibregl-ctrl";
+          container.style.cssText = "display:flex;flex-direction:column;gap:1px;";
 
-            const btnStyle = `
+          const btnStyle = `
         width:32px;height:32px;background:#ffffff;color:#71717a;
         border:1px solid #d4d4d8;display:flex;align-items:center;
         justify-content:center;cursor:pointer;font-family:var(--font-general-sans),sans-serif;
         font-size:16px;line-height:1;transition:color 0.2s,border-color 0.2s;
       `;
 
-            const zoomIn = L.DomUtil.create("button", "", container);
-            zoomIn.innerHTML = "+";
-            zoomIn.style.cssText = btnStyle;
-            zoomIn.onmouseover = () => {
-              zoomIn.style.color = "#0a0a0a";
-              zoomIn.style.borderColor = "#71717a";
+          const makeButton = (label, onClick) => {
+            const btn = document.createElement("button");
+            btn.innerHTML = label;
+            btn.style.cssText = btnStyle;
+            btn.onmouseover = () => {
+              btn.style.color = "#0a0a0a";
+              btn.style.borderColor = "#71717a";
             };
-            zoomIn.onmouseout = () => {
-              zoomIn.style.color = "#71717a";
-              zoomIn.style.borderColor = "#d4d4d8";
+            btn.onmouseout = () => {
+              btn.style.color = "#71717a";
+              btn.style.borderColor = "#d4d4d8";
             };
-            L.DomEvent.on(zoomIn, "click", (e) => {
-              L.DomEvent.stopPropagation(e);
-              map.zoomIn();
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              onClick();
             });
+            container.appendChild(btn);
+            return btn;
+          };
 
-            const zoomOut = L.DomUtil.create("button", "", container);
-            zoomOut.innerHTML = "−";
-            zoomOut.style.cssText = btnStyle;
-            zoomOut.onmouseover = () => {
-              zoomOut.style.color = "#0a0a0a";
-              zoomOut.style.borderColor = "#71717a";
-            };
-            zoomOut.onmouseout = () => {
-              zoomOut.style.color = "#71717a";
-              zoomOut.style.borderColor = "#d4d4d8";
-            };
-            L.DomEvent.on(zoomOut, "click", (e) => {
-              L.DomEvent.stopPropagation(e);
-              map.zoomOut();
-            });
+          makeButton("+", () => map.zoomIn());
+          makeButton("−", () => map.zoomOut());
 
-            return container;
-          },
-        });
+          return {
+            onAdd: () => container,
+            onRemove: () => container.remove(),
+          };
+        };
 
-        new ZoomControl({ position: "bottomright" }).addTo(map);
+        map.addControl(buildZoomControl(), "bottom-right");
 
         mapInstanceRef.current = map;
       });
@@ -156,9 +162,9 @@ export default function ParisMap({ stores = [] }) {
     };
   }, []);
 
-  // isolation traps Leaflet's internal z-indexes (panes 200–700, control
-  // corners 1000) in their own stacking context — without it they paint over
-  // the mobile nav (sticky z-50) while the map scrolls beneath it.
+  // isolation traps MapLibre's internal z-indexes (markers, popups, control
+  // corners) in their own stacking context — without it they paint over the
+  // mobile nav (sticky z-50) while the map scrolls beneath it.
   return (
     <div
       ref={mapRef}
@@ -171,4 +177,3 @@ export default function ParisMap({ stores = [] }) {
     />
   );
 }
-

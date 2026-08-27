@@ -23,10 +23,14 @@ body {
   font-family: var(--font-satoshi), sans-serif;
 }
 
-.depot-tooltip .leaflet-tooltip {
+.depot-tooltip .maplibregl-popup-content {
   background: transparent;
   border: none;
   box-shadow: none;
+  padding: 0;
+}
+.depot-tooltip .maplibregl-popup-tip {
+  display: none;
 }
 
 /* Feed grid — offscreen card skipping.
