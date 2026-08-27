@@ -23,7 +23,7 @@ export const revalidate = 3600;
 const hanken = Hanken_Grotesk({
   subsets: ["latin"],
   weight: ["300", "400", "500"],
-  display: "swap",
+  display: "optional",
 });
 
 const HERO_MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
