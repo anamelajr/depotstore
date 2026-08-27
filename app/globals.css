@@ -41,6 +41,28 @@ div.leaflet-container img.leaflet-tile {
   mix-blend-mode: normal;
 }
 
+/* OSM + CARTO attribution must stay visible (CARTO free-tier terms), but it
+   can be discreet: strip Leaflet's white pill and shrink to a whisper that
+   matches the basemap's muted greys. `div` prefix outranks leaflet.css's
+   later-loaded equal-specificity rules, as above. */
+div.leaflet-container .leaflet-control-attribution {
+  background: transparent;
+  font-family: var(--font-general-sans), sans-serif;
+  font-size: 9px;
+  line-height: 1;
+  color: #a1a1aa;
+  padding: 0 6px 5px 0;
+  margin: 0;
+}
+div.leaflet-container .leaflet-control-attribution a {
+  color: #a1a1aa;
+  text-decoration: none;
+}
+div.leaflet-container .leaflet-control-attribution a:hover {
+  color: #71717a;
+  text-decoration: underline;
+}
+
 /* Feed grid — offscreen card skipping.
    `contain-intrinsic-size` is always on so the browser records each card's
    real "last remembered size" while it renders; the `auto` keyword is what

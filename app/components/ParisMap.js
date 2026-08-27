@@ -62,6 +62,8 @@ export default function ParisMap({ stores = [] }) {
           attributionControl: true,
         });
         map.attributionControl.setPrefix(false);
+        // Keep the required credit clear of the custom zoom control's corner.
+        map.attributionControl.setPosition("bottomleft");
 
         // Keyless requests are served with an "API KEY REQUIRED" watermark
         // baked into the tiles; the key is free-tier (5M tiles/month).
