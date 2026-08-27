@@ -28,13 +28,15 @@ export const ARCHIVES = [
     slug: "hedi-slimane",
     name: "HEDI SLIMANE",
     years: "2000–07 · 2012–16",
+    // Hero tenure line — house + years pairs. Mobile breaks on the separator.
+    tenureLine: "Dior Homme 2000–07 · Saint Laurent 2012–16",
     image: "/archives/hedi-slimane/portrait.webp",
     imageAlt: "Hedi Slimane portrait",
     // When set, the hero renders a VIEW COLLECTION STORY link to
     // /editorial/<slug>. No Slimane entry exists yet.
     editorialSlug: null,
     description:
-      "Hedi Slimane reshaped modern menswear at Dior Homme, defining the radically slim silhouette of the 2000s — a vision revisited at Saint Laurent, fusing sharp tailoring with rock and youth culture.",
+      "Hedi Slimane reshaped modern menswear at Dior Homme, defining the radically slim silhouette of the 2000s, a vision he later revisited at Saint Laurent, fusing sharp tailoring with rock and youth culture.",
     rules: [
       // Attribution REQUIRED: 2000–07 Dior stock is dominated by Galliano
       // womenswear (64 rows carry the era signal, ~6 carry homme/Slimane).

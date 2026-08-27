@@ -116,7 +116,7 @@ export const MESSAGES = {
     "home.todaysCuration": "Today's Curation",
     // Archive page chrome. Designer names, year ranges and descriptions are
     // content and live in app/lib/archives.js — English-only, never here.
-    "archive.eyebrow": "Featured Archive",
+    "archive.eyebrow": "Archive",
     "archive.items": "items",
     "archive.viewStory": "View collection story",
     // Editorial index
@@ -270,7 +270,7 @@ export const MESSAGES = {
     "home.featured": "À la une",
     "home.todaysCuration": "La Curation du Jour",
     // Archive page chrome (see the EN block).
-    "archive.eyebrow": "Archive à la une",
+    "archive.eyebrow": "Archive",
     "archive.items": "articles",
     "archive.viewStory": "Voir l'histoire de la collection",
     // Editorial index
