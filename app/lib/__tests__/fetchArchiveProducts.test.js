@@ -14,9 +14,16 @@ function parseValue(raw) {
 function clauseMatches(row, clause) {
   const [col, op, ...rest] = clause.split(".");
   // `not` is a prefix operator in PostgREST (name.not.ilike.%x%). Mirroring
-  // Postgres, NOT ILIKE against a NULL cell is NULL — i.e. NOT a match — which
-  // is exactly the trap the paired `col.is.null` clause exists to cover.
-  if (op === "not") return !clauseMatches(row, [col, ...rest].join("."));
+  // Postgres, a negated COMPARISON against a NULL cell is NULL — i.e. NOT a
+  // match — never `true`. Plain boolean negation would get that wrong and let
+  // the NULL-retention tests pass even without the paired `col.is.null`
+  // clause, which is exactly the trap that clause exists to cover. (`not.is`
+  // is genuinely two-valued and would negate normally, but nothing here
+  // emits it.)
+  if (op === "not") {
+    if (rest[0] !== "is" && row[col] == null) return false;
+    return !clauseMatches(row, [col, ...rest].join("."));
+  }
   const raw = rest.join(".");
   const value = parseValue(raw);
   const cell = row[col];
