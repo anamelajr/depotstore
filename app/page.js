@@ -15,32 +15,13 @@ import { fetchCachedHomepagePicks } from "./editorial/_lib/fetchHomepagePicks.js
 import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 import { fetchCachedDailyRotation } from "./lib/fetchDailyRotation.js";
 import { getActiveStores } from "./lib/stores.js";
+import { withTimeout } from "./lib/withTimeout.js";
 import { Suspense } from "react";
 import { preconnect } from "react-dom";
 import MapSnapshot, { MAP_BOX_STYLE } from "./components/MapSnapshot";
 
 export const dynamic = "force-dynamic";
 
-// Both data sections race against this before giving up and rendering their
-// empty/placeholder state, mirroring the feed loader's shape. The cached
-// fetchers ignore the signal (they have no live request of their own) — the
-// race exists to unblock render on a cold miss, not to cancel work.
-const SECTION_TIMEOUT_MS = 4000;
-
-function withTimeout(work) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SECTION_TIMEOUT_MS);
-  return Promise.race([
-    work(controller.signal),
-    new Promise((_, reject) => {
-      controller.signal.addEventListener(
-        "abort",
-        () => reject(new Error("homepage section timeout")),
-        { once: true },
-      );
-    }),
-  ]).finally(() => clearTimeout(timer));
-}
 
 // Two async sections instead of one sequential await chain in the page body.
 // Each is Suspense-wrapped, so Hero / SearchBrowseRow / FeaturedArchives —

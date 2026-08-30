@@ -82,16 +82,34 @@ export async function fetchActiveStoresFresh({ signal } = {}) {
   return data.map(mapStoreRow);
 }
 
+const STORES_READ_TIMEOUT_MS = 4000;
+
 // Inner fetch for the cached variant: THROWS on error/empty. Never cache a
 // fallback — unstable_cache won't cache a throw, but it WOULD cache a
 // FALLBACK_STORES list for the full revalidate window.
 async function fetchActiveStoresOrThrow() {
-  const { data, error } = await supabaseAdmin
-    .from("stores")
-    .select("domain, store_name, display_name, location, lat, lng")
-    .eq("active", true)
-    .order("store_name");
+  // The cold-miss read is the root layout's only gate on first paint, and a
+  // hung (non-erroring) connection would block the whole document. Bound the
+  // request itself — a caller-side race would leave it running. Same shape as
+  // refreshFxRates in fx.js.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STORES_READ_TIMEOUT_MS);
+  let data, error;
+  try {
+    ({ data, error } = await supabaseAdmin
+      .from("stores")
+      .select("domain, store_name, display_name, location, lat, lng")
+      .eq("active", true)
+      .order("store_name")
+      .abortSignal(controller.signal));
+  } finally {
+    clearTimeout(timer);
+  }
 
+  // Distinct message so operators can tell a timeout from other failures.
+  if (controller.signal.aborted) {
+    throw new Error(`stores read timed out after ${STORES_READ_TIMEOUT_MS}ms`);
+  }
   if (error) throw new Error(`stores read failed: ${error.message}`);
   if (!data || data.length === 0) throw new Error("stores read returned empty");
 
