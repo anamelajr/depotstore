@@ -27,9 +27,17 @@ describe("ARCHIVES — live entries", () => {
   it("carries every field the page renders", () => {
     for (const a of live) {
       expect(a.slug).toMatch(/^[a-z0-9-]+$/);
-      expect(typeof a.image).toBe("string");
-      expect(a.image.startsWith("/")).toBe(true);
-      expect(typeof a.imageAlt).toBe("string");
+      // A portrait is optional (Margiela has none), but when present it must
+      // be a local path with alt text — and alt text without an image is dead
+      // data the hero never renders.
+      expect(a.image === null || typeof a.image === "string").toBe(true);
+      if (a.image !== null) {
+        expect(a.image.startsWith("/")).toBe(true);
+        expect(typeof a.imageAlt).toBe("string");
+        expect(a.imageAlt.length).toBeGreaterThan(0);
+      } else {
+        expect(a.imageAlt).toBeNull();
+      }
       expect(typeof a.description).toBe("string");
       expect(a.description.length).toBeGreaterThan(0);
       // Optional link target, but never an empty string.
@@ -62,6 +70,16 @@ describe("ARCHIVES — live entries", () => {
         }
         // Every rule must narrow on something beyond the brand.
         expect(hasEraPair || rule.eraYearNull === true).toBe(true);
+
+        if (rule.excludeAttribution !== undefined) {
+          expect(Array.isArray(rule.excludeAttribution)).toBe(true);
+          expect(rule.excludeAttribution.length).toBeGreaterThan(0);
+          for (const token of rule.excludeAttribution) {
+            expect(typeof token).toBe("string");
+            expect(token).toBe(token.toLowerCase());
+            expect(token.length).toBeGreaterThan(0);
+          }
+        }
 
         if (rule.attribution !== undefined) {
           expect(Array.isArray(rule.attribution)).toBe(true);
@@ -100,11 +118,12 @@ describe("accessors", () => {
 
   it("getArchiveBySlug resolves a live slug", () => {
     expect(getArchiveBySlug("hedi-slimane")?.name).toBe("HEDI SLIMANE");
+    expect(getArchiveBySlug("martin-margiela")?.name).toBe("MARTIN MARGIELA");
   });
 
   it("getArchiveBySlug returns undefined for inert and unknown slugs", () => {
-    expect(getArchiveBySlug("martin-margiela")).toBeUndefined();
-    expect(getArchiveBySlug("nope")).toBeUndefined();
+    // Inert entries carry no slug at all, so they can never resolve.
     expect(getArchiveBySlug(undefined)).toBeUndefined();
+    expect(getArchiveBySlug("nope")).toBeUndefined();
   });
 });
