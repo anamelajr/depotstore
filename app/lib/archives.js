@@ -20,9 +20,60 @@
  *   { brand, eraYearNull: true }           — brand with NO readable era
  *   … either form may add `attribution: [tokens]`, matched case-insensitively
  *     against `name` / `description` (OR across tokens).
+ *   … either form may add `excludeAttribution: [tokens]`, the negation: a row
+ *     is DROPPED when ANY token appears in `name` or `description`. Both
+ *     columns are nullable, so each is matched as "is null OR not ilike" —
+ *     a bare NOT ILIKE evaluates to NULL on a NULL column and would silently
+ *     drop the row. Use it to keep a known false-positive CLASS out durably
+ *     (re-editions, another house's tenure) where handle-pinned `exclude`
+ *     entries wouldn't survive a relisting.
  */
 export const ARCHIVES = [
-  { name: "MARTIN MARGIELA", years: "1999–2008", live: false },
+  {
+    live: true,
+    slug: "martin-margiela",
+    name: "MARTIN MARGIELA",
+    years: "1988–2009",
+    tenureLine: "Maison Martin Margiela 1988–2009",
+    // No portrait yet — Margiela famously never appears in photographs. The
+    // hero renders text-only until the curator supplies an image.
+    image: null,
+    imageAlt: null,
+    editorialSlug: null,
+    description:
+      "Martin Margiela redefined fashion from his Paris maison between 1988 and 2009 — pioneering deconstruction, exposed linings, and the artisanal reworking of found garments, all under a strict anonymity that made the clothes themselves the only statement.",
+    rules: [
+      // The entire window is Martin's own tenure — no competing designer, so
+      // no attribution token (contrast the Dior/Galliano rule below). Un-dated
+      // pieces are NOT pulled by a "martin" mention: the house kept the name
+      // "Maison Martin Margiela" until 2015, six years post-tenure, so the
+      // token doesn't attribute era. excludeAttribution keeps the known
+      // false-positive CLASS out durably: 2012 H&M re-editions and
+      // Hermès-tenure pieces parse into the window via the original season in
+      // their copy, and handle-pinned excludes wouldn't survive a relisting.
+      {
+        brand: "MAISON MARGIELA",
+        eraStart: 1988,
+        eraEnd: 2009,
+        excludeAttribution: ["h&m", "h & m", "hermes", "hermès"],
+      },
+    ],
+    include: [],
+    // Identity-audit exclusions (2026-08-30): era_year dates re-editions by the
+    // season they reproduce, so the 2012 Margiela × H&M collab pieces parse into
+    // the window; the Hermès piece is Martin's, but at Hermès. Pinned by handle
+    // as well as by excludeAttribution because a listing may carry the collab
+    // only in its title (which attribution never reads).
+    exclude: [
+      { storeDomain: "dolcevitahub.com", handle: "2000s-maison-margiela-h-m-shearling-beige-reversible-long-jacket" },
+      { storeDomain: "dolcevitahub.com", handle: "ss2005-maison-margiela-x-h-m-reversed-denim-jacket-re-edition-1" },
+      { storeDomain: "dolcevitahub.com", handle: "ss2005-maison-margiela-x-h-m-reversed-denim-jacket-re-edition-3" },
+      { storeDomain: "dolcevitahub.com", handle: "aw2006-maison-margiela-re-edition-h-m-silver-steel-no-dial-watch" },
+      { storeDomain: "dolcevitahub.com", handle: "2006-maison-margiela-h-m-upside-brown-leather-shoulder-bag" },
+      { storeDomain: "dolcevitahub.com", handle: "ss2009-maison-margiela-h-m-re-edition-white-t-shirt" },
+      { storeDomain: "lesarchivesparis.com", handle: "hermes-by-martin-margiela-1990s-silk-cardigan-top" },
+    ],
+  },
   {
     live: true,
     slug: "hedi-slimane",

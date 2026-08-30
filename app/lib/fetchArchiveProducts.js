@@ -70,6 +70,19 @@ async function runRuleQuery(client, rule, index) {
   }
   if (rule.eraYearNull) q = q.is("era_year", null);
   if (rule.attribution?.length) q = q.or(attributionFilter(rule.attribution));
+  // Negative attribution. BOTH columns are nullable (supabase/schema.sql:9 —
+  // normalizeProduct writes null for a missing Shopify title, and era_year can
+  // still be in-window via the enriched title), and a bare
+  // .not(col, "ilike", v) evaluates to NULL for a NULL column, silently
+  // dropping the row. So each column gets its own "is null OR not ilike" group.
+  // Each .or() adds one OR group ANDed with the rest, so chaining per token and
+  // per column composes to the intended "no token matches either column".
+  for (const token of rule.excludeAttribution ?? []) {
+    const value = escapePostgrestValue(`%${token}%`);
+    q = q
+      .or(`name.is.null,name.not.ilike.${value}`)
+      .or(`description.is.null,description.not.ilike.${value}`);
+  }
 
   const { data, error } = await q;
   if (error) {

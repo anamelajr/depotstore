@@ -82,7 +82,14 @@ export default async function ArchivePage({ params }) {
           typography carry a compact band. Geometry transcribed from the
           approved canvas artboards (Option C, desktop + mobile). */}
       <section className="relative w-full bg-[#121212] text-white">
-        <div className="mx-auto grid w-full max-w-[1210px] grid-cols-1 px-6 md:min-h-[600px] md:grid-cols-[minmax(0,57fr)_43fr]">
+        <div
+          className={`mx-auto grid w-full max-w-[1210px] grid-cols-1 px-6 md:min-h-[600px] ${
+            // Text-only heroes (an archive with no portrait — Margiela) stay
+            // single-column so the copy isn't squeezed into 57% beside an
+            // empty cell.
+            archive.image ? "md:grid-cols-[minmax(0,57fr)_43fr]" : ""
+          }`}
+        >
           <div className="flex flex-col items-start justify-center pb-10 pt-11 md:py-12 md:pr-16">
             <span
               className="text-[10px] uppercase tracking-[0.18em] text-zinc-400"
@@ -140,22 +147,24 @@ export default async function ArchivePage({ params }) {
           {/* Portrait column, md+ only. The transparent cutout is grayscaled,
               bottom-anchored just shy of the band's full height, and a gradient
               dissolves its base into the ink so the crop line never shows. */}
-          <div className="relative hidden md:block">
-            <div className="absolute inset-x-0 bottom-0 top-[6.5%]">
-              <Image
-                src={archive.image}
-                alt={archive.imageAlt}
-                fill
-                priority
-                sizes="(max-width: 768px) 0px, 43vw"
-                className="object-contain object-right-bottom [filter:grayscale(1)_brightness(0.92)_contrast(1.08)]"
+          {archive.image ? (
+            <div className="relative hidden md:block">
+              <div className="absolute inset-x-0 bottom-0 top-[6.5%]">
+                <Image
+                  src={archive.image}
+                  alt={archive.imageAlt}
+                  fill
+                  priority
+                  sizes="(max-width: 768px) 0px, 43vw"
+                  className="object-contain object-right-bottom [filter:grayscale(1)_brightness(0.92)_contrast(1.08)]"
+                />
+              </div>
+              <div
+                aria-hidden="true"
+                className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#121212] from-[8%] to-transparent"
               />
             </div>
-            <div
-              aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#121212] from-[8%] to-transparent"
-            />
-          </div>
+          ) : null}
         </div>
       </section>
 

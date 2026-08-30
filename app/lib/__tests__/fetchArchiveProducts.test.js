@@ -13,6 +13,17 @@ function parseValue(raw) {
 
 function clauseMatches(row, clause) {
   const [col, op, ...rest] = clause.split(".");
+  // `not` is a prefix operator in PostgREST (name.not.ilike.%x%). Mirroring
+  // Postgres, a negated COMPARISON against a NULL cell is NULL — i.e. NOT a
+  // match — never `true`. Plain boolean negation would get that wrong and let
+  // the NULL-retention tests pass even without the paired `col.is.null`
+  // clause, which is exactly the trap that clause exists to cover. (`not.is`
+  // is genuinely two-valued and would negate normally, but nothing here
+  // emits it.)
+  if (op === "not") {
+    if (rest[0] !== "is" && row[col] == null) return false;
+    return !clauseMatches(row, [col, ...rest].join("."));
+  }
   const raw = rest.join(".");
   const value = parseValue(raw);
   const cell = row[col];
@@ -269,5 +280,81 @@ describe("fetchArchiveProducts — fail closed", () => {
         { client },
       ),
     ).rejects.toThrow(/Archive include query failed: connection reset/);
+  });
+});
+
+// excludeAttribution — the negative of `attribution`, used by the Margiela
+// archive to keep re-editions and another house's tenure out of the era window
+// durably (a handle-pinned exclude wouldn't survive a relisting).
+describe("fetchArchiveProducts — excludeAttribution", () => {
+  const mmBase = {
+    ...base,
+    brand: "MAISON MARGIELA",
+    era_year: 2005,
+    name: null,
+    description: null,
+  };
+  const mmArchive = {
+    rules: [
+      {
+        brand: "MAISON MARGIELA",
+        eraStart: 1988,
+        eraEnd: 2009,
+        excludeAttribution: ["h&m", "hermes"],
+      },
+    ],
+    include: [],
+    exclude: [],
+  };
+
+  const run = (rows, over = {}) =>
+    fetchArchiveProducts({ ...mmArchive, ...over }, { client: makeClient(rows) });
+
+  it("drops a row whose name carries a token", async () => {
+    const rows = [
+      { ...mmBase, handle: "keep", name: "SS05 Deconstructed Blazer" },
+      { ...mmBase, handle: "hm", name: "SS2005 Margiela x H&M Denim Jacket" },
+    ];
+    expect(handles(await run(rows))).toEqual(["keep"]);
+  });
+
+  it("drops a row whose description carries a token", async () => {
+    const rows = [
+      { ...mmBase, handle: "keep", description: "Artisanal line, Paris." },
+      {
+        ...mmBase,
+        handle: "hermes",
+        description: "Hermes by Martin Margiela silk cardigan.",
+      },
+    ];
+    expect(handles(await run(rows))).toEqual(["keep"]);
+  });
+
+  it("keeps rows with a NULL name, NULL description, or both", async () => {
+    const rows = [
+      { ...mmBase, handle: "null-name", name: null, description: "Wool coat." },
+      { ...mmBase, handle: "null-desc", name: "AW98 Coat", description: null },
+      { ...mmBase, handle: "null-both", name: null, description: null },
+    ];
+    expect(handles(await run(rows))).toEqual(["null-both", "null-desc", "null-name"]);
+  });
+
+  it("matches tokens case-insensitively across every token in the list", async () => {
+    const rows = [
+      { ...mmBase, handle: "keep", name: "SS05 Blazer" },
+      { ...mmBase, handle: "a", name: "RE-EDITION h&m TEE" },
+      { ...mmBase, handle: "b", description: "HERMES tenure piece" },
+    ];
+    expect(handles(await run(rows))).toEqual(["keep"]);
+  });
+
+  it("lets a manual include bypass excludeAttribution — includes are fetched by handle, not through the rule, and are the curator's explicit override", async () => {
+    const rows = [
+      { ...mmBase, handle: "hm", name: "Margiela x H&M Denim Jacket" },
+    ];
+    const products = await run(rows, {
+      include: [{ storeDomain: mmBase.store_domain, handle: "hm" }],
+    });
+    expect(handles(products)).toEqual(["hm"]);
   });
 });
