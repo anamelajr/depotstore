@@ -162,8 +162,13 @@ function setGateEntry(domain, entry) {
   }
 }
 
+// Reads with the service-role client: `stores` carries RLS with no policy
+// (2026-08-30-enable-rls.sql closed it to the anon key), so an anon read
+// silently returns zero rows and the gate fails closed for EVERY product.
+// This module is server-only, matching every other `stores` reader
+// (stores.js uses supabaseAdmin throughout).
 async function readStoreRow(storeDomain) {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("stores")
     .select("store_name, display_name, location")
     .eq("domain", storeDomain)
