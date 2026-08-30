@@ -42,7 +42,8 @@ body {
    maplibre-gl.css's later-loaded equal-specificity rules — that sheet is
    dynamically imported after this one, so an equal specificity would lose the
    cascade tie. */
-div.maplibregl-map .maplibregl-ctrl-attrib {
+div.maplibregl-map .maplibregl-ctrl-attrib,
+.depot-map-attrib {
   background: transparent;
   font-family: var(--font-general-sans), sans-serif;
   font-size: 7px;
@@ -55,17 +56,31 @@ div.maplibregl-map .maplibregl-ctrl-attrib {
 }
 /* Near-invisible at rest, legible on hover — as quiet as the required
    credit can get while still being present. */
-div.maplibregl-map .maplibregl-ctrl-attrib:hover {
+div.maplibregl-map .maplibregl-ctrl-attrib:hover,
+.depot-map-attrib:hover {
   opacity: 1;
   color: #a1a1aa;
 }
-div.maplibregl-map .maplibregl-ctrl-attrib a {
+div.maplibregl-map .maplibregl-ctrl-attrib a,
+.depot-map-attrib a {
   color: inherit;
   text-decoration: none;
 }
-div.maplibregl-map .maplibregl-ctrl-attrib a:hover {
+div.maplibregl-map .maplibregl-ctrl-attrib a:hover,
+.depot-map-attrib a:hover {
   color: #71717a;
   text-decoration: underline;
+}
+
+/* The static snapshot's stand-in credit. Shares every rule above so it is
+   indistinguishable from the live map's control, and sits in the same
+   bottom-left corner — the live AttributionControl lands exactly on top of it
+   when the map fades in, so the credit never doubles and never disappears. */
+.depot-map-attrib {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 0 0 4px 6px;
 }
 
 /* Feed grid — offscreen card skipping.

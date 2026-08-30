@@ -16,8 +16,10 @@ import { loadHomepagePicks } from "./lib/loadHomepagePicks.js";
 import { fetchCachedDailyRotation } from "./lib/fetchDailyRotation.js";
 import { getActiveStores } from "./lib/stores.js";
 import { Suspense } from "react";
+import { preconnect } from "react-dom";
+import MapSnapshot, { MAP_BOX_STYLE } from "./components/MapSnapshot";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 // Both data sections race against this before giving up and rendering their
 // empty/placeholder state, mirroring the feed loader's shape. The cached
@@ -60,7 +62,10 @@ async function loadCuratedProducts() {
       const picked = await fetchCachedHomepagePicks(homepagePicks);
       if (picked.length > 0) return picked;
     } catch (err) {
-      console.warn("[homepage] fetchHomepagePicks failed, falling back:", err.message);
+      console.warn(
+        "[homepage] fetchHomepagePicks failed, falling back:",
+        err.message,
+      );
     }
   }
 
@@ -115,13 +120,43 @@ async function AcrossParis() {
   return <ParisMap stores={stores} />;
 }
 
-// Matches ParisMap's own 480px box and its #f4f4f5 ground exactly, so
-// streaming the map in swaps one grey rectangle for another — no shift.
+// Matches ParisMap's own box exactly (shared MAP_BOX_STYLE), so streaming the
+// map in is a pure swap — no shift.
+//
+// Invariant: the snapshot must NOT be gated behind the section's store fetch.
+// AcrossParis races getActiveStores() against SECTION_TIMEOUT_MS, so ParisMap
+// can stream in up to 4s late on a degraded store request — exactly the window
+// the snapshot exists for. Rendering MapSnapshot here too puts the basemap on
+// screen from the document's first paint; only the dots and the live map wait
+// for the data.
 function MapPlaceholder() {
-  return <div style={{ height: "480px", width: "100%", background: "#f4f4f5" }} />;
+  return (
+    <div style={MAP_BOX_STYLE}>
+      <MapSnapshot />
+    </div>
+  );
 }
 
 export default async function Home() {
+  // The map's basemap comes from CARTO on connections that are otherwise cold
+  // at the moment MapLibre asks for them, and the first two hosts strictly
+  // serialize: style.json on basemaps.cartocdn.com, then the TileJSON, glyphs
+  // and sprite on tiles.basemaps.cartocdn.com. Opening those two with the
+  // document removes a DNS+TCP+TLS round-trip from the critical path. The MVT
+  // tiles themselves come from tiles-a…d.basemaps.cartocdn.com and are
+  // deliberately NOT preconnected: four more held-open connections at document
+  // time would compete with the hero/LCP work this change is trying to
+  // protect, and those four already fetch in parallel once tiles start.
+  // (Verified against the live style.json — there is no fonts.cartocdn.com.)
+  // crossOrigin matters: MapLibre fetches these as anonymous CORS requests
+  // (no credentials), and a preconnect without it warms the *credentialed*
+  // connection pool — one the browser can't reuse for CORS fetches, which
+  // would defeat the whole preconnect.
+  preconnect("https://basemaps.cartocdn.com", { crossOrigin: "anonymous" });
+  preconnect("https://tiles.basemaps.cartocdn.com", {
+    crossOrigin: "anonymous",
+  });
+
   return (
     <div
       className="min-h-screen overflow-x-clip font-mono antialiased text-zinc-950"
@@ -180,7 +215,6 @@ export default async function Home() {
           </Suspense>
         </div>
       </section>
-
     </div>
   );
 }
