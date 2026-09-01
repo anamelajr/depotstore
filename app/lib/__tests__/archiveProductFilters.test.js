@@ -199,3 +199,107 @@ describe("sortArchiveProducts", () => {
     expect(once).toEqual(twice);
   });
 });
+
+describe('sortArchiveProducts — "interleaved"', () => {
+  // syncedAt descends with index so "newest-first" is index 0 within a store.
+  function store(domain, n, prefix) {
+    return Array.from({ length: n }, (_, i) =>
+      p(`${prefix}${i}`, {
+        storeDomain: domain,
+        syncedAt: `2026-08-${String(28 - i).padStart(2, "0")}T10:00:00Z`,
+      }),
+    );
+  }
+
+  it("emits blocks of six per store, round-robined, newest-first inside each", () => {
+    const list = [...store("x.fr", 8, "x"), ...store("y.fr", 8, "y")];
+    const out = sortArchiveProducts(list, "interleaved", 1234);
+    const domains = out.map((q) => q.storeDomain);
+
+    // Two distinct storeDomain values → two buckets (camelCase field contract).
+    expect(new Set(domains).size).toBe(2);
+
+    const first = domains[0];
+    const second = domains.find((d) => d !== first);
+    expect(domains).toEqual([
+      ...Array(6).fill(first),
+      ...Array(6).fill(second),
+      ...Array(2).fill(first),
+      ...Array(2).fill(second),
+    ]);
+
+    // Each store's own run stays newest-first.
+    for (const domain of [first, second]) {
+      const handles = out.filter((q) => q.storeDomain === domain).map((q) => q.handle);
+      const prefix = domain === "x.fr" ? "x" : "y";
+      expect(handles).toEqual(Array.from({ length: 8 }, (_, i) => `${prefix}${i}`));
+    }
+  });
+
+  it("is deterministic for a fixed week seed", () => {
+    const list = [...store("a.fr", 3, "a"), ...store("b.fr", 3, "b"), ...store("c.fr", 3, "c")];
+    const once = sortArchiveProducts(list, "interleaved", 987).map((x) => x.handle);
+    const twice = sortArchiveProducts([...list].reverse(), "interleaved", 987).map(
+      (x) => x.handle,
+    );
+    expect(once).toEqual(twice);
+    expect(once).toEqual(sortArchiveProducts(list, "interleaved", 987).map((x) => x.handle));
+  });
+
+  it("rotates the store order across consecutive week seeds", () => {
+    const list = [
+      ...store("a.fr", 2, "a"),
+      ...store("b.fr", 2, "b"),
+      ...store("c.fr", 2, "c"),
+      ...store("d.fr", 2, "d"),
+    ];
+    const orders = new Set();
+    for (let seed = 2900; seed < 2905; seed++) {
+      const out = sortArchiveProducts(list, "interleaved", seed);
+      orders.add([...new Set(out.map((q) => q.storeDomain))].join("|"));
+    }
+    expect(orders.size).toBeGreaterThan(1);
+  });
+
+  it("breaks ties by code units, not locale collation", () => {
+    // localeCompare orders "a-1" before "A-1"; code-unit compare puts "A" first.
+    const same = "2026-08-11T10:00:00Z";
+    const list = [
+      p("a-1", { storeDomain: "s.fr", syncedAt: same }),
+      p("A-1", { storeDomain: "s.fr", syncedAt: same }),
+      p("_zz", { storeDomain: "s.fr", syncedAt: same }),
+    ];
+    const out = sortArchiveProducts(list, "interleaved", 7).map((x) => x.handle);
+    expect(out).toEqual(["A-1", "_zz", "a-1"]);
+  });
+
+  it("is stable under input shuffling when syncedAt values are identical", () => {
+    const same = "2026-08-11T10:00:00Z";
+    const list = ["m", "b", "q", "d"].map((h) =>
+      p(h, { storeDomain: h < "e" ? "one.fr" : "two.fr", syncedAt: same }),
+    );
+    const once = sortArchiveProducts(list, "interleaved", 42).map((x) => x.handle);
+    const twice = sortArchiveProducts([...list].reverse(), "interleaved", 42).map(
+      (x) => x.handle,
+    );
+    expect(once).toEqual(twice);
+  });
+
+  it("keeps rows missing storeDomain or syncedAt", () => {
+    const list = [
+      p("no-store", { storeDomain: null }),
+      p("no-sync", { syncedAt: null }),
+      p("fine"),
+    ];
+    const out = sortArchiveProducts(list, "interleaved", 3).map((x) => x.handle);
+    expect(out.sort()).toEqual(["fine", "no-store", "no-sync"]);
+  });
+
+  it("leaves the other sort keys untouched", () => {
+    const list = [...store("x.fr", 3, "x"), ...store("y.fr", 3, "y")];
+    const latest = sortArchiveProducts(list, "latest", 5).map((x) => x.handle);
+    expect(latest).toEqual(["x0", "y0", "x1", "y1", "x2", "y2"]);
+    const asc = sortArchiveProducts(list, "price_asc", 5).map((x) => x.storeDomain);
+    expect(asc.length).toBe(6);
+  });
+});
