@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { fetchArchiveProducts } from "../fetchArchiveProducts.js";
+import { getArchiveBySlug } from "../archives.js";
 
 // Minimal in-memory PostgREST stub. It evaluates the filters the module builds
 // — eq / gte / lte / is / in / or — against a row table, so these tests pin
@@ -356,5 +357,30 @@ describe("fetchArchiveProducts — excludeAttribution", () => {
       include: [{ storeDomain: mmBase.store_domain, handle: "hm" }],
     });
     expect(handles(products)).toEqual(["hm"]);
+  });
+});
+
+// Driven by the REAL archives.js entry rather than a synthetic archive, so a
+// change to the shipped rule config is exercised against the query layer too.
+describe("fetchArchiveProducts — GUCCI BY TOM FORD membership", () => {
+  const gucci = getArchiveBySlug("gucci-by-tom-ford");
+  const g = (over) => ({ ...base, brand: "GUCCI", description: null, ...over });
+
+  const ROWS_G = [
+    g({ handle: "fw97-boots", name: "FW97 GG Monogram Boots", era_year: 1997 }),
+    g({ handle: "gg-2012", name: "2012 GG Canvas Tote", era_year: 2012 }),
+    g({
+      handle: "pelham",
+      name: "2000s Gucci Pelham Bag",
+      era_year: 2000,
+      description: "Frida Giannini era shoulder bag.",
+    }),
+    g({ handle: "fur-clutch", name: "Gucci Tom Ford pink fur clutch", era_year: null }),
+    g({ handle: "undated", name: "Gucci Leather Belt", era_year: null }),
+  ];
+
+  it("takes the era window, drops successor-attributed and undated-unattributed rows", async () => {
+    const products = await fetchArchiveProducts(gucci, { client: makeClient(ROWS_G) });
+    expect(handles(products)).toEqual(["fur-clutch", "fw97-boots"]);
   });
 });

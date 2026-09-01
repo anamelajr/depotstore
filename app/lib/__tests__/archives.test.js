@@ -119,6 +119,22 @@ describe("accessors", () => {
   it("getArchiveBySlug resolves a live slug", () => {
     expect(getArchiveBySlug("hedi-slimane")?.name).toBe("HEDI SLIMANE");
     expect(getArchiveBySlug("martin-margiela")?.name).toBe("MARTIN MARGIELA");
+    expect(getArchiveBySlug("gucci-by-tom-ford")?.name).toBe("GUCCI BY TOM FORD");
+  });
+
+  // Pinned exactly: membership here is the rule config and nothing else, so a
+  // typo'd year, a dropped denylist token or a lost rule must fail the suite
+  // rather than only shifting the live item count.
+  it("pins the Gucci by Tom Ford rule configuration", () => {
+    expect(getArchiveBySlug("gucci-by-tom-ford")?.rules).toEqual([
+      {
+        brand: "GUCCI",
+        eraStart: 1990,
+        eraEnd: 2004,
+        excludeAttribution: ["michele", "giannini"],
+      },
+      { brand: "GUCCI", eraYearNull: true, attribution: ["tom ford"] },
+    ]);
   });
 
   it("getArchiveBySlug returns undefined for inert and unknown slugs", () => {
