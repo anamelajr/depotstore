@@ -106,7 +106,42 @@ export const ARCHIVES = [
     exclude: [],
   },
   { name: "RICK OWENS", years: "2011–2015", live: false },
-  { name: "COMME DES GARÇONS", years: "1999–2005", live: false },
+  {
+    live: true,
+    slug: "gucci-by-tom-ford",
+    // Named for the tenure, not the label: "TOM FORD" is a separate canonical
+    // brand (the 2005+ house), and the rules below only ever read "GUCCI".
+    name: "GUCCI BY TOM FORD",
+    years: "1990–2004",
+    tenureLine: "Gucci 1990–2004",
+    // No portrait yet — the hero collapses to a single column until the
+    // curator supplies one.
+    image: null,
+    imageAlt: null,
+    editorialSlug: null,
+    description:
+      "Between 1990 and 2004, Tom Ford remade Gucci from a fading leather-goods house into the defining force of nineties glamour — velvet tailoring, satin shirts and G-frame monograms cut with a dark, sensual precision.",
+    rules: [
+      // Ford was at the house for the whole window, so no attribution token is
+      // required (the Margiela pattern). era_year is parsed from titles, and a
+      // bare "2000s …" title lands on 2000 — which is how Giannini-era Pelham
+      // and Hysteria bags drift in. excludeAttribution drops that class
+      // durably wherever the seller copy names a successor; it is best-effort,
+      // not proof of tenure, and stragglers get pinned in `exclude`.
+      {
+        brand: "GUCCI",
+        eraStart: 1990,
+        eraEnd: 2004,
+        excludeAttribution: ["michele", "giannini"],
+      },
+      // Un-dated pieces whose copy attributes Ford directly (the Slimane
+      // pattern). Attributed rows that DO carry a year are already resolved by
+      // the window rule above — included or correctly excluded.
+      { brand: "GUCCI", eraYearNull: true, attribution: ["tom ford"] },
+    ],
+    include: [],
+    exclude: [],
+  },
   { name: "HELMUT LANG", years: "1996–2005", live: false },
 ];
 
