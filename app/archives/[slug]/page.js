@@ -8,6 +8,7 @@ import T from "../../components/T.js";
 import { GROUND, UTILITY_CAPS } from "../../components/home/tokens.js";
 import { getArchiveBySlug, getLiveArchives } from "../../lib/archives.js";
 import { fetchArchiveProducts } from "../../lib/fetchArchiveProducts.js";
+import { WEEK_SECONDS } from "../../lib/archiveProductFilters.js";
 import { getLanguage } from "../../lib/i18n/language.js";
 import { t } from "../../lib/i18n/messages.js";
 
@@ -69,6 +70,11 @@ export default async function ArchivePage({ params }) {
   // partial membership, and a thrown error is not cached — a swallowed one
   // would serve a wrong item count as authoritative for an hour.
   const products = await getCachedArchiveProducts(archive);
+
+  // The only clock read in the interleave feature. Computed here and passed
+  // down so server render and hydration agree on one weekly bucket; the new
+  // seed takes effect on the next navigation/revalidate, not on a timer.
+  const weekSeed = Math.floor(Date.now() / 1000 / WEEK_SECONDS);
 
   return (
     <div
@@ -171,7 +177,7 @@ export default async function ArchivePage({ params }) {
       {/* Count row, grid and the feed's floating FILTER/SORT bars. Client-side
           because the whole set is already here: filtering and sorting are
           in-memory, so this page stays a server component under ISR. */}
-      <ArchiveProductsClient products={products} />
+      <ArchiveProductsClient products={products} weekSeed={weekSeed} />
     </div>
   );
 }

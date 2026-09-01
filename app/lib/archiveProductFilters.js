@@ -119,19 +119,108 @@ function syncedKey(product) {
   return product?.syncedAt == null ? null : String(product.syncedAt);
 }
 
+const GROUP_SIZE = 6;
+export const WEEK_SECONDS = 604800;
+
+// Locale-INDEPENDENT code-unit comparator. localeCompare's default locale
+// varies by runtime/ICU build, so server and browser could break ties
+// differently — reshuffling the grid on hydration, which is exactly what the
+// server-passed week seed exists to prevent.
+function compareCodeUnits(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// Deterministic, dependency-free stand-in for get_interleaved_products' MD5
+// store shuffle (MD5 isn't available in the browser without a dep). FNV-1a
+// alone is not enough: hashing `domain + ":" + seed` leaves adjacent week
+// seeds producing identical store orders for weeks on end. The murmur3
+// fmix32 finalizer over fnv1a(domain) XOR (seed * golden ratio) avalanches
+// properly, so consecutive seeds give distinct permutations.
+function fnv1a(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function fmix32(h) {
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+function storePosition(domain, weekSeed) {
+  return fmix32(fnv1a(domain) ^ Math.imul(weekSeed, 0x9e3779b1));
+}
+
+/**
+ * The feed's store interleave, in memory.
+ *
+ * Mirrors get_interleaved_products: rank within store by syncedAt DESC, order
+ * stores by a seeded hash of the domain, then emit by
+ * (floor(rank / GROUP_SIZE), storePosition, rank) — blocks of six per store,
+ * round-robined, with the store order rotating weekly.
+ *
+ * Never relies on input order: the per-bucket comparator carries the same
+ * identity tie-break as the other sorts, because the archive queries have no
+ * ORDER BY and same-batch rows share a syncedAt (cron stamps one syncStart per
+ * run). Rows with no storeDomain land in a single fallback bucket rather than
+ * being dropped.
+ */
+function interleaveByStore(list, weekSeed, byNewest, tie) {
+  const buckets = new Map();
+  for (const product of list) {
+    const key = product?.storeDomain == null ? "" : String(product.storeDomain);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(product);
+  }
+
+  const ordered = [...buckets.keys()].sort(
+    (a, b) =>
+      compareNullsLast(storePosition(a, weekSeed), storePosition(b, weekSeed)) ||
+      compareCodeUnits(a, b),
+  );
+
+  const ranked = [];
+  ordered.forEach((key, position) => {
+    const bucket = buckets.get(key).sort((a, b) => byNewest(a, b) || tie(a, b));
+    bucket.forEach((product, rank) => {
+      ranked.push({ product, position, rank });
+    });
+  });
+
+  ranked.sort(
+    (a, b) =>
+      Math.floor(a.rank / GROUP_SIZE) - Math.floor(b.rank / GROUP_SIZE) ||
+      a.position - b.position ||
+      a.rank - b.rank,
+  );
+  return ranked.map((entry) => entry.product);
+}
+
 /**
  * A sorted copy of `products` for one of the feed's sort values.
  *
- * "interleaved" is the archive's default: the server already returns
- * newest-synced first, so it and "latest" are the same ordering here.
- * Prices are TEXT in the DB (CLAUDE.md), so they're parsed to numbers before
- * comparison rather than sorted lexicographically.
+ * "interleaved" is the archive's default and reproduces the feed's store
+ * interleave (see interleaveByStore); "latest" is the plain newest-synced
+ * ordering. Prices are TEXT in the DB (CLAUDE.md), so they're parsed to
+ * numbers before comparison rather than sorted lexicographically.
+ *
+ * `weekSeed` must be computed server-side and threaded down (see
+ * app/archives/[slug]/page.js). Its default is the fixed constant 0, never a
+ * clock read: an unthreaded seed then degrades to a deterministic,
+ * hydration-safe (merely non-rotating) order.
  */
-export function sortArchiveProducts(products, sort) {
+export function sortArchiveProducts(products, sort, weekSeed = 0) {
   const list = [...(products ?? [])];
 
   const byNewest = (a, b) => compareDirNullsLast(syncedKey(a), syncedKey(b), -1);
-  const tie = (a, b) => identity(a).localeCompare(identity(b));
+  const tie = (a, b) => compareCodeUnits(identity(a), identity(b));
 
   if (sort === "oldest") {
     return list.sort(
@@ -149,6 +238,10 @@ export function sortArchiveProducts(products, sort) {
     );
   }
 
-  // "interleaved" | "latest" | anything unrecognized
+  if (sort === "interleaved") {
+    return interleaveByStore(list, weekSeed, byNewest, tie);
+  }
+
+  // "latest" | anything unrecognized
   return list.sort((a, b) => byNewest(a, b) || tie(a, b));
 }

@@ -25,12 +25,14 @@ import {
  * and sorting are in-memory and instant, and the page stays a server component
  * rendering under ISR. The initial state — no categories, "interleaved" sort —
  * reproduces the server's ordering exactly, so the first client render matches
- * the server HTML.
+ * the server HTML. `weekSeed` is computed once on the server and threaded in
+ * for the same reason: an independent client clock read could land in a
+ * different weekly bucket and reshuffle the grid on hydration.
  *
  * Filtering is category-only. An archive is already scoped to one designer, so
  * store and brand are near-constant, and search belongs to the feed.
  */
-export default function ArchiveProductsClient({ products }) {
+export default function ArchiveProductsClient({ products, weekSeed = 0 }) {
   const { language, t } = useLanguage();
 
   const [selectedCategories, setSelectedCategories] = useState([]);
@@ -71,8 +73,9 @@ export default function ArchiveProductsClient({ products }) {
       sortArchiveProducts(
         filterProductsByCategories(products, selectedCategories),
         selectedSort,
+        weekSeed,
       ),
-    [products, selectedCategories, selectedSort],
+    [products, selectedCategories, selectedSort, weekSeed],
   );
 
   const handleToggleCategory = useCallback((value) => {
