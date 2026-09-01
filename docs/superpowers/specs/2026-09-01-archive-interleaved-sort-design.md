@@ -29,8 +29,8 @@ names; a test must assert that two distinct `storeDomain` values produce two buc
 ## Decisions made with user
 
 - **Store order rotates weekly, like the feed.** Implemented with a cheap deterministic
-  string hash (FNV-1a) of `store_domain + weekSeed` instead of MD5 (not available in the
-  browser without a dep). Same behavior class; byte-identical parity with the feed's
+  hash (FNV-1a + murmur3 fmix32 finalizer — see Change) instead of MD5 (not available in
+  the browser without a dep). Same behavior class; byte-identical parity with the feed's
   weekly permutation is not observable and not required.
 - Only the `"interleaved"` case changes; `"latest"`, price sorts, etc. stay as-is.
 
@@ -49,7 +49,13 @@ real interleave:
 const GROUP_SIZE = 6;
 const WEEK_SECONDS = 604800;
 
-// FNV-1a — deterministic, dependency-free stand-in for the RPC's MD5 store shuffle.
+// Deterministic, dependency-free stand-in for the RPC's MD5 store shuffle.
+// FNV-1a ALONE IS NOT ENOUGH: hashing `domain + ":" + seed` leaves adjacent
+// week seeds producing identical store orders for ~10 weeks straight
+// (verified empirically against the FALLBACK_STORES domains). The murmur3
+// fmix32 finalizer over fnv1a(domain) XOR (seed * golden-ratio constant)
+// gives full avalanche — verified: 16 distinct orders for 16 consecutive
+// seeds on the same domain set.
 function fnv1a(str) {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
@@ -58,6 +64,13 @@ function fnv1a(str) {
   }
   return h >>> 0;
 }
+function fmix32(h) {
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16; return h >>> 0;
+}
+const storePosition = (domain, weekSeed) =>
+  fmix32(fnv1a(domain) ^ Math.imul(weekSeed, 0x9e3779b1));
 
 function interleaveByStore(products, weekSeed) {
   // 1. bucket by product.storeDomain, each bucket sorted by the existing
@@ -74,8 +87,8 @@ function interleaveByStore(products, weekSeed) {
   //    server-passed seed exists to prevent. While here, switch the shared
   //    `tie` helper in sortArchiveProducts to the same code-unit compare
   //    (both orders are arbitrary; only determinism matters).
-  // 2. store position = fnv1a(storeDomain + ":" + weekSeed), ascending
-  //    (hash ties broken by storeDomain for full determinism)
+  // 2. store position = storePosition(storeDomain, weekSeed), ascending
+  //    (hash ties broken by code-unit compare of storeDomain for determinism)
   // 3. emit ordered by (Math.floor(rankInStore / GROUP_SIZE), storePosition, rankInStore)
 }
 ```
@@ -94,7 +107,10 @@ Notes:
   `weekSeed = Math.floor(Date.now() / 1000 / WEEK_SECONDS)` and passes it as a prop;
   `ArchiveProductsClient` threads it into `sortArchiveProducts(list, sort, weekSeed)` and
   includes it in the `visible` useMemo deps. `sortArchiveProducts` keeps a defaulted
-  third parameter (compute-current-week fallback) so other callers/tests don't break.
+  third parameter, but the default is the FIXED constant `0` — never a clock read.
+  A missing/unthreaded seed then degrades to a deterministic, hydration-safe (merely
+  non-rotating) order instead of silently reopening the server/client clock-divergence
+  path. The ONLY `Date.now()` in the feature lives in the server page.
   **Non-goal:** live rotation on a page left open across a week boundary — the new seed
   applies on next navigation/revalidate; no boundary timer.
 - Update the doc comment at the top of `sortArchiveProducts` (currently states
@@ -114,9 +130,11 @@ actually returns:
   then 2 + 2 remainder, with each store's block newest-first; assert two distinct
   `storeDomain` values yield two interleaved buckets (guards the camelCase contract).
 - Store order is deterministic for a fixed explicit week seed.
-- Rotation actually rotates: with ≥3 stores, pick two seeds (found once while writing
-  the test) that produce different store orders and assert the exact order for each —
-  guards against an implementation that ignores `weekSeed` or hashes only `storeDomain`.
+- Rotation actually rotates: with ≥3 stores, assert that a run of **consecutive** seeds
+  (e.g. 5 adjacent week numbers around the current one) produces multiple distinct store
+  orders — NOT two cherry-picked seeds, which would pass even under the weak
+  FNV-suffix scheme this spec explicitly rejects. Also assert exact order for one fixed
+  seed (determinism).
 - Tie-break is locale-independent: include handles with punctuation/mixed case whose
   ordering differs between localeCompare and code-unit compare; assert code-unit order.
 - Determinism under input shuffling: shuffle/reverse an input containing identical
