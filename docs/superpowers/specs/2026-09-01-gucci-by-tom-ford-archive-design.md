@@ -50,7 +50,13 @@ Replace the inert `{ name: "COMME DES GARÇONS", years: …, live: false }` entr
 ```
 
 Draft description (English-only by convention; chrome i18n untouched):
-> "Between 1990 and 2004, Tom Ford remade Gucci from a fading leather-goods house into the defining force of nineties glamour — velvet tailoring, satin shirts and G-frame monograms cut with a dark, sensual precision. Every piece here dates from his tenure."
+> "Between 1990 and 2004, Tom Ford remade Gucci from a fading leather-goods house into the defining force of nineties glamour — velvet tailoring, satin shirts and G-frame monograms cut with a dark, sensual precision."
+
+(Adversarial review, round 1: dropped the closing sentence "Every piece here dates from his tenure" — `era_year` is heuristic (`parseEra.js` reads title tokens like "2000s"), so the copy must not make a categorical dating claim the rules can't guarantee.)
+
+**Membership limits & guardrails** (accepted heuristics, same trade-off as the live Margiela/Slimane archives):
+- `era_year` is parsed from titles; a bare "2000s …" title lands on 2000 and may be a post-Ford piece. The `excludeAttribution: ["michele", "giannini"]` denylist only drops rows whose seller copy names those successors — it is best-effort, not proof of tenure. Stragglers get pinned via the curator `exclude` list case-by-case.
+- Null-era audit (2026-09-01): all 6 currently matching rows carry direct "Gucci Tom Ford" seller attribution in name/description (yourgarmentz: pink fur clutch, Jackie mamma bag, crystal monogram bra, shearling leather jacket; chezsnowbunny: black bustier, khaki midi skirt — matched on raw name). No comparative/"Ford-inspired" copy in the current set; re-run this audit query on any future curation pass over this archive (no automated drift monitoring — same curatorial model as the Margiela/Slimane archives).
 
 Rule shapes already exist in `fetchArchiveProducts.js` (`eraStart/eraEnd`, `eraYearNull`, `attribution`, `excludeAttribution`) — **no fetch-layer change**.
 
@@ -58,7 +64,9 @@ Rule shapes already exist in `fetchArchiveProducts.js` (`eraStart/eraEnd`, `eraY
 
 - `ARCHIVES` length stays 5 — assertion unchanged.
 - Update any assertion enumerating inert names (COMME DES GARÇONS is no longer inert).
-- Add `getArchiveBySlug("gucci-by-tom-ford")` assertions alongside the margiela/slimane ones (returns the entry; rules well-formed; alt-iff-image invariant already covered generically).
+- Add `getArchiveBySlug("gucci-by-tom-ford")` assertions alongside the margiela/slimane ones (returns the entry; alt-iff-image invariant already covered generically).
+- **Pin the exact rule configuration** (adversarial review, round 2): assert the entry's `rules` deep-equal the two rules above — brand `"GUCCI"`, `eraStart: 1990` / `eraEnd: 2004`, `excludeAttribution: ["michele", "giannini"]`, and the `eraYearNull` + `attribution: ["tom ford"]` rule — so a typo'd year, dropped token, or lost rule fails tests rather than only shifting live counts.
+- In `app/lib/__tests__/fetchArchiveProducts.test.js`, add one membership case driven by the **real** entry (via `getArchiveBySlug("gucci-by-tom-ford")`, not a synthetic archive) with fixtures: in-window GUCCI included; out-of-window GUCCI excluded; in-window row with "Giannini" in description excluded; null-era row with "Tom Ford" in name included; null-era unattributed GUCCI excluded.
 
 ### 3. Spec doc
 
