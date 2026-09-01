@@ -18,8 +18,13 @@ per store, round-robined, store order rotating weekly.
 
 Goal: make the archive's `"interleaved"` sort reproduce that pattern. The archive ships
 its full product set to the client and sorts in JS (`ArchiveProductsClient` →
-`sortArchiveProducts`), and every row carries `store_domain` + `synced_at`, so this is a
-pure-JS change — no RPC, query, or server changes.
+`sortArchiveProducts`), and every row carries the fields needed, so this is a pure-JS
+change — no RPC or query changes.
+
+**Field-name contract (invariant):** `fetchArchiveProducts` returns rows mapped through
+`mapProductRow` — the helper sees **`storeDomain`** and **`syncedAt`** (camelCase), NOT
+the DB's `store_domain`/`synced_at`. All bucketing/sorting below uses the camelCase
+names; a test must assert that two distinct `storeDomain` values produce two buckets.
 
 ## Decisions made with user
 
@@ -31,7 +36,11 @@ pure-JS change — no RPC, query, or server changes.
 
 ## Change
 
-**File: [app/lib/archiveProductFilters.js](app/lib/archiveProductFilters.js)** (only file)
+**Files:** [app/lib/archiveProductFilters.js](app/lib/archiveProductFilters.js) (the
+interleave), plus a small seed-plumbing prop through
+[app/archives/[slug]/page.js](app/archives/[slug]/page.js) and
+[app/components/archive/ArchiveProductsClient.js](app/components/archive/ArchiveProductsClient.js)
+(see week-seed note below).
 
 In `sortArchiveProducts`, replace the fall-through `"interleaved" → byNewest` case with a
 real interleave:
@@ -50,12 +59,16 @@ function fnv1a(str) {
   return h >>> 0;
 }
 
-function interleaveByStore(products) {
-  const weekSeed = Math.floor(Date.now() / 1000 / WEEK_SECONDS);
-  // 1. bucket by store_domain, each bucket sorted newest synced_at first
-  //    (same string-descending compare byNewest already uses; null/missing last)
-  // 2. store position = fnv1a(store_domain + ":" + weekSeed), ascending
-  //    (ties broken by store_domain for full determinism)
+function interleaveByStore(products, weekSeed) {
+  // 1. bucket by product.storeDomain, each bucket sorted by the existing
+  //    byNewest comparator PLUS the existing identity tie-break:
+  //    syncedAt DESC (nulls last) || identity(a).localeCompare(identity(b)).
+  //    The tie-break is REQUIRED: rule queries have no ORDER BY and same-batch
+  //    rows share timestamps, so timestamp-only ordering is nondeterministic
+  //    across cache refreshes. Reuse the existing identity() helper
+  //    (storeDomain::handle) — do not invent a new key.
+  // 2. store position = fnv1a(storeDomain + ":" + weekSeed), ascending
+  //    (hash ties broken by storeDomain for full determinism)
   // 3. emit ordered by (Math.floor(rankInStore / GROUP_SIZE), storePosition, rankInStore)
 }
 ```
@@ -64,26 +77,39 @@ Notes:
 - Keep it a pure function of the input array (plus the week seed) — it runs after
   `filterProductsByCategories`, so category filtering keeps working unchanged, and
   re-runs correctly when filters change.
-- Products with missing `store_domain` go in a single fallback bucket (key `""`) rather
+- Products with missing `storeDomain` go in a single fallback bucket (key `""`) rather
   than being dropped.
+- **Week seed is computed ONCE, server-side, and passed down** — never from `Date.now()`
+  inside the client component. `ArchiveProductsClient` is SSR'd + hydrated; independent
+  server/client clock reads can land in different weekly buckets (boundary crossing or
+  client clock skew), producing a hydration-order mismatch and a visible grid reshuffle.
+  Instead: `app/archives/[slug]/page.js` computes
+  `weekSeed = Math.floor(Date.now() / 1000 / WEEK_SECONDS)` and passes it as a prop;
+  `ArchiveProductsClient` threads it into `sortArchiveProducts(list, sort, weekSeed)` and
+  includes it in the `visible` useMemo deps. `sortArchiveProducts` keeps a defaulted
+  third parameter (compute-current-week fallback) so other callers/tests don't break.
+  **Non-goal:** live rotation on a page left open across a week boundary — the new seed
+  applies on next navigation/revalidate; no boundary timer.
 - Update the doc comment at the top of `sortArchiveProducts` (currently states
   `"interleaved"` is an alias for newest) and the case list.
-- No changes to `ArchiveProductsClient`, `fetchArchiveProducts`, sort-option labels, or
-  the RPCs. `fetchArchiveProducts`'s own `.sort()` (server-side newest-first) stays — it
-  just provides a stable input order.
-- Week seed uses `Date.now()` in the client; the SQL uses `CURRENT_DATE` (UTC midnight).
-  Both floor to the same 604800s bucket except within the same UTC day's partial week —
-  irrelevant, since parity with the feed's exact permutation is already non-goal.
+- No changes to `fetchArchiveProducts`, sort-option labels, or the RPCs.
+  `fetchArchiveProducts`'s own `.sort()` (server-side newest-first) stays, but the
+  interleave must NOT rely on input order — its own comparator (with tie-break) is the
+  sole source of determinism.
 
 ## Tests
 
-Follow the repo's existing test layout for `app/lib` helpers (check for an existing
-`archiveProductFilters` test file first). Cases for `sortArchiveProducts(products, "interleaved")`:
+Extend the existing `app/lib/__tests__/archiveProductFilters.test.js`. Cases for
+`sortArchiveProducts(products, "interleaved", weekSeed)` — build fixtures with the
+**mapped shape** (`storeDomain`, `syncedAt`, `handle`), the shape `fetchArchiveProducts`
+actually returns:
 - Two stores × 8 products each → output is blocks of 6: 6 from store X, 6 from store Y,
-  then 2 + 2 remainder, with each store's block newest-first.
-- Store order is deterministic for a fixed week seed (may need to expose the seed as an
-  optional arg for testability, defaulting to the current week).
-- Products lacking `store_domain` or `synced_at` are kept, not dropped.
+  then 2 + 2 remainder, with each store's block newest-first; assert two distinct
+  `storeDomain` values yield two interleaved buckets (guards the camelCase contract).
+- Store order is deterministic for a fixed explicit week seed.
+- Determinism under input shuffling: shuffle/reverse an input containing identical
+  `syncedAt` values → output identical (exercises the identity tie-break).
+- Products lacking `storeDomain` or `syncedAt` are kept, not dropped.
 - Other sort keys (`"latest"`, price) are untouched.
 
 ## Verification
