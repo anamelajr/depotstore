@@ -62,11 +62,18 @@ function fnv1a(str) {
 function interleaveByStore(products, weekSeed) {
   // 1. bucket by product.storeDomain, each bucket sorted by the existing
   //    byNewest comparator PLUS the existing identity tie-break:
-  //    syncedAt DESC (nulls last) || identity(a).localeCompare(identity(b)).
+  //    syncedAt DESC (nulls last) || code-unit compare of identity strings.
   //    The tie-break is REQUIRED: rule queries have no ORDER BY and same-batch
-  //    rows share timestamps, so timestamp-only ordering is nondeterministic
-  //    across cache refreshes. Reuse the existing identity() helper
-  //    (storeDomain::handle) — do not invent a new key.
+  //    rows share timestamps (cron stamps one syncStart per run), so
+  //    timestamp-only ordering is nondeterministic across cache refreshes.
+  //    Reuse the existing identity() helper (storeDomain::handle) for the KEY,
+  //    but compare with a locale-INDEPENDENT code-unit comparator
+  //    (a < b ? -1 : a > b ? 1 : 0), NOT localeCompare: default-locale
+  //    localeCompare varies by runtime/ICU, so server and browser could break
+  //    ties differently — reintroducing the hydration reshuffle the
+  //    server-passed seed exists to prevent. While here, switch the shared
+  //    `tie` helper in sortArchiveProducts to the same code-unit compare
+  //    (both orders are arbitrary; only determinism matters).
   // 2. store position = fnv1a(storeDomain + ":" + weekSeed), ascending
   //    (hash ties broken by storeDomain for full determinism)
   // 3. emit ordered by (Math.floor(rankInStore / GROUP_SIZE), storePosition, rankInStore)
@@ -107,6 +114,11 @@ actually returns:
   then 2 + 2 remainder, with each store's block newest-first; assert two distinct
   `storeDomain` values yield two interleaved buckets (guards the camelCase contract).
 - Store order is deterministic for a fixed explicit week seed.
+- Rotation actually rotates: with ≥3 stores, pick two seeds (found once while writing
+  the test) that produce different store orders and assert the exact order for each —
+  guards against an implementation that ignores `weekSeed` or hashes only `storeDomain`.
+- Tie-break is locale-independent: include handles with punctuation/mixed case whose
+  ordering differs between localeCompare and code-unit compare; assert code-unit order.
 - Determinism under input shuffling: shuffle/reverse an input containing identical
   `syncedAt` values → output identical (exercises the identity tie-break).
 - Products lacking `storeDomain` or `syncedAt` are kept, not dropped.
@@ -120,3 +132,7 @@ actually returns:
    Dolce Vita Hub run; apply a category filter and confirm the interleave re-applies.
 3. Switch to another sort and back; confirm non-interleaved sorts unchanged.
 4. Run the test suite / the new test file.
+5. Code check: confirm `weekSeed` is passed page → `ArchiveProductsClient` →
+   `sortArchiveProducts` and appears in the `visible` useMemo dependency array (an
+   unthreaded prop silently falls back to the client-computed default, resurrecting the
+   hydration-divergence risk).
